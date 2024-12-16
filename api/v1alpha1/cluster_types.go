@@ -17,29 +17,129 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/chideat/valkey-operator/api/core"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// ClusterReplicas
+type ClusterReplicas struct {
+	// Shards is the number of cluster shards
+	// +kubebuilder:validation:Minimum=3
+	Shards int32 `json:"masterSize"`
+	// ReplicasOfShard is the number of replicas for each master node
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	ReplicasOfShard int32 `json:"replicasOfShard"`
+}
 
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Image is the Redis image
+	Image string `json:"image,omitempty"`
+	// ImagePullPolicy is the Redis image pull policy
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	// ImagePullSecrets
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
-	// Foo is an example field of Cluster. Edit cluster_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Replicas is the number of cluster replicas
+	Replicas ClusterReplicas `json:"replicas"`
+
+	// CustomConfigs is the custom redis configuration
+	//
+	// Most of the settings is key-value format.
+	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
+
+	// Resources
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Access defines the access for redis
+	Access core.InstanceAccess `json:"expose,omitempty"`
+	// Storage
+	Storage *core.Storage `json:"storage,omitempty"`
+
+	// PodAnnotations
+	PodAnnotations map[string]string `json:"annotations,omitempty"`
+	// AffinityPolicy
+	// +kubebuilder:validation:Enum=SoftAntiAffinity;AntiAffinityInSharding;AntiAffinity
+	AffinityPolicy core.AffinityPolicy `json:"affinityPolicy,omitempty"`
+	// Affinity
+	CustomAffinity *corev1.Affinity `json:"CustomAffinity,omitempty"`
+	// NodeSelector
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Tolerations
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// SecurityContext
+	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+}
+
+// ClusterPhase Redis Cluster status
+type ClusterPhase string
+
+const (
+	ClusterPhaseOK ClusterPhase = "Healthy"
+	// ClusterStatusKO ClusterPhase KO
+	ClusterPhaseKO ClusterPhase = "Failed"
+	// ClusterStatusCreating ClusterPhase Creating
+	ClusterPhaseCreating ClusterPhase = "Creating"
+	// ClusterStatusRollingUpdate ClusterPhase RollingUpdate
+	ClusterPhaseRollingUpdate ClusterPhase = "RollingUpdate"
+	// ClusterStatusRebalancing ClusterPhase rebalancing
+	ClusterPhaseRebalancing ClusterPhase = "Rebalancing"
+	// clusterStatusPaused cluster status paused
+	ClusterPhasePaused ClusterPhase = "Paused"
+)
+
+// ClusterServiceStatus
+type ClusterServiceStatus string
+
+const (
+	ClusterInService    ClusterServiceStatus = "InService"
+	ClusterOutOfService ClusterServiceStatus = "OutOfService"
+)
+
+// ClusterShardsSlotStatus
+type ClusterShardsSlotStatus struct {
+	// Slots slots this shard holds or will holds
+	Slots string `json:"slots,omitempty"`
+	// Status the status of this status
+	Status string `json:"status,omitempty"`
+	// ShardIndex indicates the slots importing from or migrate to
+	ShardIndex *int32 `json:"shardId"`
+}
+
+// ClusterShards
+type ClusterShards struct {
+	// ID match the shard-id in redis 7.0
+	Id string `json:"id,omitempty"`
+	// Index the shard index
+	Index int32 `json:"index"`
+	// Slots records the slots status of this shard
+	Slots []*ClusterShardsSlotStatus `json:"slots"`
 }
 
 // ClusterStatus defines the observed state of Cluster
 type ClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Status the status of the cluster
+	Phase ClusterPhase `json:"status"`
+	// Message the message of the status
+	Message string `json:"message,omitempty"`
+	// Nodes the redis cluster nodes
+	Nodes []core.ValkeyNode `json:"nodes,omitempty"`
+	// ServiceStatus the cluster service status
+	ServiceStatus ClusterServiceStatus `json:"clusterStatus,omitempty"`
+	// Shards the cluster shards
+	Shards []*ClusterShards `json:"shards,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".status.numberOfMaster",description="Current Shards"
+// +kubebuilder:printcolumn:name="Service Status",type="string",JSONPath=".status.serviceStatus",description="Service status"
+// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.expose.type",description="Instance access type"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Instance phase"
+// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.reason",description="Status message"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
 // Cluster is the Schema for the clusters API
 type Cluster struct {
