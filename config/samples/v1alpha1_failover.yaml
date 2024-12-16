@@ -1,0 +1,9 @@
+apiVersion: valkey.buf.red/v1alpha1
+kind: Failover
+metadata:
+  labels:
+    app.kubernetes.io/name: valkey-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: failover-sample
+spec:
+  # TODO(user): Add fields here

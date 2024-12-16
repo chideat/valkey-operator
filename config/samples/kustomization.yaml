@@ -1,0 +1,10 @@
+## Append samples of your project ##
+resources:
+- v1alpha1_failover.yaml
+- _v1alpha1_failover.yaml
+- v1alpha1_cluster.yaml
+- _v1alpha1_cluster.yaml
+- v1alpha1_sentinel.yaml
+- _v1alpha1_sentinel.yaml
+- rds_v1alpha1_valkey.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

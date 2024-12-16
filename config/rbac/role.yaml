@@ -1,0 +1,110 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - rds.valkey.buf.red
+  resources:
+  - valkeys
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rds.valkey.buf.red
+  resources:
+  - valkeys/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - rds.valkey.buf.red
+  resources:
+  - valkeys/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - clusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - clusters/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - clusters/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - failovers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - failovers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - failovers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - sentinels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - sentinels/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - sentinels/status
+  verbs:
+  - get
+  - patch
+  - update
