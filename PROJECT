@@ -45,4 +45,12 @@ resources:
   kind: Valkey
   path: github.com/chideat/valkey-operator/api/rds/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: valkey.buf.red
+  kind: RedisUser
+  path: github.com/chideat/valkey-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

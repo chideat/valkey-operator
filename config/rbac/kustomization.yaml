@@ -22,6 +22,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- redisuser_editor_role.yaml
+- redisuser_viewer_role.yaml
 - rds_valkey_editor_role.yaml
 - rds_valkey_viewer_role.yaml
 - sentinel_editor_role.yaml

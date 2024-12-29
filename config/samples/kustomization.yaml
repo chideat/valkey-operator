@@ -7,4 +7,6 @@ resources:
 - v1alpha1_sentinel.yaml
 - _v1alpha1_sentinel.yaml
 - rds_v1alpha1_valkey.yaml
+- v1alpha1_redisuser.yaml
+- _v1alpha1_redisuser.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -6,6 +6,7 @@ resources:
 - bases/valkey.buf.red_clusters.yaml
 - bases/valkey.buf.red_sentinels.yaml
 - bases/rds.valkey.buf.red_valkeys.yaml
+- bases/valkey.buf.red_redisusers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -19,6 +20,7 @@ patches:
 #- path: patches/cainjection_in_clusters.yaml
 #- path: patches/cainjection_in_sentinels.yaml
 #- path: patches/cainjection_in_rds_valkeys.yaml
+#- path: patches/cainjection_in_redisusers.yaml
 # +kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # [WEBHOOK] To enable webhook, uncomment the following section

@@ -22,11 +22,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type ShardConfig struct {
+	// Slots is the slot range for the shard, eg: 0-1000,1002,1005-1100
+	//+kubebuilder:validation:Pattern:=`^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$`
+	Slots string `json:"slots,omitempty"`
+}
+
 // ClusterReplicas
 type ClusterReplicas struct {
 	// Shards is the number of cluster shards
 	// +kubebuilder:validation:Minimum=3
+	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default=3
 	Shards int32 `json:"masterSize"`
+
+	// ShardsConfig is the configuration of each shard
+	// +kubebuilder:validation:MinItems=3
+	// +optional
+	ShardsConfig []*ShardConfig `json:"shardsConfig,omitempty"`
+
 	// ReplicasOfShard is the number of replicas for each master node
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=5
@@ -58,11 +73,14 @@ type ClusterSpec struct {
 	// Storage
 	Storage *core.Storage `json:"storage,omitempty"`
 
+	// Exporter
+	Exporter *core.Exporter `json:"exporter,omitempty"`
+
 	// PodAnnotations
 	PodAnnotations map[string]string `json:"annotations,omitempty"`
 	// AffinityPolicy
 	// +kubebuilder:validation:Enum=SoftAntiAffinity;AntiAffinityInSharding;AntiAffinity
-	AffinityPolicy core.AffinityPolicy `json:"affinityPolicy,omitempty"`
+	AffinityPolicy *core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 	// Affinity
 	CustomAffinity *corev1.Affinity `json:"CustomAffinity,omitempty"`
 	// NodeSelector

@@ -61,8 +61,8 @@ type SentinelSpec struct {
 	// Resources the resources for sentinel
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Configs the config for sentinel
-	Configs map[string]string `json:"configs,omitempty"`
+	// CustomConfigs the config for sentinel
+	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Exporter defines the specification for the sentinel exporter
 	Exporter *SentinelExporter `json:"exporter,omitempty"`

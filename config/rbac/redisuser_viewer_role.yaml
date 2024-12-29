@@ -1,0 +1,23 @@
+# permissions for end users to view redisusers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: valkey-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: redisuser-viewer-role
+rules:
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - redisusers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - redisusers/status
+  verbs:
+  - get

@@ -1,0 +1,107 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: redisusers.valkey.buf.red
+spec:
+  group: valkey.buf.red
+  names:
+    kind: RedisUser
+    listKind: RedisUserList
+    plural: redisusers
+    singular: redisuser
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.redisName
+      name: Instance
+      type: string
+    - jsonPath: .spec.username
+      name: username
+      type: string
+    - jsonPath: .status.Phase
+      name: phase
+      type: string
+    - description: Time since creation
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RedisUser is the Schema for the redisusers API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RedisUserSpec defines the desired state of RedisUser
+            properties:
+              accountType:
+                description: redis user account type
+                enum:
+                - system
+                - custom
+                - default
+                type: string
+              aclRules:
+                description: redis  acl rules  string
+                type: string
+              arch:
+                description: redis user account type
+                enum:
+                - sentinel
+                - cluster
+                - standalone
+                type: string
+              passwordSecrets:
+                description: Redis Password secret name, key is password
+                items:
+                  type: string
+                type: array
+              redisName:
+                description: Redis instance  Name (required)
+                maxLength: 63
+                minLength: 1
+                type: string
+              username:
+                description: Redis Username (required)
+                type: string
+            required:
+            - redisName
+            - username
+            type: object
+          status:
+            description: RedisUserStatus defines the observed state of RedisUser
+            properties:
+              Phase:
+                description: Phase
+                type: string
+              aclRules:
+                description: AclRules acl rules of redis
+                type: string
+              message:
+                description: Message
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

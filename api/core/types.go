@@ -28,6 +28,7 @@ const (
 	// NodeRoleNone None node role
 	NodeRoleNone NodeRole = "none"
 	// NodeRoleMaster Master node role
+	// TODO: rename to Primary
 	NodeRoleMaster NodeRole = "master"
 	// NodeRoleReplica Master node role
 	NodeRoleReplica NodeRole = "replica"
@@ -49,9 +50,9 @@ const (
 	// but pods of different shards can be scheduled on the same node
 	AntiAffinityInShard AffinityPolicy = "AntiAffinityInShard"
 
-	// HardAntiAffinity defines the anti-affinity policy
+	// AntiAffinity defines the anti-affinity policy
 	// all pods will be scheduled on different nodes
-	HardAntiAffinity AffinityPolicy = "HardAntiAffinity"
+	AntiAffinity AffinityPolicy = "AntiAffinity"
 
 	// CustomAffinity defines the custom affinity policy
 	CustomAffinity AffinityPolicy = ""
@@ -63,23 +64,36 @@ type Storage struct {
 	// +optional
 	StorageClassName *string `json:"storageClassName,omitempty"`
 
-	// StorageSize is the size of the volume to request.
+	// Capacity is the cap of the volume to request.
 	// if not set and StorageClassName is set, the default StorageClass size will be the double size of memory limit.
-	StorageSize resource.Quantity `json:"storageSize,omitempty"`
+	Capacity resource.Quantity `json:"capacity,omitempty"`
+
+	// AccessMode is the access mode of the volume.
+	// +kubebuilder:default:=ReadWriteOnce
+	AccessMode corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
+
+	// RetainAfterDeleted defines whether the storage should be retained after the ValkeyCluster is deleted
+	RetainAfterDeleted bool `json:"retainAfterDeleted,omitempty"`
 }
 
 // Exporter
 type Exporter struct {
+	// Enabled enable the exporter
+	Enabled bool `json:"enabled,omitempty"`
+	// Image the exporter image
+	Image string `json:"image,omitempty"`
+	// ImagePullPolicy
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	// Resources for setting resource requirements for the Pod Resources *v1.ResourceRequirements
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // InstanceAccess
 type InstanceAccess struct {
-	// DefaultUserPassword referered to the secret which defined the password for default user
+	// DefaultPasswordSecret referered to the secret which defined the password for default user
 	// The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
 	// +optional
-	DefaultUserPassword corev1.LocalObjectReference `json:"defaultUserPassword,omitempty"`
+	DefaultPasswordSecret string `json:"defaultPasswordSecret,omitempty"`
 
 	// ServiceType defines the type of the all related services
 	// +kubebuilder:default:=ClusterIP

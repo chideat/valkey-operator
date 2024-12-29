@@ -36,6 +36,22 @@ type ValkeyReplicas struct {
 	ReplicasOfShard int32 `json:"replicasOfShard,omitempty"`
 }
 
+// ValkeyModule defines the module for Valkey
+type ValkeyModule struct {
+	// Name name of valkey module.
+	//
+	// .so suffix will be appended if name not suffixed provided
+	// if name is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+	// +required
+	Name string `json:"name"`
+
+	// Args args for module
+	//
+	// Supported for valkey 8.0+
+	// +optional
+	Args []string `json:"args,omitempty"`
+}
+
 // ValkeySpec defines the desired state of Valkey
 type ValkeySpec struct {
 	// Version supports 7.2, 8.0
@@ -56,6 +72,9 @@ type ValkeySpec struct {
 	// for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
+	// Modules defines the module settings for Valkey
+	Modules []ValkeyModule `json:"modules,omitempty"`
+
 	// Storage defines the storage settings for Valkey
 	Storage *core.Storage `json:"storage,omitempty"`
 
@@ -69,7 +88,7 @@ type ValkeySpec struct {
 
 	// AffinityPolicy specifies the affinity policy for the Pod
 	// +optional
-	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInSharding";"HardAntiAffinity";"CustomAffinity"
+	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInSharding";"AntiAffinity";"CustomAffinity"
 	AffinityPolicy core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 
 	// CustomAffinity specifies the custom affinity settings for the Pod

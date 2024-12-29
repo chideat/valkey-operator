@@ -1,0 +1,465 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: failovers.valkey.buf.red
+spec:
+  group: valkey.buf.red
+  names:
+    kind: Failover
+    listKind: FailoverList
+    plural: failovers
+    singular: failover
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Valkey replicas
+      jsonPath: .spec.valkey.replicas
+      name: Replicas
+      type: integer
+    - description: Valkey failover replicas
+      jsonPath: .spec.sentinel.replicas
+      name: Sentinels
+      type: integer
+    - description: Instance access type
+      jsonPath: .spec.valkey.access.type
+      name: Access
+      type: string
+    - description: Instance phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Instance status message
+      jsonPath: .status.message
+      name: Message
+      type: string
+    - description: Time since creation
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Failover is the Schema for the failovers API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FailoverSpec defines the desired state of Failover
+            properties:
+              access:
+                description: Access
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
+                  certIssuer:
+                    description: Cert Issuer for external access TLS certificate
+                    type: string
+                  certIssuerType:
+                    default: ClusterIssuer
+                    description: Cert Issuer Type for external access TLS certificate
+                    enum:
+                    - ClusterIssuer
+                    - Issuer
+                    type: string
+                  defaultPasswordSecret:
+                    description: |-
+                      DefaultPasswordSecret referered to the secret which defined the password for default user
+                      The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
+                    type: string
+                  enableTLS:
+                    description: EnableTLS enable TLS for external access
+                    type: boolean
+                  ipFamilyPrefer:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0IPFamily'
+                    description: |-
+                      IPFamily represents the IP Family (IPv4 or IPv6).
+                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
+                    enum:
+                    - IPv4
+                    - IPv6
+                  ports:
+                    description: Ports defines the nodeports of NodePort service
+                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                    type: string
+                  type:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0ServiceType'
+                    default: ClusterIP
+                    description: ServiceType defines the type of the all related services
+                    enum:
+                    - NodePort
+                    - LoadBalancer
+                    - ClusterIP
+                type: object
+              affinity:
+                $ref: '#/definitions/k8s.io~1api~1core~1v1~0Affinity'
+              customConfigs:
+                additionalProperties:
+                  type: string
+                description: CustomConfig custom valkey configuration
+                type: object
+              exporter:
+                description: Exporter
+                properties:
+                  enabled:
+                    description: Enabled enable the exporter
+                    type: boolean
+                  image:
+                    description: Image the exporter image
+                    type: string
+                  imagePullPolicy:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0PullPolicy'
+                    description: ImagePullPolicy
+                  resources:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0ResourceRequirements'
+                    description: Resources for setting resource requirements for the
+                      Pod Resources *v1.ResourceRequirements
+                type: object
+              image:
+                type: string
+              imagePullPolicy:
+                $ref: '#/definitions/k8s.io~1api~1core~1v1~0PullPolicy'
+              imagePullSecrets:
+                items:
+                  $ref: '#/definitions/k8s.io~1api~1core~1v1~0LocalObjectReference'
+                type: array
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
+              podAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
+              replicas:
+                format: int32
+                type: integer
+              resources:
+                $ref: '#/definitions/k8s.io~1api~1core~1v1~0ResourceRequirements'
+              securityContext:
+                $ref: '#/definitions/k8s.io~1api~1core~1v1~0PodSecurityContext'
+              sentinel:
+                description: Sentinel
+                properties:
+                  access:
+                    description: Access the access for sentinel
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: The annnotations of the service which will be
+                          attached to services
+                        type: object
+                      certIssuer:
+                        description: Cert Issuer for external access TLS certificate
+                        type: string
+                      certIssuerType:
+                        default: ClusterIssuer
+                        description: Cert Issuer Type for external access TLS certificate
+                        enum:
+                        - ClusterIssuer
+                        - Issuer
+                        type: string
+                      defaultPasswordSecret:
+                        description: |-
+                          DefaultPasswordSecret referered to the secret which defined the password for default user
+                          The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
+                        type: string
+                      enableTLS:
+                        description: EnableTLS enable TLS for external access
+                        type: boolean
+                      externalTLSSecret:
+                        description: ExternalTLSSecret the external TLS secret to
+                          use, if not provided, the operator will issue one
+                        type: string
+                      ipFamilyPrefer:
+                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0IPFamily'
+                        description: |-
+                          IPFamily represents the IP Family (IPv4 or IPv6).
+                          This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
+                        enum:
+                        - IPv4
+                        - IPv6
+                      ports:
+                        description: Ports defines the nodeports of NodePort service
+                        pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                        type: string
+                      type:
+                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0ServiceType'
+                        default: ClusterIP
+                        description: ServiceType defines the type of the all related
+                          services
+                        enum:
+                        - NodePort
+                        - LoadBalancer
+                        - ClusterIP
+                    type: object
+                  affinity:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0Affinity'
+                    description: Affinity
+                  customConfigs:
+                    additionalProperties:
+                      type: string
+                    description: CustomConfigs the config for sentinel
+                    type: object
+                  exporter:
+                    description: Exporter defines the specification for the sentinel
+                      exporter
+                    properties:
+                      enabled:
+                        description: Enabled enable the exporter
+                        type: boolean
+                      image:
+                        description: Image the exporter image
+                        type: string
+                      imagePullPolicy:
+                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0PullPolicy'
+                        description: ImagePullPolicy
+                      resources:
+                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0ResourceRequirements'
+                        description: Resources for setting resource requirements for
+                          the Pod Resources *v1.ResourceRequirements
+                    type: object
+                  image:
+                    description: Image the valkey sentinel image
+                    type: string
+                  imagePullPolicy:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0PullPolicy'
+                    description: ImagePullPolicy the image pull policy
+                  imagePullSecrets:
+                    description: ImagePullSecrets the image pull secrets
+                    items:
+                      $ref: '#/definitions/k8s.io~1api~1core~1v1~0LocalObjectReference'
+                    type: array
+                  monitorConfig:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      MonitorConfig configs for sentinel to monitor this replication, including:
+                      - down-after-milliseconds
+                      - failover-timeout
+                      - parallel-syncs
+                    type: object
+                  nodeSelector:
+                    additionalProperties:
+                      type: string
+                    description: NodeSelector
+                    type: object
+                  podAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: PodAnnotations
+                    type: object
+                  quorum:
+                    description: |-
+                      Quorum the number of Sentinels that need to agree about the fact the master is not reachable,
+                      in order to really mark the master as failing, and eventually start a failover procedure if possible.
+                      If not specified, the default value is the majority of the Sentinels.
+                    format: int32
+                    type: integer
+                  replicas:
+                    description: Replicas the number of sentinel replicas
+                    format: int32
+                    minimum: 3
+                    type: integer
+                  resources:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0ResourceRequirements'
+                    description: Resources the resources for sentinel
+                  securityContext:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0PodSecurityContext'
+                    description: SecurityContext
+                  sentinelReference:
+                    description: SentinelReference the sentinel reference
+                    properties:
+                      auth:
+                        description: Auth the sentinel auth
+                        properties:
+                          passwordSecret:
+                            description: PasswordSecret the password secret for valkey
+                            type: string
+                          tlsSecret:
+                            description: TLSSecret the tls secret
+                            type: string
+                          username:
+                            description: Username the username for valkey
+                            type: string
+                        type: object
+                      nodes:
+                        description: Addresses the sentinel addresses
+                        items:
+                          properties:
+                            flags:
+                              description: Flags
+                              type: string
+                            ip:
+                              description: IP the sentinel node ip
+                              type: string
+                            port:
+                              description: Port the sentinel node port
+                              format: int32
+                              type: integer
+                          type: object
+                        minItems: 3
+                        type: array
+                    type: object
+                  tolerations:
+                    description: Tolerations
+                    items:
+                      $ref: '#/definitions/k8s.io~1api~1core~1v1~0Toleration'
+                    type: array
+                type: object
+              storage:
+                description: Storage
+                properties:
+                  accessMode:
+                    $ref: '#/definitions/k8s.io~1api~1core~1v1~0PersistentVolumeAccessMode'
+                    default: ReadWriteOnce
+                    description: AccessMode is the access mode of the volume.
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      Capacity is the cap of the volume to request.
+                      if not set and StorageClassName is set, the default StorageClass size will be the double size of memory limit.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  retainAfterDeleted:
+                    description: RetainAfterDeleted defines whether the storage should
+                      be retained after the ValkeyCluster is deleted
+                    type: boolean
+                  storageClassName:
+                    description: |-
+                      storageClassName is the name of the StorageClass required by the claim.
+                      if not set, the default StorageClass will be used
+                    type: string
+                type: object
+              tolerations:
+                items:
+                  $ref: '#/definitions/k8s.io~1api~1core~1v1~0Toleration'
+                type: array
+            type: object
+          status:
+            description: FailoverStatus defines the observed state of Failover
+            properties:
+              message:
+                description: Message the status message
+                type: string
+              monitor:
+                description: Monitor the monitor status
+                properties:
+                  name:
+                    description: Name monitor name
+                    type: string
+                  nodes:
+                    description: Nodes the sentinel monitor nodes
+                    items:
+                      properties:
+                        flags:
+                          description: Flags
+                          type: string
+                        ip:
+                          description: IP the sentinel node ip
+                          type: string
+                        port:
+                          description: Port the sentinel node port
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                  oldPasswordSecret:
+                    description: OldPasswordSecret
+                    type: string
+                  passwordSecret:
+                    description: PasswordSecret
+                    type: string
+                  policy:
+                    description: Policy the failover policy
+                    type: string
+                  tlsSecret:
+                    description: TLSSecret the tls secret
+                    type: string
+                  username:
+                    description: Username sentinel username
+                    type: string
+                type: object
+              nodes:
+                description: Nodes the valkey cluster nodes
+                items:
+                  description: ValkeyNode represent a ValkeyCluster Node
+                  properties:
+                    id:
+                      description: ID is the valkey cluster node id, not runid
+                      type: string
+                    ip:
+                      description: IP is the ip of the node. if access announce is
+                        enabled, it will be the access ip
+                      type: string
+                    masterRef:
+                      description: MasterRef is the master node id of this node
+                      type: string
+                    nodeName:
+                      description: NodeName is the node name of the node where holds
+                        the pod
+                      type: string
+                    podName:
+                      description: PodName current pod name
+                      type: string
+                    port:
+                      description: Port is the port of the node. if access announce
+                        is enabled, it will be the access port
+                      type: string
+                    role:
+                      description: Role is the role of the node, master or slave
+                      type: string
+                    shardId:
+                      description: ShardID cluster shard id of the node
+                      type: string
+                    slots:
+                      description: 'Slots is the slot range for the shard, eg: 0-1000,1002,1005-1100'
+                      type: string
+                    statefulSet:
+                      description: StatefulSet is the statefulset name of this pod
+                      type: string
+                  required:
+                  - ip
+                  - nodeName
+                  - podName
+                  - port
+                  - role
+                  - statefulSet
+                  type: object
+                type: array
+              phase:
+                description: Phase
+                type: string
+              tlsSecret:
+                description: TLSSecret the tls secret
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

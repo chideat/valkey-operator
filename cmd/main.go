@@ -55,6 +55,18 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+//+kubebuilder:rbac:groups=apps,resources=statefulsets;statefulsets/finalizers;deployments;deployments/finalizers;daemonsets;replicasets,verbs=get;list;watch;create;update;delete
+//+kubebuilder:rbac:groups=batch,resources=jobs;jobs/finalizers;cronjobs;cronjobs/finalizers,verbs=get;list;watch;create;update;delete;deletecollection
+//+kubebuilder:rbac:groups=*,resources=pods;pods/exec;configmaps;configmaps/finalizers;secrets;secrets/finalizers;services;services/finalizers;persistentvolumeclaims;persistentvolumeclaims/finalizers;endpoints,verbs=get;list;watch;create;update;patch;delete;deletecollection
+//+kubebuilder:rbac:groups=*,resources=events,verbs=get;list;watch;create;update;delete;deletecollection
+//+kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets;poddisruptionbudgets/finalizers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=*,resources=pods;pods/exec;configmaps;endpoints;services;services/finalizers,verbs=*
+//+kubebuilder:rbac:groups=*,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;clusterroles;rolebindings;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=*,resources=nodes,verbs=get;list;watch
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -173,6 +185,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Valkey")
+		os.Exit(1)
+	}
+	if err = (&controller.RedisUserReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RedisUser")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

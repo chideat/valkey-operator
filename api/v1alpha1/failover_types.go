@@ -29,9 +29,6 @@ type ValkeyExporter struct {
 
 	// Enabled whether the exporter is enabled
 	Enabled bool `json:"enabled,omitempty"`
-
-	// Image the exporter image
-	Image string `json:"image,omitempty"`
 }
 
 // Authorization defines the authorization settings for valkey
@@ -90,8 +87,9 @@ type FailoverSpec struct {
 	Replicas  int32                       `json:"replicas,omitempty"`
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 	// CustomConfig custom valkey configuration
-	CustomConfig map[string]string `json:"customConfig,omitempty"`
-	Storage      core.Storage      `json:"storage,omitempty"`
+	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
+	// Storage
+	Storage *core.Storage `json:"storage,omitempty"`
 
 	// Exporter
 	Exporter ValkeyExporter `json:"exporter,omitempty"`

@@ -5,6 +5,157 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - '*'
+  resources:
+  - configmaps
+  - endpoints
+  - pods
+  - pods/exec
+  - services
+  - services/finalizers
+  verbs:
+  - '*'
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - '*'
+  resources:
+  - configmaps/finalizers
+  - persistentvolumeclaims
+  - persistentvolumeclaims/finalizers
+  - secrets
+  - secrets/finalizers
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - '*'
+  resources:
+  - events
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - '*'
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - '*'
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - deployments/finalizers
+  - replicasets
+  - statefulsets
+  - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - cronjobs/finalizers
+  - jobs
+  - jobs/finalizers
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  - poddisruptionbudgets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - rds.valkey.buf.red
   resources:
   - valkeys
@@ -34,57 +185,8 @@ rules:
   - valkey.buf.red
   resources:
   - clusters
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - valkey.buf.red
-  resources:
-  - clusters/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - valkey.buf.red
-  resources:
-  - clusters/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - valkey.buf.red
-  resources:
   - failovers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - valkey.buf.red
-  resources:
-  - failovers/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - valkey.buf.red
-  resources:
-  - failovers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - valkey.buf.red
-  resources:
+  - redisusers
   - sentinels
   verbs:
   - create
@@ -97,12 +199,18 @@ rules:
 - apiGroups:
   - valkey.buf.red
   resources:
+  - clusters/finalizers
+  - failovers/finalizers
+  - redisusers/finalizers
   - sentinels/finalizers
   verbs:
   - update
 - apiGroups:
   - valkey.buf.red
   resources:
+  - clusters/status
+  - failovers/status
+  - redisusers/status
   - sentinels/status
   verbs:
   - get
