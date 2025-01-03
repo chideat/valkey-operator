@@ -180,7 +180,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverI
 	)
 
 	defaultUser := users.GetDefaultUser()
-	// UPGRADE: use RedisUser controller to manage the user update
+	// UPGRADE: use User controller to manage the user update
 	if defaultUser.GetPassword().GetSecretName() != currentSecretName && !inst.Version().IsACLSupported() {
 		return actor.NewResult(CommandUpdateAccount)
 	}
@@ -218,8 +218,8 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverI
 				return actor.NewResult(CommandUpdateAccount)
 			}
 
-			defaultRUName := failoverbuilder.GenerateFailoverRedisUserName(inst.GetName(), defaultUser.Name)
-			if defaultRU, err := g.client.GetRedisUser(ctx, inst.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
+			defaultRUName := failoverbuilder.GenerateFailoverUserName(inst.GetName(), defaultUser.Name)
+			if defaultRU, err := g.client.GetUser(ctx, inst.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
 				return actor.NewResult(CommandUpdateAccount)
 			} else if err != nil {
 				return actor.RequeueWithError(err)

@@ -42,6 +42,6 @@ type ClientSet interface {
 	clientset.Sentinel
 	clientset.Cluster
 	clientset.Node
-	clientset.RedisUser
+	clientset.User
 	Client() client.Client
 }

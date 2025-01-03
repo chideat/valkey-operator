@@ -186,8 +186,8 @@ rules:
   resources:
   - clusters
   - failovers
-  - redisusers
   - sentinels
+  - users
   verbs:
   - create
   - delete
@@ -201,8 +201,8 @@ rules:
   resources:
   - clusters/finalizers
   - failovers/finalizers
-  - redisusers/finalizers
   - sentinels/finalizers
+  - users/finalizers
   verbs:
   - update
 - apiGroups:
@@ -210,8 +210,8 @@ rules:
   resources:
   - clusters/status
   - failovers/status
-  - redisusers/status
   - sentinels/status
+  - users/status
   verbs:
   - get
   - patch

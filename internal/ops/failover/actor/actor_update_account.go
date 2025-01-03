@@ -153,9 +153,9 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				isUpdated = true
 			}
 
-			opRedisUser := failoverbuilder.GenerateFailoverRedisUser(inst, opUser)
-			if err := a.client.CreateOrUpdateRedisUser(ctx, opRedisUser); err != nil {
-				logger.Error(err, "create operator redis user failed")
+			opVKUser := failoverbuilder.GenerateFailoverUser(inst, opUser)
+			if err := a.client.CreateOrUpdateUser(ctx, opVKUser); err != nil {
+				logger.Error(err, "create operator user failed")
 				return actor.NewResult(ops.CommandRequeue)
 			}
 			inst.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created operator user to enable acl")
@@ -165,9 +165,9 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				logger.Error(err, "create operator user failed")
 				return actor.NewResult(ops.CommandRequeue)
 			} else {
-				opRedisUser := failoverbuilder.GenerateFailoverRedisUser(inst, newOpUser)
-				if err := a.client.CreateOrUpdateRedisUser(ctx, opRedisUser); err != nil {
-					logger.Error(err, "update operator redis user failed")
+				opVKUser := failoverbuilder.GenerateFailoverUser(inst, newOpUser)
+				if err := a.client.CreateOrUpdateUser(ctx, opVKUser); err != nil {
+					logger.Error(err, "update operator user failed")
 					return actor.NewResult(ops.CommandRequeue)
 				}
 				inst.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created/updated operator user")
@@ -179,16 +179,16 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 			}
 		}
 
-		defaultRedisUser := failoverbuilder.GenerateFailoverRedisUser(inst, defaultUser)
-		defaultRedisUser.Annotations[config.ACLSupportedVersionAnnotationKey] = inst.Version().String()
-		if oldDefaultRU, err := a.client.GetRedisUser(ctx, inst.GetNamespace(), defaultRedisUser.GetName()); errors.IsNotFound(err) {
-			if err := a.client.CreateIfNotExistsRedisUser(ctx, defaultRedisUser); err != nil {
-				logger.Error(err, "update default redis user failed")
+		defaultUser := failoverbuilder.GenerateFailoverUser(inst, defaultUser)
+		defaultUser.Annotations[config.ACLSupportedVersionAnnotationKey] = inst.Version().String()
+		if oldDefaultRU, err := a.client.GetUser(ctx, inst.GetNamespace(), defaultUser.GetName()); errors.IsNotFound(err) {
+			if err := a.client.CreateIfNotExistsUser(ctx, defaultUser); err != nil {
+				logger.Error(err, "update default user failed")
 				return actor.NewResult(ops.CommandRequeue)
 			}
 			inst.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created default user")
 		} else if err != nil {
-			logger.Error(err, "get default redisuser failed")
+			logger.Error(err, "get default user failed")
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		} else if inst.Version().IsACLSupported() {
 			oldVersion := version.ValkeyVersion(oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
@@ -202,8 +202,8 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 					oldDefaultRU.Annotations = make(map[string]string)
 				}
 				oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey] = inst.Version().String()
-				if err := a.client.UpdateRedisUser(ctx, oldDefaultRU); err != nil {
-					logger.Error(err, "update default redis user failed")
+				if err := a.client.UpdateUser(ctx, oldDefaultRU); err != nil {
+					logger.Error(err, "update default user failed")
 					return actor.NewResult(ops.CommandRequeue)
 				}
 				inst.SendEventf(corev1.EventTypeNormal, config.EventUpdateUser, "migrate default user acl rules to support channels")

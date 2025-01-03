@@ -65,21 +65,21 @@ func NewFailoverAclConfigMap(rf *v1alpha1.Failover, data map[string]string) *cor
 	}
 }
 
-func GenerateFailoverOperatorsRedisUserName(name string) string {
+func GenerateFailoverOperatorsUserName(name string) string {
 	return fmt.Sprintf("rfr-acl-%s-operator", name)
 }
 
-func GenerateFailoverDefaultRedisUserName(name string) string {
+func GenerateFailoverDefaultUserName(name string) string {
 	return fmt.Sprintf("rfr-acl-%s-default", name)
 }
 
-func GenerateFailoverRedisUserName(instName, name string) string {
+func GenerateFailoverUserName(instName, name string) string {
 	return fmt.Sprintf("rfr-acl-%s-%s", instName, name)
 }
 
-func GenerateFailoverRedisUser(obj metav1.Object, u *user.User) *v1alpha1.RedisUser {
+func GenerateFailoverUser(obj metav1.Object, u *user.User) *v1alpha1.User {
 	var (
-		name            = GenerateFailoverRedisUserName(obj.GetName(), u.Name)
+		name            = GenerateFailoverUserName(obj.GetName(), u.Name)
 		accountType     v1alpha1.AccountType
 		passwordSecrets []string
 	)
@@ -101,14 +101,14 @@ func GenerateFailoverRedisUser(obj metav1.Object, u *user.User) *v1alpha1.RedisU
 		rules = append(rules, rule.Encode())
 	}
 
-	return &v1alpha1.RedisUser{
+	return &v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   obj.GetNamespace(),
 			Annotations: map[string]string{},
 			Labels:      map[string]string{},
 		},
-		Spec: v1alpha1.RedisUserSpec{
+		Spec: v1alpha1.UserSpec{
 			AccountType:     accountType,
 			Arch:            core.ValkeyFailover,
 			RedisName:       obj.GetName(),

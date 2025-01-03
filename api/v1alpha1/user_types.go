@@ -28,15 +28,15 @@ const (
 	Default AccountType = "default"
 )
 
-// RedisUserSpec defines the desired state of RedisUser
-type RedisUserSpec struct {
-	// redis user account type
+// UserSpec defines the desired state of User
+type UserSpec struct {
+	// user account type
 	// +kubebuilder:validation:Enum=system;custom;default
 	AccountType AccountType `json:"accountType,omitempty"`
-	// redis user account type
+	// user account type
 	// +kubebuilder:validation:Enum=sentinel;cluster;standalone
 	Arch core.Arch `json:"arch,omitempty"`
-	// Redis Username (required)
+	// Username (required)
 	Username string `json:"username"`
 	// Redis Password secret name, key is password
 	PasswordSecrets []string `json:"passwordSecrets,omitempty"`
@@ -48,16 +48,16 @@ type RedisUserSpec struct {
 	RedisName string `json:"redisName"` //redisname
 }
 
-type RedisUserPhase string
+type UserPhase string
 
 const (
-	UserFail    RedisUserPhase = "Fail"
-	UserSuccess RedisUserPhase = "Success"
-	UserPending RedisUserPhase = "Pending"
+	UserFail    UserPhase = "Fail"
+	UserSuccess UserPhase = "Success"
+	UserPending UserPhase = "Pending"
 )
 
-// RedisUserStatus defines the observed state of RedisUser
-type RedisUserStatus struct {
+// UserStatus defines the observed state of User
+type UserStatus struct {
 	// Phase
 	Phase Phase `json:"Phase,omitempty"`
 
@@ -75,24 +75,24 @@ type RedisUserStatus struct {
 // +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.Phase`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
-// RedisUser is the Schema for the redisusers API
-type RedisUser struct {
+// User is the Schema for the users API
+type User struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RedisUserSpec   `json:"spec,omitempty"`
-	Status RedisUserStatus `json:"status,omitempty"`
+	Spec   UserSpec   `json:"spec,omitempty"`
+	Status UserStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// RedisUserList contains a list of RedisUser
-type RedisUserList struct {
+// UserList contains a list of User
+type UserList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RedisUser `json:"items"`
+	Items           []User `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&RedisUser{}, &RedisUserList{})
+	SchemeBuilder.Register(&User{}, &UserList{})
 }

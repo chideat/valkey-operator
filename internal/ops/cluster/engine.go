@@ -490,7 +490,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.Cluste
 
 	opUser := users.GetOpUser()
 	defaultUser := users.GetDefaultUser()
-	// UPGRADE: use RedisUser controller to manage the user update
+	// UPGRADE: use User controller to manage the user update
 	if defaultUser.GetPassword().GetSecretName() != currentSecretName && !cluster.Version().IsACLSupported() {
 		return true, nil
 	}
@@ -535,8 +535,8 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.Cluste
 				return true, nil
 			}
 
-			defaultRUName := clusterbuilder.GenerateClusterRedisUserName(cluster.GetName(), defaultUser.Name)
-			if defaultRU, err := g.client.GetRedisUser(ctx, cluster.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
+			defaultRUName := clusterbuilder.GenerateClusterUserName(cluster.GetName(), defaultUser.Name)
+			if defaultRU, err := g.client.GetUser(ctx, cluster.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
 				return true, nil
 			} else if err != nil {
 				return false, err

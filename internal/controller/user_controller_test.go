@@ -29,7 +29,7 @@ import (
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 )
 
-var _ = Describe("RedisUser Controller", func() {
+var _ = Describe("User Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -39,13 +39,13 @@ var _ = Describe("RedisUser Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		redisuser := &valkeybufredv1alpha1.RedisUser{}
+		user := &valkeybufredv1alpha1.User{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind RedisUser")
-			err := k8sClient.Get(ctx, typeNamespacedName, redisuser)
+			By("creating the custom resource for the Kind User")
+			err := k8sClient.Get(ctx, typeNamespacedName, user)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &valkeybufredv1alpha1.RedisUser{
+				resource := &valkeybufredv1alpha1.User{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -58,16 +58,16 @@ var _ = Describe("RedisUser Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &valkeybufredv1alpha1.RedisUser{}
+			resource := &valkeybufredv1alpha1.User{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance RedisUser")
+			By("Cleanup the specific resource instance User")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &RedisUserReconciler{
+			controllerReconciler := &UserReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}

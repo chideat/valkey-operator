@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: redisusers.valkey.buf.red
+  name: users.valkey.buf.red
 spec:
   group: valkey.buf.red
   names:
-    kind: RedisUser
-    listKind: RedisUserList
-    plural: redisusers
-    singular: redisuser
+    kind: User
+    listKind: UserList
+    plural: users
+    singular: user
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -31,7 +31,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RedisUser is the Schema for the redisusers API
+        description: User is the Schema for the users API
         properties:
           apiVersion:
             description: |-
@@ -51,10 +51,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: RedisUserSpec defines the desired state of RedisUser
+            description: UserSpec defines the desired state of User
             properties:
               accountType:
-                description: redis user account type
+                description: user account type
                 enum:
                 - system
                 - custom
@@ -64,7 +64,7 @@ spec:
                 description: redis  acl rules  string
                 type: string
               arch:
-                description: redis user account type
+                description: user account type
                 enum:
                 - sentinel
                 - cluster
@@ -81,14 +81,14 @@ spec:
                 minLength: 1
                 type: string
               username:
-                description: Redis Username (required)
+                description: Username (required)
                 type: string
             required:
             - redisName
             - username
             type: object
           status:
-            description: RedisUserStatus defines the observed state of RedisUser
+            description: UserStatus defines the observed state of User
             properties:
               Phase:
                 description: Phase

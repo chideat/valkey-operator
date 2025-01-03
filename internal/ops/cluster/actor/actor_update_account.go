@@ -156,9 +156,9 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				users = append(users, opUser)
 				isUpdated = true
 			}
-			opRedisUser := clusterbuilder.GenerateClusterRedisUser(cluster, opUser)
-			if err := a.client.CreateIfNotExistsRedisUser(ctx, opRedisUser); err != nil {
-				logger.Error(err, "create operator redis user failed")
+			opUser := clusterbuilder.GenerateClusterUser(cluster, opUser)
+			if err := a.client.CreateIfNotExistsUser(ctx, opUser); err != nil {
+				logger.Error(err, "create operator user failed")
 				return actor.NewResult(cops.CommandRequeue)
 			}
 			cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created operator user to enable acl")
@@ -168,9 +168,9 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				logger.Error(err, "create operator user failed")
 				return actor.NewResult(cops.CommandRequeue)
 			} else {
-				opRedisUser := clusterbuilder.GenerateClusterRedisUser(cluster, newOpUser)
-				if err := a.client.CreateOrUpdateRedisUser(ctx, opRedisUser); err != nil {
-					logger.Error(err, "update operator redis user failed")
+				opVKUser := clusterbuilder.GenerateClusterUser(cluster, newOpUser)
+				if err := a.client.CreateOrUpdateUser(ctx, opVKUser); err != nil {
+					logger.Error(err, "update operator user failed")
 					return actor.NewResult(cops.CommandRequeue)
 				}
 				cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created/updated operator user")
@@ -182,16 +182,16 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 			}
 		}
 
-		defaultRedisUser := clusterbuilder.GenerateClusterRedisUser(cluster, defaultUser)
-		defaultRedisUser.Annotations[config.ACLSupportedVersionAnnotationKey] = cluster.Version().String()
-		if oldDefaultRU, err := a.client.GetRedisUser(ctx, cluster.GetNamespace(), defaultRedisUser.GetName()); errors.IsNotFound(err) {
-			if err := a.client.CreateIfNotExistsRedisUser(ctx, defaultRedisUser); err != nil {
-				logger.Error(err, "update default redis user failed")
+		defaultUser := clusterbuilder.GenerateClusterUser(cluster, defaultUser)
+		defaultUser.Annotations[config.ACLSupportedVersionAnnotationKey] = cluster.Version().String()
+		if oldDefaultRU, err := a.client.GetUser(ctx, cluster.GetNamespace(), defaultUser.GetName()); errors.IsNotFound(err) {
+			if err := a.client.CreateIfNotExistsUser(ctx, defaultUser); err != nil {
+				logger.Error(err, "update default user failed")
 				return actor.NewResult(cops.CommandRequeue)
 			}
 			cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created default user")
 		} else if err != nil {
-			logger.Error(err, "get default redisuser failed")
+			logger.Error(err, "get default user failed")
 			return actor.NewResult(cops.CommandRequeue)
 		} else if cluster.Version().IsACLSupported() {
 			oldVersion := version.ValkeyVersion(oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
@@ -205,8 +205,8 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 					oldDefaultRU.Annotations = make(map[string]string)
 				}
 				oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey] = cluster.Version().String()
-				if err := a.client.UpdateRedisUser(ctx, oldDefaultRU); err != nil {
-					logger.Error(err, "update default redis user failed")
+				if err := a.client.UpdateUser(ctx, oldDefaultRU); err != nil {
+					logger.Error(err, "update default user failed")
 					return actor.NewResult(cops.CommandRequeue)
 				}
 				cluster.SendEventf(corev1.EventTypeNormal, config.EventUpdateUser, "migrate default user acl rules to support channels")
@@ -285,15 +285,15 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				}
 
 				// update default user password
-				ru := clusterbuilder.GenerateClusterRedisUser(cluster, defaultUser)
-				oldRu, err := a.client.GetRedisUser(ctx, cluster.GetNamespace(), ru.Name)
+				ru := clusterbuilder.GenerateClusterUser(cluster, defaultUser)
+				oldRu, err := a.client.GetUser(ctx, cluster.GetNamespace(), ru.Name)
 				if err == nil && !reflect.DeepEqual(oldRu.Spec.PasswordSecrets, ru.Spec.PasswordSecrets) {
 					oldRu.Spec.PasswordSecrets = ru.Spec.PasswordSecrets
-					if err := a.client.UpdateRedisUser(ctx, oldRu); err != nil {
+					if err := a.client.UpdateUser(ctx, oldRu); err != nil {
 						logger.Error(err, "update default user redisUser failed")
 					}
 				} else if errors.IsNotFound(err) {
-					if err := a.client.CreateIfNotExistsRedisUser(ctx, ru); err != nil {
+					if err := a.client.CreateIfNotExistsUser(ctx, ru); err != nil {
 						logger.Error(err, "create default user redisUser failed")
 					}
 					cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created default user when update password")

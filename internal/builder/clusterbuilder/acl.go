@@ -36,27 +36,27 @@ func GenerateClusterACLOperatorSecretName(name string) string {
 	return fmt.Sprintf("drc-acl-%s-operator-secret", name)
 }
 
-func GenerateClusterOperatorsRedisUserName(name string) string {
+func GenerateClusterOperatorsUserName(name string) string {
 	return fmt.Sprintf("drc-acl-%s-operator", name)
 }
 
-func GenerateClusterRedisUserName(instName, name string) string {
+func GenerateClusterUserName(instName, name string) string {
 	return fmt.Sprintf("drc-acl-%s-%s", instName, name)
 }
 
-func GenerateClusterOperatorsRedisUser(rc types.ClusterInstance, passwordsecret string) v1alpha1.RedisUser {
+func GenerateClusterOperatorsUser(rc types.ClusterInstance, passwordsecret string) v1alpha1.User {
 	passwordsecrets := []string{}
 	if passwordsecret != "" {
 		passwordsecrets = append(passwordsecrets, passwordsecret)
 	}
 
 	rule := "~* &* +@all"
-	return v1alpha1.RedisUser{
+	return v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      GenerateClusterOperatorsRedisUserName(rc.GetName()),
+			Name:      GenerateClusterOperatorsUserName(rc.GetName()),
 			Namespace: rc.GetNamespace(),
 		},
-		Spec: v1alpha1.RedisUserSpec{
+		Spec: v1alpha1.UserSpec{
 			AccountType:     v1alpha1.System,
 			Arch:            core.ValkeyCluster,
 			RedisName:       rc.GetName(),
@@ -67,13 +67,13 @@ func GenerateClusterOperatorsRedisUser(rc types.ClusterInstance, passwordsecret 
 	}
 }
 
-func GenerateClusterDefaultRedisUserName(name string) string {
+func GenerateClusterDefaultUserName(name string) string {
 	return fmt.Sprintf("drc-acl-%s-default", name)
 }
 
-func GenerateClusterRedisUser(obj metav1.Object, u *user.User) *v1alpha1.RedisUser {
+func GenerateClusterUser(obj metav1.Object, u *user.User) *v1alpha1.User {
 	var (
-		name            = GenerateClusterRedisUserName(obj.GetName(), u.Name)
+		name            = GenerateClusterUserName(obj.GetName(), u.Name)
 		accountType     v1alpha1.AccountType
 		passwordSecrets []string
 	)
@@ -95,14 +95,14 @@ func GenerateClusterRedisUser(obj metav1.Object, u *user.User) *v1alpha1.RedisUs
 		rules = append(rules, rule.Encode())
 	}
 
-	return &v1alpha1.RedisUser{
+	return &v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   obj.GetNamespace(),
 			Annotations: map[string]string{},
 			Labels:      map[string]string{},
 		},
-		Spec: v1alpha1.RedisUserSpec{
+		Spec: v1alpha1.UserSpec{
 			AccountType:     accountType,
 			Arch:            core.ValkeyCluster,
 			RedisName:       obj.GetName(),

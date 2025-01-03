@@ -57,7 +57,7 @@ type RedisCluster struct {
 
 	client        clientset.ClientSet
 	eventRecorder record.EventRecorder
-	redisUsers    []*v1alpha1.RedisUser
+	redisUsers    []*v1alpha1.User
 	shards        []types.ClusterShard
 	users         types.Users
 	tlsConfig     *tls.Config
@@ -95,7 +95,7 @@ func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorde
 	}
 
 	if cluster.Version().IsACLSupported() {
-		cluster.LoadRedisUsers(ctx)
+		cluster.LoadUsers(ctx)
 
 	}
 	return &cluster, nil
@@ -109,10 +109,10 @@ func (c *RedisCluster) NamespacedName() client.ObjectKey {
 	return client.ObjectKey{Namespace: c.GetNamespace(), Name: c.GetName()}
 }
 
-func (c *RedisCluster) LoadRedisUsers(ctx context.Context) {
-	oldOpUser, _ := c.client.GetRedisUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterOperatorsRedisUserName(c.GetName()))
-	oldDefultUser, _ := c.client.GetRedisUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterDefaultRedisUserName(c.GetName()))
-	c.redisUsers = []*v1alpha1.RedisUser{oldOpUser, oldDefultUser}
+func (c *RedisCluster) LoadUsers(ctx context.Context) {
+	oldOpUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterOperatorsUserName(c.GetName()))
+	oldDefultUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterDefaultUserName(c.GetName()))
+	c.redisUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
 // ctx

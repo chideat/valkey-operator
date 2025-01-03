@@ -257,16 +257,16 @@ func (_m *ClientSet) CreateIfNotExistsPodDisruptionBudget(ctx context.Context, n
 	return r0
 }
 
-// CreateIfNotExistsRedisUser provides a mock function with given fields: ctx, ru
-func (_m *ClientSet) CreateIfNotExistsRedisUser(ctx context.Context, ru *v1alpha1.RedisUser) error {
+// CreateIfNotExistsUser provides a mock function with given fields: ctx, ru
+func (_m *ClientSet) CreateIfNotExistsUser(ctx context.Context, ru *v1alpha1.User) error {
 	ret := _m.Called(ctx, ru)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateIfNotExistsRedisUser")
+		panic("no return value specified for CreateIfNotExistsUser")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.RedisUser) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.User) error); ok {
 		r0 = rf(ctx, ru)
 	} else {
 		r0 = ret.Error(0)
@@ -509,16 +509,16 @@ func (_m *ClientSet) CreateOrUpdatePodDisruptionBudget(ctx context.Context, name
 	return r0
 }
 
-// CreateOrUpdateRedisUser provides a mock function with given fields: ctx, ru
-func (_m *ClientSet) CreateOrUpdateRedisUser(ctx context.Context, ru *v1alpha1.RedisUser) error {
+// CreateOrUpdateUser provides a mock function with given fields: ctx, ru
+func (_m *ClientSet) CreateOrUpdateUser(ctx context.Context, ru *v1alpha1.User) error {
 	ret := _m.Called(ctx, ru)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateOrUpdateRedisUser")
+		panic("no return value specified for CreateOrUpdateUser")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.RedisUser) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.User) error); ok {
 		r0 = rf(ctx, ru)
 	} else {
 		r0 = ret.Error(0)
@@ -707,16 +707,16 @@ func (_m *ClientSet) CreatePodDisruptionBudget(ctx context.Context, namespace st
 	return r0
 }
 
-// CreateRedisUser provides a mock function with given fields: ctx, ru
-func (_m *ClientSet) CreateRedisUser(ctx context.Context, ru *v1alpha1.RedisUser) error {
+// CreateUser provides a mock function with given fields: ctx, ru
+func (_m *ClientSet) CreateUser(ctx context.Context, ru *v1alpha1.User) error {
 	ret := _m.Called(ctx, ru)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateRedisUser")
+		panic("no return value specified for CreateUser")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.RedisUser) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.User) error); ok {
 		r0 = rf(ctx, ru)
 	} else {
 		r0 = ret.Error(0)
@@ -1582,24 +1582,24 @@ func (_m *ClientSet) GetSentinel(ctx context.Context, namespace string, name str
 	return r0, r1
 }
 
-// GetRedisUser provides a mock function with given fields: ctx, namespace, name
-func (_m *ClientSet) GetRedisUser(ctx context.Context, namespace string, name string) (*v1alpha1.RedisUser, error) {
+// GetUser provides a mock function with given fields: ctx, namespace, name
+func (_m *ClientSet) GetUser(ctx context.Context, namespace string, name string) (*v1alpha1.User, error) {
 	ret := _m.Called(ctx, namespace, name)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetRedisUser")
+		panic("no return value specified for GetUser")
 	}
 
-	var r0 *v1alpha1.RedisUser
+	var r0 *v1alpha1.User
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*v1alpha1.RedisUser, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*v1alpha1.User, error)); ok {
 		return rf(ctx, namespace, name)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *v1alpha1.RedisUser); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *v1alpha1.User); ok {
 		r0 = rf(ctx, namespace, name)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*v1alpha1.RedisUser)
+			r0 = ret.Get(0).(*v1alpha1.User)
 		}
 	}
 
@@ -2242,24 +2242,24 @@ func (_m *ClientSet) ListSentinels(ctx context.Context, namespace string, opts c
 	return r0, r1
 }
 
-// ListRedisUsers provides a mock function with given fields: ctx, namespace, opts
-func (_m *ClientSet) ListRedisUsers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.RedisUserList, error) {
+// ListUsers provides a mock function with given fields: ctx, namespace, opts
+func (_m *ClientSet) ListUsers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.UserList, error) {
 	ret := _m.Called(ctx, namespace, opts)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListRedisUsers")
+		panic("no return value specified for ListUsers")
 	}
 
-	var r0 *v1alpha1.RedisUserList
+	var r0 *v1alpha1.UserList
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, client.ListOptions) (*v1alpha1.RedisUserList, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, client.ListOptions) (*v1alpha1.UserList, error)); ok {
 		return rf(ctx, namespace, opts)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, client.ListOptions) *v1alpha1.RedisUserList); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, client.ListOptions) *v1alpha1.UserList); ok {
 		r0 = rf(ctx, namespace, opts)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*v1alpha1.RedisUserList)
+			r0 = ret.Get(0).(*v1alpha1.UserList)
 		}
 	}
 
@@ -2728,16 +2728,16 @@ func (_m *ClientSet) UpdateSentinelStatus(ctx context.Context, inst *v1alpha1.Se
 	return r0
 }
 
-// UpdateRedisUser provides a mock function with given fields: ctx, ru
-func (_m *ClientSet) UpdateRedisUser(ctx context.Context, ru *v1alpha1.RedisUser) error {
+// UpdateUser provides a mock function with given fields: ctx, ru
+func (_m *ClientSet) UpdateUser(ctx context.Context, ru *v1alpha1.User) error {
 	ret := _m.Called(ctx, ru)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpdateRedisUser")
+		panic("no return value specified for UpdateUser")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.RedisUser) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.User) error); ok {
 		r0 = rf(ctx, ru)
 	} else {
 		r0 = ret.Error(0)

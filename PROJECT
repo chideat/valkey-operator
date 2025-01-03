@@ -50,7 +50,7 @@ resources:
     namespaced: true
   controller: true
   domain: valkey.buf.red
-  kind: RedisUser
+  kind: User
   path: github.com/chideat/valkey-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -43,7 +43,7 @@ type ClientSet interface {
 	Sentinel
 	Cluster
 	Node
-	RedisUser
+	User
 	Client() client.Client
 }
 
@@ -68,7 +68,7 @@ type clientSet struct {
 	Sentinel
 	Cluster
 	Node
-	RedisUser
+	User
 	rawClient client.Client
 }
 
@@ -106,6 +106,6 @@ func NewWithConfig(kubecli client.Client, restConfig *rest.Config, logger logr.L
 		Cluster:        NewCluster(kubecli, logger),
 		Node:           NewNode(kubecli, logger),
 		ServiceMonitor: NewServiceMonitor(kubecli, logger),
-		RedisUser:      NewRedisUserService(kubecli, logger),
+		User:           NewUserService(kubecli, logger),
 	}
 }

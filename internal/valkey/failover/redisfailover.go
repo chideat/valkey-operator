@@ -65,7 +65,7 @@ type Failover struct {
 	replication types.Replication
 	monitor     types.FailoverMonitor
 
-	redisUsers []*v1alpha1.RedisUser
+	redisUsers []*v1alpha1.User
 
 	logger logr.Logger
 }
@@ -99,7 +99,7 @@ func NewFailover(ctx context.Context, k8sClient clientset.ClientSet, eventRecord
 	}
 
 	if inst.Version().IsACLSupported() {
-		inst.LoadRedisUsers(ctx)
+		inst.LoadUsers(ctx)
 	}
 	return inst, nil
 }
@@ -420,10 +420,10 @@ func (s *Failover) Refresh(ctx context.Context) (err error) {
 	return nil
 }
 
-func (s *Failover) LoadRedisUsers(ctx context.Context) {
-	oldOpUser, _ := s.client.GetRedisUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverOperatorsRedisUserName(s.GetName()))
-	oldDefultUser, _ := s.client.GetRedisUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverDefaultRedisUserName(s.GetName()))
-	s.redisUsers = []*v1alpha1.RedisUser{oldOpUser, oldDefultUser}
+func (s *Failover) LoadUsers(ctx context.Context) {
+	oldOpUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverOperatorsUserName(s.GetName()))
+	oldDefultUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverDefaultUserName(s.GetName()))
+	s.redisUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
 func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
@@ -448,10 +448,10 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			}
 		}
 		for _, name := range []string{
-			failoverbuilder.GenerateFailoverOperatorsRedisUserName(s.GetName()),
-			failoverbuilder.GenerateFailoverDefaultRedisUserName(s.GetName()),
+			failoverbuilder.GenerateFailoverOperatorsUserName(s.GetName()),
+			failoverbuilder.GenerateFailoverDefaultUserName(s.GetName()),
 		} {
-			if ru, err := s.client.GetRedisUser(ctx, s.GetNamespace(), name); err != nil {
+			if ru, err := s.client.GetUser(ctx, s.GetNamespace(), name); err != nil {
 				s.logger.Error(err, "load operator user failed")
 				users = nil
 				break

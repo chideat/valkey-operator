@@ -26,26 +26,26 @@ import (
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 )
 
-// RedisUserReconciler reconciles a RedisUser object
-type RedisUserReconciler struct {
+// UserReconciler reconciles a User object
+type UserReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=valkey.buf.red,resources=redisusers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=valkey.buf.red,resources=redisusers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=valkey.buf.red,resources=redisusers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=valkey.buf.red,resources=users,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=valkey.buf.red,resources=users/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=valkey.buf.red,resources=users/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the RedisUser object against the actual cluster state, and then
+// the User object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.4/pkg/reconcile
-func (r *RedisUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
@@ -54,8 +54,8 @@ func (r *RedisUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RedisUserReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *UserReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&valkeybufredv1alpha1.RedisUser{}).
+		For(&valkeybufredv1alpha1.User{}).
 		Complete(r)
 }
