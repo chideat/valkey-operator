@@ -28,7 +28,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +44,7 @@ const (
 	RedisConfig_ReplDisklessSync        = "repl-diskless-sync"
 )
 
-func NewRedisConfigMap(st types.RedisFailoverInstance, selectors map[string]string) (*corev1.ConfigMap, error) {
+func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (*corev1.ConfigMap, error) {
 	rf := st.Definition()
 	customConfig := rf.Spec.CustomConfigs
 
@@ -63,7 +63,7 @@ func NewRedisConfigMap(st types.RedisFailoverInstance, selectors map[string]stri
 	default_config["tcp-backlog"] = "511"
 	default_config["protected-mode"] = "no"
 
-	version, _ := redis.ParseRedisVersionFromImage(rf.Spec.Image)
+	version, _ := version.ParseValkeyVersionFromImage(rf.Spec.Image)
 	innerRedisConfig := version.CustomConfigs(core.ValkeyFailover)
 	default_config = lo.Assign(default_config, innerRedisConfig)
 

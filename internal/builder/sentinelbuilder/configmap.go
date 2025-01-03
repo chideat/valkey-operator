@@ -26,7 +26,7 @@ import (
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +45,7 @@ func NewSentinelConfigMap(sen *v1alpha1.Sentinel, selectors map[string]string) (
 	defaultConfig["tcp-keepalive"] = "300"
 	defaultConfig["tcp-backlog"] = "511"
 
-	version, _ := redis.ParseRedisVersionFromImage(sen.Spec.Image)
+	version, _ := version.ParseValkeyVersionFromImage(sen.Spec.Image)
 	innerRedisConfig := version.CustomConfigs(core.ValkeySentinel)
 	defaultConfig = lo.Assign(defaultConfig, innerRedisConfig)
 

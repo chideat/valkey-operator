@@ -30,7 +30,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/go-logr/logr"
 )
 
@@ -61,8 +60,8 @@ func (a *actorJoinNode) Version() *semver.Version {
 }
 
 // Do
-func (a *actorJoinNode) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
-	cluster := val.(types.RedisClusterInstance)
+func (a *actorJoinNode) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
+	cluster := val.(types.ClusterInstance)
 	logger := val.Logger().WithValues("actor", cops.CommandJoinNode.String())
 
 	// force refresh the cluster
@@ -72,8 +71,8 @@ func (a *actorJoinNode) Do(ctx context.Context, val types.RedisInstance) *actor.
 	}
 
 	var (
-		joined   []redis.RedisNode
-		unjoined []redis.RedisNode
+		joined   []types.ValkeyNode
+		unjoined []types.ValkeyNode
 	)
 	// check all nodes unjoined
 	for _, shard := range cluster.Shards() {

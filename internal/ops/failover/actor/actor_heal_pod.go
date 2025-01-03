@@ -63,12 +63,12 @@ func (a *actorHealPod) Version() *semver.Version {
 }
 
 // Do
-func (a *actorHealPod) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandHealPod.String())
 
 	// clean terminating pods
 	var (
-		inst = val.(types.RedisFailoverInstance)
+		inst = val.(types.FailoverInstance)
 		now  = time.Now()
 	)
 

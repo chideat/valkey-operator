@@ -71,9 +71,9 @@ func (a *actorEnsureResource) Version() *semver.Version {
 }
 
 // Do
-func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", cops.CommandEnsureResource.String())
-	cluster := val.(types.RedisClusterInstance)
+	cluster := val.(types.ClusterInstance)
 
 	if cluster.Definition().Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
 		if ret := a.pauseStatefulSet(ctx, cluster, logger); ret != nil {
@@ -104,7 +104,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *
 	return nil
 }
 
-func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
 	stss, err := a.client.ListStatefulSetByLabels(ctx, cr.Namespace, labels)
@@ -136,7 +136,7 @@ func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, cluster type
 }
 
 // ensureServiceAccount
-func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 
 	sa := clusterbuilder.NewServiceAccount(cr)
@@ -189,7 +189,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster 
 }
 
 // ensureConfigMap
-func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cm, err := clusterbuilder.NewConfigMapForCR(cluster)
 	if err != nil {
 		logger.Error(err, "new configmap failed")
@@ -210,7 +210,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, cluster types
 }
 
 // ensureTLS
-func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	if !cluster.Definition().Spec.Access.EnableTLS || !cluster.Version().IsTLSSupported() {
 		return nil
 	}
@@ -250,7 +250,7 @@ func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.Redis
 }
 
 // ensureStatefulset
-func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 
 	var (
@@ -338,7 +338,7 @@ __end__:
 }
 
 // ensureService ensure other services
-func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 
 	for i := 0; i < int(cr.Spec.Replicas.Shards); i++ {
@@ -378,7 +378,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.R
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	if cluster.Definition().Spec.Access.ServiceType != corev1.ServiceTypeNodePort {
 		return nil
 	}
@@ -597,7 +597,7 @@ func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cl
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
 
@@ -627,7 +627,7 @@ func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, cluster
 	return nil
 }
 
-func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster types.RedisClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 	if cr.Spec.Access.ServiceType != corev1.ServiceTypeLoadBalancer && cr.Spec.Access.ServiceType != corev1.ServiceTypeNodePort {
 		return nil

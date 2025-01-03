@@ -38,7 +38,7 @@ const (
 )
 
 // NewConfigMapForCR creates a new ConfigMap for the given Cluster
-func NewConfigMapForCR(cluster types.RedisClusterInstance) (*corev1.ConfigMap, error) {
+func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error) {
 	redisConfContent, err := buildRedisConfigs(cluster)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ var ForbidToRenameCommands = map[string]struct{}{
 // buildRedisConfigs
 //
 // TODO: validate config and config value. check the empty value
-func buildRedisConfigs(cluster types.RedisClusterInstance) (string, error) {
+func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 	cr := cluster.Definition()
 	var buffer bytes.Buffer
 

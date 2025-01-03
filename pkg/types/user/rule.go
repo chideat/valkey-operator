@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The RedisOperator Authors.
+Copyright 2023 The ValkeyOperator Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,6 @@ var (
 )
 
 // Rule acl rules
-//
-// This rule supports redis 7.0, which is compatable with 6.0
 type Rule struct {
 	// Categories
 	Categories []string `json:"categories,omitempty"`
@@ -126,80 +124,6 @@ func NewRule(val string) (*Rule, error) {
 		}
 	}
 	return &r, nil
-}
-
-// Patch redis cluster client required rules
-func PatchRedisClusterClientRequiredRules(rule *Rule) *Rule {
-	clusterRules := []string{
-		"cluster|slots",
-		"cluster|nodes",
-		"cluster|info",
-		"cluster|keyslot",
-		"cluster|getkeysinslot",
-		"cluster|countkeysinslot",
-	}
-	// remove required rules
-	cmds := rule.DisallowedCommands
-	rule.DisallowedCommands = rule.DisallowedCommands[:0]
-	for _, cmd := range cmds {
-		if slices.Contains(clusterRules, cmd) {
-			continue
-		} else {
-			rule.DisallowedCommands = append(rule.DisallowedCommands, cmd)
-		}
-	}
-	requiredRules := map[string]bool{}
-	for _, cmd := range clusterRules {
-		requiredRules[cmd] = false
-		if rule.IsCommandEnabled(cmd, nil) {
-			requiredRules[cmd] = true
-		}
-	}
-	if rule.IsCommandEnabled("cluster", []string{"all", "admin", "slow", "dangerous"}) {
-		for key := range requiredRules {
-			requiredRules[key] = true
-		}
-	}
-	for _, cmd := range clusterRules {
-		if !requiredRules[cmd] {
-			rule.AllowedCommands = append(rule.AllowedCommands, cmd)
-		}
-	}
-	return rule
-}
-
-func PatchRedisPubsubRules(rule *Rule) *Rule {
-	if len(rule.Channels) > 0 {
-		return rule
-	}
-
-	cmds := map[string][]string{
-		"psubscribe":           {"all", "pubsub", "slow"},
-		"publish":              {"all", "pubsub", "fast"},
-		"pubsub":               {"all", "slow"},
-		"pubsub|numpat":        {"all", "pubsub", "slow"},
-		"pubsub|channels":      {"all", "pubsub", "slow"},
-		"pubsub|numsub":        {"all", "pubsub", "slow"},
-		"pubsub|shardnumsub":   {"all", "pubsub", "slow"},
-		"pubsub|shardchannels": {"all", "pubsub", "slow"},
-		"punsubscribe":         {"all", "pubsub", "slow"},
-		"spublish":             {"all", "pubsub", "fast"},
-		"ssubscribe":           {"all", "pubsub", "slow"},
-		"subscribe":            {"all", "pubsub", "slow"},
-		"sunsubscribe":         {"all", "pubsub", "slow"},
-		"unsubscribe":          {"all", "pubsub", "slow"},
-	}
-	isAnyEnabled := false
-	for cmd, cates := range cmds {
-		if rule.IsCommandEnabled(cmd, cates) {
-			isAnyEnabled = true
-			break
-		}
-	}
-	if isAnyEnabled {
-		rule.Channels = append(rule.Channels, "*")
-	}
-	return rule
 }
 
 func (rule *Rule) Encode() string {

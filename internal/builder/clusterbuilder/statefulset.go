@@ -85,7 +85,7 @@ const (
 )
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
-func NewStatefulSet(c types.RedisClusterInstance, isAllACLSupported bool, index int) (*appsv1.StatefulSet, error) {
+func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) (*appsv1.StatefulSet, error) {
 	cluster := c.Definition()
 
 	var (

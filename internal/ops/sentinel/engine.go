@@ -27,7 +27,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -57,10 +56,10 @@ func NewRuleEngine(client kubernetes.ClientSet, eventRecorder record.EventRecord
 	return &ctrl, nil
 }
 
-func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger()
 
-	sentinel := val.(types.RedisSentinelInstance)
+	sentinel := val.(types.SentinelInstance)
 	if sentinel == nil {
 		return nil
 	}
@@ -90,7 +89,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *acto
 	return actor.NewResult(CommandEnsureResource)
 }
 
-func (g *RuleEngine) isPodHealNeeded(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isPodHealNeeded(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	if pods, err := inst.RawNodes(ctx); err != nil {
 		logger.Error(err, "failed to get pods")
 		return actor.RequeueWithError(err)
@@ -135,7 +134,7 @@ func (g *RuleEngine) isPodHealNeeded(ctx context.Context, inst types.RedisSentin
 	return nil
 }
 
-func (g *RuleEngine) isResetSentinelNeeded(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isResetSentinelNeeded(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	var clusters []string
 	for _, node := range inst.Nodes() {
 		if vals, err := node.MonitoringClusters(ctx); err != nil {
@@ -160,7 +159,7 @@ func (g *RuleEngine) isResetSentinelNeeded(ctx context.Context, inst types.Redis
 	return nil
 }
 
-func NeedResetRedisSentinel(ctx context.Context, name string, node redis.RedisSentinelNode, logger logr.Logger) bool {
+func NeedResetRedisSentinel(ctx context.Context, name string, node types.SentinelNode, logger logr.Logger) bool {
 	master, replicas, err := node.MonitoringNodes(ctx, name)
 	if err != nil {
 		logger.Error(err, "failed to get monitoring nodes", "name", name)

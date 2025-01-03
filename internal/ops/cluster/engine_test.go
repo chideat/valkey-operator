@@ -24,7 +24,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	clusterv1 "github.com/chideat/valkey-operator/api/v1alpha1"
-	"github.com/chideat/valkey-operator/internal/redis/cluster"
+	"github.com/chideat/valkey-operator/internal/valkey/cluster"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"k8s.io/utils/ptr"
@@ -41,7 +41,7 @@ func Test_buildStatusOfShards(t *testing.T) {
 	slotsB4, _ := slot.LoadSlots("4096-5461,9558-10922,15019-16383")
 
 	type args struct {
-		cluster types.RedisClusterInstance
+		cluster types.ClusterInstance
 		slots   []*slot.Slots
 	}
 	tests := []struct {

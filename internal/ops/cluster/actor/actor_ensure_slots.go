@@ -29,7 +29,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -70,8 +69,8 @@ func (a *actorEnsureSlots) Version() *semver.Version {
 // 特殊情况：
 //
 //	如果发现某个槽被意外移到了其他节点，该槽不会被移动回来，operator 不会处理这个情况，并保留这个状态。在下一个 Reconcile 中，operator 会在cluster inservice 时，刷新 cr.status.shards 信息
-func (a *actorEnsureSlots) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
-	cluster := val.(types.RedisClusterInstance)
+func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
+	cluster := val.(types.ClusterInstance)
 	cr := cluster.Definition()
 	logger := val.Logger().WithValues("actor", cops.CommandEnsureSlots.String())
 
@@ -87,7 +86,7 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.RedisInstance) *act
 	// check is slots fullfilled
 	var (
 		allSlots    = slot.NewSlots()
-		shardsSlots = map[int]types.RedisClusterShard{}
+		shardsSlots = map[int]types.ClusterShard{}
 	)
 	for i, shard := range cluster.Shards() {
 		if i != shard.Index() {
@@ -101,13 +100,13 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.RedisInstance) *act
 	}
 
 	var (
-		failedShards        []types.RedisClusterShard
-		importingSlotTarget = map[int]types.RedisClusterShard{}
+		failedShards        []types.ClusterShard
+		importingSlotTarget = map[int]types.ClusterShard{}
 	)
 
 	// Only masters will slots can vote for the slave to promote to be a master
 	for _, statusShard := range cr.Status.Shards {
-		var shard types.RedisClusterShard
+		var shard types.ClusterShard
 		for _, cs := range cluster.Shards() {
 			if cs.Index() == int(statusShard.Index) {
 				shard = cs
@@ -257,7 +256,7 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.RedisInstance) *act
 	return nil
 }
 
-func (a *actorEnsureSlots) doFailover(ctx context.Context, node redis.RedisNode, retry int, ensure bool, logger logr.Logger) error {
+func (a *actorEnsureSlots) doFailover(ctx context.Context, node types.ValkeyNode, retry int, ensure bool, logger logr.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 

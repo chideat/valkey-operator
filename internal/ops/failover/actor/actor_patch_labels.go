@@ -29,7 +29,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/go-logr/logr"
 )
 
@@ -59,9 +58,9 @@ func (a *actorPatchLabels) SupportedCommands() []actor.Command {
 	return []actor.Command{ops.CommandPatchLabels}
 }
 
-func (a *actorPatchLabels) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandPatchLabels.String())
-	inst := val.(types.RedisFailoverInstance)
+	inst := val.(types.FailoverInstance)
 
 	masterNode, err := inst.Monitor().Master(ctx)
 	if err != nil {
@@ -77,8 +76,8 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.RedisInstance) *act
 	masterAddr := net.JoinHostPort(masterNode.IP, masterNode.Port)
 
 	for _, pod := range pods {
-		var node redis.RedisNode
-		slices.IndexFunc(inst.Nodes(), func(i redis.RedisNode) bool {
+		var node types.ValkeyNode
+		slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
 			if i.GetName() == pod.GetName() {
 				node = i
 				return true

@@ -63,10 +63,10 @@ func (a *actorUpdateConfig) Version() *semver.Version {
 //
 // two type config: hotconfig and restartconfig
 // use cm to check the difference of the config
-func (a *actorUpdateConfig) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", cops.CommandUpdateConfig.String())
 
-	cluster := val.(types.RedisClusterInstance)
+	cluster := val.(types.ClusterInstance)
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := a.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
 	if err != nil && !errors.IsNotFound(err) {

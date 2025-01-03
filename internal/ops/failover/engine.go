@@ -31,14 +31,14 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
-	"github.com/chideat/valkey-operator/internal/redis/failover/monitor"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/chideat/valkey-operator/pkg/types/user"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
@@ -69,11 +69,11 @@ func NewRuleEngine(client kubernetes.ClientSet, eventRecorder record.EventRecord
 	return &ctrl, nil
 }
 
-func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger()
 
 	logger.V(3).Info("Inspecting redis failover")
-	inst := val.(types.RedisFailoverInstance)
+	inst := val.(types.FailoverInstance)
 	if inst == nil {
 		return nil
 	}
@@ -120,7 +120,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *acto
 	return actor.NewResult(CommandEnsureResource)
 }
 
-func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if len(inst.Masters()) != 1 {
 		return nil
 	}
@@ -138,8 +138,8 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.RedisFai
 	}
 
 	for _, pod := range pods {
-		var node redis.RedisNode
-		slices.IndexFunc(inst.Nodes(), func(i redis.RedisNode) bool {
+		var node types.ValkeyNode
+		slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
 			if i.GetName() == pod.GetName() {
 				node = i
 				return true
@@ -171,7 +171,7 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.RedisFai
 	return nil
 }
 
-func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	logger.V(3).Info("checkPassword")
 
 	var (
@@ -211,7 +211,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.RedisFail
 	} else if users, err := acl.LoadACLUsers(ctx, g.client, cm); err != nil {
 		return actor.NewResult(CommandUpdateAccount)
 	} else {
-		if inst.Version().IsACL2Supported() {
+		if inst.Version().IsACLSupported() {
 			opUser := users.GetOpUser()
 			logger.V(3).Info("check acl2 support", "role", opUser.Role, "rules", opUser.Rules)
 			if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
@@ -225,8 +225,8 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.RedisFail
 			} else if err != nil {
 				return actor.RequeueWithError(err)
 			} else {
-				oldVersion := redis.RedisVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
-				if !oldVersion.IsACL2Supported() {
+				oldVersion := version.ValkeyVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
+				if !oldVersion.IsACLSupported() {
 					return actor.NewResult(CommandUpdateAccount)
 				}
 			}
@@ -238,7 +238,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.RedisFail
 	return nil
 }
 
-func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	newCm, err := failoverbuilder.NewRedisConfigMap(inst, inst.Selector())
 	if err != nil {
 		return actor.RequeueWithError(err)
@@ -269,7 +269,7 @@ func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.RedisFailov
 }
 
 // 检查是否有节点未加入集群
-func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	// check if svc and pod in consistence
 	for _, node := range inst.Nodes() {
 		if typ := inst.Definition().Spec.Access.ServiceType; node.IsReady() &&
@@ -329,7 +329,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.RedisFailove
 		return actor.RequeueWithError(err)
 	}
 
-	var masterNode redis.RedisNode
+	var masterNode types.ValkeyNode
 	for _, node := range inst.Nodes() {
 		addr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		addr2 := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalPort()))
@@ -364,7 +364,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.RedisFailove
 }
 
 // 最后比对数量是否相同
-func (g *RuleEngine) isResourceCleanNeeded(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (g *RuleEngine) isResourceCleanNeeded(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if inst.IsReady() {
 		// delete old deployment
 		// TODO: remove in 3.22

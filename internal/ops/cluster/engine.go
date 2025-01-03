@@ -36,8 +36,8 @@ import (
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/chideat/valkey-operator/pkg/types/user"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -71,10 +71,10 @@ func NewRuleEngine(client kubernetes.ClientSet, eventRecorder record.EventRecord
 }
 
 // Inspect
-func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger()
 
-	cluster := val.(types.RedisClusterInstance)
+	cluster := val.(types.ClusterInstance)
 	if cluster == nil {
 		logger.Info("cluster is nil")
 		return nil
@@ -349,7 +349,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.RedisInstance) *acto
 // when cluster in these state, we can reallocate the slots
 // a. new create shards without slots assigned
 // b. the slots is all assigned and the cluster is not scaling up/down
-func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.RedisClusterInstance) *actor.ActorResult {
+func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.ClusterInstance) *actor.ActorResult {
 	logger := g.logger
 	cr := cluster.Definition()
 
@@ -480,7 +480,7 @@ func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.RedisClust
 // 1. check if secretname same
 // 2. check if acl config created
 // 3. check if operator user enabled
-func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.RedisClusterInstance) (bool, error) {
+func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
 	logger := g.logger.WithName("isPasswordChanged")
 
 	var (
@@ -512,7 +512,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.RedisC
 	if cluster.Version().IsACLSupported() && !cluster.IsACLUserExists() {
 		return true, nil
 	}
-	if cluster.Version().IsACL2Supported() {
+	if cluster.Version().IsACLSupported() {
 		if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
 			return true, nil
 		}
@@ -528,7 +528,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.RedisC
 		logger.Error(err, "load acl users failed", "target", client.ObjectKey{Namespace: cluster.GetNamespace(), Name: cmName})
 		return false, err
 	} else {
-		if cluster.Version().IsACL2Supported() {
+		if cluster.Version().IsACLSupported() {
 			opUser := users.GetOpUser()
 			g.logger.V(3).Info("check acl2 support", "role", opUser.Role, "rules", opUser.Rules)
 			if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
@@ -542,8 +542,8 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.RedisC
 			} else if err != nil {
 				return false, err
 			} else {
-				oldVersion := redis.RedisVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
-				if !oldVersion.IsACL2Supported() {
+				oldVersion := version.ValkeyVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
+				if !oldVersion.IsACLSupported() {
 					return true, nil
 				}
 			}
@@ -556,7 +556,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.RedisC
 	return false, nil
 }
 
-func (g *RuleEngine) isCustomServerChanged(ctx context.Context, cluster types.RedisClusterInstance) (bool, error) {
+func (g *RuleEngine) isCustomServerChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
 
 	portsMap := make(map[int32]bool)
 	cr := cluster.Definition()
@@ -590,7 +590,7 @@ func (g *RuleEngine) isCustomServerChanged(ctx context.Context, cluster types.Re
 
 }
 
-func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.RedisClusterInstance) (bool, error) {
+func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
 	logger := g.logger.WithName("isConfigMapChanged")
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
@@ -611,7 +611,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Redis
 	return false, nil
 }
 
-func buildStatusOfShards(cluster types.RedisClusterInstance, slots []*slot.Slots) (ret []*clusterv1.ClusterShards) {
+func buildStatusOfShards(cluster types.ClusterInstance, slots []*slot.Slots) (ret []*clusterv1.ClusterShards) {
 	statusShards := cluster.Definition().Status.Shards
 	maxShards := len(cluster.Shards())
 	if int(cluster.Definition().Spec.Replicas.Shards) > maxShards {

@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func NewFailoverSentinel(inst types.RedisFailoverInstance) *v1alpha1.Sentinel {
+func NewFailoverSentinel(inst types.FailoverInstance) *v1alpha1.Sentinel {
 	def := inst.Definition()
 
 	sen := &v1alpha1.Sentinel{

@@ -63,7 +63,7 @@ func (m *MockClusterEnsureResource) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (m *MockClusterEnsureResource) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockClusterEnsureResource) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -84,7 +84,7 @@ func (m *MockClusterHealPodActor) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (m *MockClusterHealPodActor) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockClusterHealPodActor) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -105,7 +105,7 @@ func (m *MockClusterEnsureResource314) Version() *semver.Version {
 	return semver.MustParse("3.14.0")
 }
 
-func (m *MockClusterEnsureResource314) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockClusterEnsureResource314) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -126,7 +126,7 @@ func (m *MockClusterHealPodActor314) Version() *semver.Version {
 	return semver.MustParse("3.14.0")
 }
 
-func (m *MockClusterHealPodActor314) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockClusterHealPodActor314) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -147,7 +147,7 @@ func (m *MockFailoverEnsureResource) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (m *MockFailoverEnsureResource) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockFailoverEnsureResource) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -168,7 +168,7 @@ func (m *MockFailoverHealPodActor) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (m *MockFailoverHealPodActor) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockFailoverHealPodActor) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -189,7 +189,7 @@ func (m *MockFailoverEnsureResource314) Version() *semver.Version {
 	return semver.MustParse("3.14.0")
 }
 
-func (m *MockFailoverEnsureResource314) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockFailoverEnsureResource314) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }
@@ -210,7 +210,7 @@ func (m *MockFailoverHealPodActor314) Version() *semver.Version {
 	return semver.MustParse("3.14.0")
 }
 
-func (m *MockFailoverHealPodActor314) Do(ctx context.Context, inst types.RedisInstance) *ActorResult {
+func (m *MockFailoverHealPodActor314) Do(ctx context.Context, inst types.Instance) *ActorResult {
 	args := m.Called()
 	return args.Get(0).(*ActorResult)
 }

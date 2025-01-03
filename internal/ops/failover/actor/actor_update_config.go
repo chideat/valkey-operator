@@ -59,10 +59,10 @@ func (a *actorUpdateConfigMap) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandUpdateConfig.String())
 
-	st := val.(types.RedisFailoverInstance)
+	st := val.(types.FailoverInstance)
 	selectors := st.Selector()
 	newCm, err := failoverbuilder.NewRedisConfigMap(st, selectors)
 	if err != nil {

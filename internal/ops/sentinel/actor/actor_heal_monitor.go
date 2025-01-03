@@ -57,9 +57,9 @@ func (a *actorHealMonitor) Version() *semver.Version {
 	return semver.MustParse("3.18.0")
 }
 
-func (a *actorHealMonitor) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorHealMonitor) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandHealMonitor.String())
-	inst := val.(types.RedisSentinelInstance)
+	inst := val.(types.SentinelInstance)
 
 	// NOTE: only try to heal sentinel monitoring clusters when all nodes of sentinel is ready
 	if !inst.Replication().IsReady() {

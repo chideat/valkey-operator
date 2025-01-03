@@ -119,7 +119,7 @@ func (s *Slots) IsFullfilled() bool {
 	}
 
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 
 		if (s.data[index]>>offset)&uint8(SlotAssigned) == 0 {
 			return false
@@ -192,7 +192,7 @@ func (s *Slots) Load(v interface{}) error {
 		if (i >= RedisMaxSlots) || (i < 0) {
 			return fmt.Errorf("invalid slot %d", i)
 		}
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		s.data[index] = s.data[index]&^(uint8(3)<<offset) | (uint8(status) << offset)
 
 		if nodeId != "" {
@@ -254,7 +254,7 @@ func (s *Slots) Set(v interface{}, status SlotAssignStatus) error {
 		return nil
 	}
 	handler := func(i int, status SlotAssignStatus) {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		s.data[index] = s.data[index]&^(uint8(3)<<offset) | (uint8(status) << offset)
 	}
 
@@ -327,7 +327,7 @@ func (s *Slots) Sub(n *Slots) *Slots {
 	}
 	ret := NewSlots()
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 
 		valA := ((s.data[index] >> offset) & uint8(SlotAssigned))
 		valB := ((n.data[index] >> offset) & uint8(SlotAssigned))
@@ -366,7 +366,7 @@ func (s *Slots) Slots(ss ...SlotAssignStatus) (ret []int) {
 		ss = []SlotAssignStatus{SlotAssigned}
 	}
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		for _, st := range ss {
 			if (s.data[index]>>offset)&uint8(SlotMigrating) == uint8(st) {
 				ret = append(ret, i)
@@ -383,7 +383,7 @@ func (s *Slots) SlotsByStatus(status SlotAssignStatus) (ret []int) {
 		return nil
 	}
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&uint8(SlotMigrating) == uint8(status) {
 			ret = append(ret, i)
 		}
@@ -403,7 +403,7 @@ func (s *Slots) String() string {
 		ret            []string
 	)
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&uint8(SlotAssigned) > 0 {
 			if lastIndex == -1 {
 				lastIndex = i
@@ -442,7 +442,7 @@ func (s *Slots) Count(status SlotAssignStatus) (c int) {
 	}
 
 	for i := 0; i < RedisMaxSlots; i++ {
-		index, offset := s.convertIndex(i)
+		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&mask == uint8(status) {
 			c += 1
 		}
@@ -454,7 +454,7 @@ func (s *Slots) Status(i int) SlotAssignStatus {
 	if s == nil {
 		return SlotUnassigned
 	}
-	index, offset := s.convertIndex(i)
+	index, offset := convertIndex(i)
 	return SlotAssignStatus((s.data[index] >> offset) & 3)
 }
 
@@ -462,7 +462,7 @@ func (s *Slots) IsSet(i int) bool {
 	if s == nil {
 		return false
 	}
-	index, offset := s.convertIndex(i)
+	index, offset := convertIndex(i)
 	return (s.data[index]>>offset)&uint8(SlotAssigned) == uint8(SlotAssigned)
 }
 
@@ -484,7 +484,7 @@ func (s *Slots) MoveingStatus(i int) (SlotAssignStatus, string) {
 	if s == nil {
 		return SlotUnassigned, ""
 	}
-	index, offset := s.convertIndex(i)
+	index, offset := convertIndex(i)
 	status := SlotAssignStatus((s.data[index] >> offset) & 3)
 	switch status {
 	case SlotImporting:
@@ -495,7 +495,7 @@ func (s *Slots) MoveingStatus(i int) (SlotAssignStatus, string) {
 	return status, ""
 }
 
-func (s *Slots) convertIndex(i int) (int, int) {
+func convertIndex(i int) (int, int) {
 	index := i * 2 / 8
 	offset := i*2 - index*8
 	return index, offset

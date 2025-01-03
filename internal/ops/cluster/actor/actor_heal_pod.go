@@ -65,12 +65,12 @@ func (a *actorHealPod) Version() *semver.Version {
 }
 
 // Do
-func (a *actorHealPod) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", cops.CommandHealPod.String())
 
 	// clean terminating pods
 	var (
-		cluster = val.(types.RedisClusterInstance)
+		cluster = val.(types.ClusterInstance)
 		now     = time.Now()
 	)
 	pods, err := cluster.RawNodes(ctx)

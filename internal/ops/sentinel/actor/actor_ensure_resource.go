@@ -71,11 +71,11 @@ func (a *actorEnsureResource) Version() *semver.Version {
 }
 
 // Do
-func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandEnsureResource.String())
 
 	var (
-		sentinel = val.(types.RedisSentinelInstance)
+		sentinel = val.(types.SentinelInstance)
 		inst     = sentinel.Definition()
 	)
 	if inst.Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
@@ -104,7 +104,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *
 	return nil
 }
 
-func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	if ret := a.ensurePodDisruptionBudget(ctx, inst, logger); ret != nil {
 		return ret
 	}
@@ -194,7 +194,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 	return nil
 }
 
-func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 
 	pdb := sentinelbuilder.NewPodDisruptionBudget(sen, inst.Selector())
@@ -215,7 +215,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, ins
 	return nil
 }
 
-func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	// ensure sentinel config
 	senitnelConfigMap, _ := sentinelbuilder.NewSentinelConfigMap(inst.Definition(), inst.Selector())
 	if _, err := a.client.GetConfigMap(ctx, inst.GetNamespace(), senitnelConfigMap.Name); errors.IsNotFound(err) {
@@ -233,7 +233,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Re
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	def := inst.Definition()
 	if !def.Spec.Access.EnableTLS {
 		return nil
@@ -289,7 +289,7 @@ func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.Red
 	return nil
 }
 
-func (a *actorEnsureResource) ensurePauseStatefulSet(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensurePauseStatefulSet(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 	name := sentinelbuilder.GetSentinelStatefulSetName(sen.Name)
 	if sts, err := a.client.GetStatefulSet(ctx, sen.Namespace, name); err != nil {
@@ -309,7 +309,7 @@ func (a *actorEnsureResource) ensurePauseStatefulSet(ctx context.Context, inst t
 	return nil
 }
 
-func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := sentinel.Definition()
 	sa := clusterbuilder.NewServiceAccount(sen)
 	role := clusterbuilder.NewRole(sen)
@@ -360,7 +360,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel
 	return nil
 }
 
-func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 	selector := inst.Selector()
 
@@ -409,7 +409,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Redi
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 
 	if cr.Spec.Access.Ports == "" {
@@ -567,7 +567,7 @@ func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Co
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 	for replica := 0; replica < int(sen.Spec.Replicas); replica++ {
 		newSvc := sentinelbuilder.NewPodService(sen, replica, inst.Selector())
@@ -593,7 +593,7 @@ func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, inst ty
 	return nil
 }
 
-func (a *actorEnsureResource) cleanUselessService(ctx context.Context, inst types.RedisSentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) cleanUselessService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 	services, err := a.fetchAllPodBindedServices(ctx, sen.Namespace, inst.Selector())
 	if err != nil {

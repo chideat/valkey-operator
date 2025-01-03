@@ -26,10 +26,9 @@ import (
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
-	rediscli "github.com/chideat/valkey-operator/pkg/redis"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
+	vkcli "github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 )
 
@@ -61,7 +60,7 @@ func (a *actorRebalance) SupportedCommands() []actor.Command {
 	return []actor.Command{cops.CommandRebalance}
 }
 
-func (a *actorRebalance) moveSlot(ctx context.Context, destNode, srcNode redis.RedisNode, slot int) *actor.ActorResult {
+func (a *actorRebalance) moveSlot(ctx context.Context, destNode, srcNode types.ValkeyNode, slot int) *actor.ActorResult {
 	destId := destNode.ID()
 	sourceId := srcNode.ID()
 	if err := destNode.Setup(ctx, []interface{}{"CLUSTER", "SETSLOT", slot, "IMPORTING", sourceId}); err != nil {
@@ -75,7 +74,7 @@ func (a *actorRebalance) moveSlot(ctx context.Context, destNode, srcNode redis.R
 	return nil
 }
 
-func (a *actorRebalance) stableSlot(ctx context.Context, node redis.RedisNode, slots ...int) *actor.ActorResult {
+func (a *actorRebalance) stableSlot(ctx context.Context, node types.ValkeyNode, slots ...int) *actor.ActorResult {
 	var args [][]any
 	for _, slot := range slots {
 		args = append(args, []any{"CLUSTER", "SETSLOT", slot, "STABLE"})
@@ -87,7 +86,7 @@ func (a *actorRebalance) stableSlot(ctx context.Context, node redis.RedisNode, s
 	return nil
 }
 
-func (a *actorRebalance) findNodeWithMostSlots(nodes ...redis.RedisNode) redis.RedisNode {
+func (a *actorRebalance) findNodeWithMostSlots(nodes ...types.ValkeyNode) types.ValkeyNode {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -97,7 +96,7 @@ func (a *actorRebalance) findNodeWithMostSlots(nodes ...redis.RedisNode) redis.R
 
 	var (
 		nodeWithMostSlots = nodes[0]
-		nodeWithImporting redis.RedisNode
+		nodeWithImporting types.ValkeyNode
 	)
 	// find the node with most slots
 	for _, node := range nodes[1:] {
@@ -134,8 +133,8 @@ type SlotMigrateStatus struct {
 // 1. operator 部分：operator 只负责标记哪些槽要迁移
 // 2. sidecar: sidercar 用于按照标记信息迁移槽，并在数据迁移完成之后，清理标记
 // 3. 即使在槽迁移过程中 node 重启或者关机(可能会数据丢失)，operator 会重新标记，sidecar 会重新进行迁移
-func (a *actorRebalance) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
-	cluster := val.(types.RedisClusterInstance)
+func (a *actorRebalance) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
+	cluster := val.(types.ClusterInstance)
 	logger := val.Logger().WithValues("actor", cops.CommandRebalance.String())
 
 	if err := cluster.Refresh(ctx); err != nil {
@@ -151,8 +150,8 @@ func (a *actorRebalance) Do(ctx context.Context, val types.RedisInstance) *actor
 	// check if slots fullfilled
 	var (
 		allSlots    = slot.NewSlots()
-		shardsSlots = map[int]types.RedisClusterShard{}
-		nodes       = map[string]redis.RedisNode{}
+		shardsSlots = map[int]types.ClusterShard{}
+		nodes       = map[string]types.ValkeyNode{}
 	)
 	for _, shard := range cluster.Shards() {
 		allSlots = allSlots.Union(shard.Slots())
@@ -169,7 +168,7 @@ func (a *actorRebalance) Do(ctx context.Context, val types.RedisInstance) *actor
 	// 同时还要求 cr.status.shards 中记录的槽信息记录的一致性
 	if !allSlots.IsFullfilled() {
 		// check if some shard got multi master, if so, do slot migrate
-		var nodes []redis.RedisNode
+		var nodes []types.ValkeyNode
 		for _, shard := range cluster.Shards() {
 			nodes = nodes[0:0]
 			for _, node := range shard.Nodes() {
@@ -197,7 +196,7 @@ func (a *actorRebalance) Do(ctx context.Context, val types.RedisInstance) *actor
 	}
 
 	// check if there is a situation where the migration object is not a master due to failover
-	nodesWithWrongMigrateFlag := map[redis.RedisNode][]int{}
+	nodesWithWrongMigrateFlag := map[types.ValkeyNode][]int{}
 	for _, shard := range cluster.Shards() {
 		nodeSlots := shard.Slots()
 		for _, slot := range nodeSlots.SlotsByStatus(slot.SlotMigrating) {
@@ -230,7 +229,7 @@ func (a *actorRebalance) Do(ctx context.Context, val types.RedisInstance) *actor
 	for _, shard := range cluster.Shards() {
 		master := shard.Master()
 		slotsIndex := master.Slots().SlotsByStatus(slot.SlotImporting)
-		if len(slotsIndex) > 0 && master.ClusterInfo().ClusterState == rediscli.ClusterStateFail {
+		if len(slotsIndex) > 0 && master.ClusterInfo().ClusterState == vkcli.ClusterStateFail {
 			logger.Error(fmt.Errorf("importing master node %s cluster_state is fail", master.ID()), "master node cluster_state is fail")
 			if result := a.stableSlot(ctx, master, slotsIndex...); result != nil {
 				return result

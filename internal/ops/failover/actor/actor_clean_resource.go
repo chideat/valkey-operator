@@ -60,10 +60,10 @@ func (a *actorCleanResource) Version() *semver.Version {
 }
 
 // Do
-func (a *actorCleanResource) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorCleanResource) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandCleanResource.String())
 
-	inst := val.(types.RedisFailoverInstance)
+	inst := val.(types.FailoverInstance)
 	cr := inst.Definition()
 
 	if inst.IsReady() {

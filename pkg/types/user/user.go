@@ -42,29 +42,6 @@ const (
 	RoleDeveloper UserRole = "Developer"
 )
 
-// NewOperatorUser
-func NewOperatorUser(secret *v1.Secret, acl2Support bool) (*User, error) {
-	rule := Rule{Categories: []string{"all"}, DisallowedCommands: []string{"keys"}, KeyPatterns: []string{"*"}}
-	if acl2Support {
-		rule.Channels = []string{"*"}
-	}
-	user := User{
-		Name: DefaultOperatorUserName,
-		Role: RoleOperator,
-		Rules: []*Rule{
-			&rule,
-		},
-	}
-	if secret != nil {
-		if passwd, err := NewPassword(secret); err != nil {
-			return nil, err
-		} else {
-			user.Password = passwd
-		}
-	}
-	return &user, nil
-}
-
 // NewUser
 func NewUser(name string, role UserRole, secret *v1.Secret, acl2Support bool) (*User, error) {
 	var (
@@ -101,53 +78,6 @@ func NewUser(name string, role UserRole, secret *v1.Secret, acl2Support bool) (*
 		return nil, err
 	}
 	return user, nil
-}
-
-// NewSentinelUser
-func NewSentinelUser(name string, role UserRole, secret *v1.Secret) (*User, error) {
-	var (
-		err    error
-		passwd *Password
-	)
-	if secret != nil {
-		if passwd, err = NewPassword(secret); err != nil {
-			return nil, err
-		}
-	}
-
-	user := &User{
-		Name:     name,
-		Role:     role,
-		Password: passwd,
-	}
-	if err := user.Validate(); err != nil {
-		return nil, err
-	}
-	return user, nil
-}
-
-func NewUserFromRedisUser(username, ruleStr string, pwd *Password) (*User, error) {
-	rules := []*Rule{}
-	if ruleStr != "" {
-		rule, err := NewRule(ruleStr)
-		if err != nil {
-			return nil, err
-		}
-		rules = append(rules, rule)
-	}
-	role := RoleDeveloper
-	if username == DefaultOperatorUserName {
-		role = RoleOperator
-	}
-
-	user := User{
-		Name:     username,
-		Role:     role,
-		Rules:    rules,
-		Password: pwd,
-	}
-	return &user, nil
-
 }
 
 // User

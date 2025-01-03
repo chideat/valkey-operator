@@ -65,7 +65,7 @@ func GetRedisROServiceName(failoverName string) string {
 	return fmt.Sprintf("rfr-%s-read-only", failoverName)
 }
 
-func GenerateRedisStatefulSet(inst types.RedisFailoverInstance, selectors map[string]string, isAllACLSupported bool) *appv1.StatefulSet {
+func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]string, isAllACLSupported bool) *appv1.StatefulSet {
 
 	var (
 		rf = inst.Definition()
@@ -303,7 +303,7 @@ func createExposeContainer(rf *v1alpha1.Failover) corev1.Container {
 	return container
 }
 
-func createRedisContainerEnvs(inst types.RedisFailoverInstance, opUser *user.User, aclConfigMapName string) []corev1.EnvVar {
+func createRedisContainerEnvs(inst types.FailoverInstance, opUser *user.User, aclConfigMapName string) []corev1.EnvVar {
 	rf := inst.Definition()
 
 	var monitorUri string
@@ -629,11 +629,11 @@ func getRedisVolumeMounts(rf *v1alpha1.Failover, secret string) []corev1.VolumeM
 	return volumeMounts
 }
 
-func getRedisDataVolumeName(rf *v1alpha1.Failover) string {
+func getRedisDataVolumeName(_ *v1alpha1.Failover) string {
 	return redisStorageVolumeName
 }
 
-func getRedisVolumes(inst types.RedisFailoverInstance, rf *v1alpha1.Failover, secretName string) []corev1.Volume {
+func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretName string) []corev1.Volume {
 	executeMode := int32(0400)
 	configname := GetRedisConfigMapName(rf)
 	volumes := []corev1.Volume{

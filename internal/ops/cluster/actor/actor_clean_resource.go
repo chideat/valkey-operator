@@ -63,10 +63,10 @@ func (a *actorCleanResource) Version() *semver.Version {
 }
 
 // Do
-func (a *actorCleanResource) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorCleanResource) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", cops.CommandCleanResource.String())
 
-	cluster := val.(types.RedisClusterInstance)
+	cluster := val.(types.ClusterInstance)
 	cr := cluster.Definition()
 
 	var (

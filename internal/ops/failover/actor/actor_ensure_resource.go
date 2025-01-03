@@ -74,10 +74,10 @@ func (a *actorEnsureResource) Version() *semver.Version {
 }
 
 // Do
-func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandEnsureResource.String())
 
-	inst := val.(types.RedisFailoverInstance)
+	inst := val.(types.FailoverInstance)
 	if (inst.Definition().Spec.PodAnnotations != nil) && inst.Definition().Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
 		if ret := a.pauseStatefulSet(ctx, inst, logger); ret != nil {
 			return ret
@@ -109,7 +109,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.RedisInstance) *
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisStatefulSet(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	var (
 		err      error
 		cr       = inst.Definition()
@@ -199,7 +199,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf 
 	return nil
 }
 
-func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	selector := inst.Selector()
 	// ensure Redis configMap
@@ -217,7 +217,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Re
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisConfigMap(ctx context.Context, st types.RedisFailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisConfigMap(ctx context.Context, st types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	rf := st.Definition()
 	configMap, err := failoverbuilder.NewRedisConfigMap(st, selectors)
 	if err != nil {
@@ -229,7 +229,7 @@ func (a *actorEnsureResource) ensureRedisConfigMap(ctx context.Context, st types
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	rf := inst.Definition()
 	if !rf.Spec.Access.EnableTLS {
 		return nil
@@ -264,7 +264,7 @@ func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.Red
 	return nil
 }
 
-func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	sa := clusterbuilder.NewServiceAccount(cr)
 	role := clusterbuilder.NewRole(cr)
@@ -315,7 +315,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst typ
 	return nil
 }
 
-func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if !inst.IsBindedSentinel() {
 		return nil
 	}
@@ -370,7 +370,7 @@ func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.Red
 	return nil
 }
 
-func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	// read write svc
 	rwSvc := failoverbuilder.NewRWSvcForCR(cr)
@@ -405,7 +405,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Redi
 }
 
 func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Context,
-	inst types.RedisFailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
+	inst types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	cr := inst.Definition()
 
 	if cr.Spec.Access.Ports == "" {
@@ -605,7 +605,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, rf *v1alp
 	return nil
 }
 
-func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	name := failoverbuilder.GetFailoverStatefulSetName(cr.Name)
 	if sts, err := a.client.GetStatefulSet(ctx, cr.Namespace, name); err != nil {
@@ -626,7 +626,7 @@ func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, inst types.R
 	return nil
 }
 
-func (a *actorEnsureResource) pauseSentinel(ctx context.Context, inst types.RedisFailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) pauseSentinel(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if def := inst.Definition(); def.Spec.Sentinel == nil ||
 		(def.Spec.Sentinel.SentinelReference == nil && def.Spec.Sentinel.Image == "") {
 		return nil

@@ -92,5 +92,5 @@ type Actor interface {
 	// if the version is different from the previous version, the actor will be reloaded
 	Version() *semver.Version
 	// Do run the actor
-	Do(ctx context.Context, cluster types.RedisInstance) *ActorResult
+	Do(ctx context.Context, cluster types.Instance) *ActorResult
 }

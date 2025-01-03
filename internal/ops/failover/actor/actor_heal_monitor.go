@@ -29,11 +29,10 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
-	"github.com/chideat/valkey-operator/internal/redis/failover/monitor"
+	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -64,10 +63,10 @@ func (a *actorHealMaster) SupportedCommands() []actor.Command {
 	return []actor.Command{ops.CommandHealMonitor}
 }
 
-func (a *actorHealMaster) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandHealMonitor.String())
 
-	inst := val.(types.RedisFailoverInstance)
+	inst := val.(types.FailoverInstance)
 	if len(inst.Nodes()) == 0 {
 		return actor.NewResult(ops.CommandEnsureResource)
 	}
@@ -77,7 +76,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.RedisInstance) *acto
 		err             error
 		monitorInited   bool
 		instMonitor     = inst.Monitor()
-		masterCandidate redis.RedisNode
+		masterCandidate types.ValkeyNode
 		monitoringNodes = map[string]struct{}{}
 		// used to check if all any node online, if not, we should reset the monitor
 		onlineNodeCount int
@@ -171,7 +170,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.RedisInstance) *acto
 					listeningMasters[addr]++
 				}
 			}
-			masterCandidate = func() redis.RedisNode {
+			masterCandidate = func() types.ValkeyNode {
 				var (
 					listeningMostAddr string
 					count             int
@@ -206,7 +205,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.RedisInstance) *acto
 				}
 			}
 			if len(replIds) == 1 {
-				slices.SortStableFunc(nodes, func(i, j redis.RedisNode) int {
+				slices.SortStableFunc(nodes, func(i, j types.ValkeyNode) int {
 					if i.Info().MasterReplOffset >= j.Info().MasterReplOffset {
 						return -1
 					}
@@ -218,7 +217,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.RedisInstance) *acto
 
 		if masterCandidate == nil {
 			// selected uptime longest node as master
-			slices.SortStableFunc(nodes, func(i, j redis.RedisNode) int {
+			slices.SortStableFunc(nodes, func(i, j types.ValkeyNode) int {
 				if i.Info().UptimeInSeconds >= j.Info().UptimeInSeconds {
 					return -1
 				}

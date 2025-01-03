@@ -45,15 +45,13 @@ func GenerateClusterRedisUserName(instName, name string) string {
 	return fmt.Sprintf("drc-acl-%s-%s", instName, name)
 }
 
-func GenerateClusterOperatorsRedisUser(rc types.RedisClusterInstance, passwordsecret string) v1alpha1.RedisUser {
+func GenerateClusterOperatorsRedisUser(rc types.ClusterInstance, passwordsecret string) v1alpha1.RedisUser {
 	passwordsecrets := []string{}
 	if passwordsecret != "" {
 		passwordsecrets = append(passwordsecrets, passwordsecret)
 	}
-	rule := "~* +@all"
-	if rc.Version().IsACL2Supported() {
-		rule = "~* &* +@all"
-	}
+
+	rule := "~* &* +@all"
 	return v1alpha1.RedisUser{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      GenerateClusterOperatorsRedisUserName(rc.GetName()),

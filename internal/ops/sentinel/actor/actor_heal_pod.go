@@ -30,7 +30,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
-	rtypes "github.com/chideat/valkey-operator/pkg/types/redis"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -65,12 +64,12 @@ func (a *actorHealPod) Version() *semver.Version {
 }
 
 // Do
-func (a *actorHealPod) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandHealPod.String())
 
 	// clean terminating pods
 	var (
-		inst      = val.(types.RedisSentinelInstance)
+		inst      = val.(types.SentinelInstance)
 		now       = time.Now()
 		isUpdated = false
 	)
@@ -85,8 +84,8 @@ func (a *actorHealPod) Do(ctx context.Context, val types.RedisInstance) *actor.A
 			continue
 		}
 
-		var node rtypes.RedisSentinelNode
-		slices.IndexFunc(inst.Nodes(), func(n rtypes.RedisSentinelNode) bool {
+		var node types.SentinelNode
+		slices.IndexFunc(inst.Nodes(), func(n types.SentinelNode) bool {
 			if n.GetName() == pod.GetName() {
 				node = n
 				return true

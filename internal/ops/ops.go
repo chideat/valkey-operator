@@ -26,9 +26,9 @@ import (
 	"github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/internal/ops/sentinel"
-	clustermodel "github.com/chideat/valkey-operator/internal/redis/cluster"
-	failovermodel "github.com/chideat/valkey-operator/internal/redis/failover"
-	sentinelmodel "github.com/chideat/valkey-operator/internal/redis/sentinel"
+	clustermodel "github.com/chideat/valkey-operator/internal/valkey/cluster"
+	failovermodel "github.com/chideat/valkey-operator/internal/valkey/failover"
+	sentinelmodel "github.com/chideat/valkey-operator/internal/valkey/sentinel"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset"
@@ -58,7 +58,7 @@ var (
 )
 
 type RuleEngine interface {
-	Inspect(ctx context.Context, instance types.RedisInstance) *actor.ActorResult
+	Inspect(ctx context.Context, instance types.Instance) *actor.ActorResult
 }
 
 // OpEngine
@@ -130,7 +130,7 @@ func (e *OpEngine) Run(ctx context.Context, val client.Object) (ctrl.Result, err
 	return e.reconcile(ctx, engine, inst)
 }
 
-func (e *OpEngine) reconcile(ctx context.Context, engine RuleEngine, val types.RedisInstance) (requeue ctrl.Result, err error) {
+func (e *OpEngine) reconcile(ctx context.Context, engine RuleEngine, val types.Instance) (requeue ctrl.Result, err error) {
 	logger := val.Logger()
 
 	defer func() {
@@ -244,7 +244,7 @@ __end__:
 }
 
 // loadEngInst
-func (e *OpEngine) loadEngInst(ctx context.Context, obj client.Object) (engine RuleEngine, inst types.RedisInstance, err error) {
+func (e *OpEngine) loadEngInst(ctx context.Context, obj client.Object) (engine RuleEngine, inst types.Instance, err error) {
 	switch o := obj.(type) {
 	case *v1alpha1.Cluster:
 		inst, err = clustermodel.NewCluster(ctx, e.client, e.eventRecorder, o, e.logger)

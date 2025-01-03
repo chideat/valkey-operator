@@ -53,7 +53,7 @@ const (
 	graceTime                     = 30
 )
 
-func NewSentinelStatefulset(sen types.RedisSentinelInstance, selectors map[string]string) *appv1.StatefulSet {
+func NewSentinelStatefulset(sen types.SentinelInstance, selectors map[string]string) *appv1.StatefulSet {
 	var (
 		inst           = sen.Definition()
 		passwordSecret = inst.Spec.Access.DefaultPasswordSecret

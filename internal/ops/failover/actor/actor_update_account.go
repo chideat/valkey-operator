@@ -35,8 +35,8 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/redis"
 	"github.com/chideat/valkey-operator/pkg/types/user"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -71,11 +71,11 @@ func (a *actorUpdateAccount) SupportedCommands() []actor.Command {
 	return []actor.Command{ops.CommandUpdateAccount}
 }
 
-func (a *actorUpdateAccount) Do(ctx context.Context, val types.RedisInstance) *actor.ActorResult {
+func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger().WithValues("actor", ops.CommandUpdateAccount.String())
 
 	var (
-		inst        = val.(types.RedisFailoverInstance)
+		inst        = val.(types.FailoverInstance)
 		users       = inst.Users()
 		defaultUser = users.GetDefaultUser()
 		opUser      = users.GetOpUser()
@@ -83,7 +83,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.RedisInstance) *a
 	)
 
 	if defaultUser == nil {
-		defaultUser, _ = user.NewUser("", user.RoleDeveloper, nil, inst.Version().IsACL2Supported())
+		defaultUser, _ = user.NewUser("", user.RoleDeveloper, nil, inst.Version().IsACLSupported())
 	}
 
 	var (
@@ -145,7 +145,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.RedisInstance) *a
 	if inst.Version().IsACLSupported() {
 		if !isAclEnabled {
 			secretName := failoverbuilder.GenerateFailoverACLOperatorSecretName(inst.GetName())
-			opUser, err := acl.NewOperatorUser(ctx, a.client, secretName, inst.GetNamespace(), ownRefs, inst.Version().IsACL2Supported())
+			opUser, err := acl.NewOperatorUser(ctx, a.client, secretName, inst.GetNamespace(), ownRefs, inst.Version().IsACLSupported())
 			if err != nil {
 				logger.Error(err, "create operator user failed")
 				return actor.NewResult(ops.CommandRequeue)
@@ -162,7 +162,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.RedisInstance) *a
 			inst.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created operator user to enable acl")
 		} else {
 			if newOpUser, err := acl.NewOperatorUser(ctx, a.client,
-				opUser.Password.SecretName, inst.GetNamespace(), ownRefs, inst.Version().IsACL2Supported()); err != nil {
+				opUser.Password.SecretName, inst.GetNamespace(), ownRefs, inst.Version().IsACLSupported()); err != nil {
 				logger.Error(err, "create operator user failed")
 				return actor.NewResult(ops.CommandRequeue)
 			} else {
@@ -191,10 +191,10 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.RedisInstance) *a
 		} else if err != nil {
 			logger.Error(err, "get default redisuser failed")
 			return actor.NewResultWithError(ops.CommandRequeue, err)
-		} else if inst.Version().IsACL2Supported() {
-			oldVersion := redis.RedisVersion(oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
+		} else if inst.Version().IsACLSupported() {
+			oldVersion := version.ValkeyVersion(oldDefaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
 			// COMP: if old version not support acl2, and new version is supported, update acl rules for compatibility
-			if !oldVersion.IsACL2Supported() {
+			if !oldVersion.IsACLSupported() {
 				fields := strings.Fields(oldDefaultRU.Spec.AclRules)
 				if !slices.Contains(fields, "&*") && !slices.Contains(fields, "allchannels") {
 					oldDefaultRU.Spec.AclRules = fmt.Sprintf("%s &*", oldDefaultRU.Spec.AclRules)
