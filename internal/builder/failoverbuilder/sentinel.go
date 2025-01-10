@@ -51,7 +51,7 @@ func NewFailoverSentinel(inst types.FailoverInstance) *v1alpha1.Sentinel {
 	sen.Spec.CustomConfigs = def.Spec.Sentinel.CustomConfigs
 	sen.Spec.Exporter = def.Spec.Sentinel.Exporter
 	if sen.Spec.Access.EnableTLS {
-		sen.Spec.Access.ExternalTLSSecret = builder.GetRedisSSLSecretName(inst.GetName())
+		sen.Spec.Access.ExternalTLSSecret = builder.GetValkeySSLSecretName(inst.GetName())
 	}
 	return sen
 }

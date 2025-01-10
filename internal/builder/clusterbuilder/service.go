@@ -61,8 +61,8 @@ func NewHeadlessSvcForCR(cluster *v1alpha1.Cluster, index int) *corev1.Service {
 func NewServiceForCR(cluster *v1alpha1.Cluster) *corev1.Service {
 	selectors := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
 	labels := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
-	// Set redis arch label, for identifying redis arch in prometheus, so wo can find redis metrics data for redis cluster only.
-	labels[builder.LabelRedisArch] = string(core.ValkeyCluster)
+	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
+	labels[builder.LabelValkeyArch] = string(core.ValkeyCluster)
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -160,13 +160,12 @@ func NewPodService(cluster *v1alpha1.Cluster, name string, typ corev1.ServiceTyp
 	return svc
 }
 
-func NewServiceWithType(cluster *v1alpha1.Cluster, typ corev1.ServiceType, port int32) *corev1.Service {
-	name := RedisNodePortSvcName(cluster.Name)
+func NewLbService(cluster *v1alpha1.Cluster) *corev1.Service {
+	name := ValkeyLbSvcName(cluster.Name)
 	selectors := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
 	labels := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
-	// TODO: remove this
-	// Set redis arch label, for identifying redis arch in prometheus, so wo can find redis metrics data for redis cluster only.
-	labels[builder.LabelRedisArch] = string(core.ValkeyCluster)
+	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
+	labels[builder.LabelValkeyArch] = string(core.ValkeyCluster)
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -175,7 +174,7 @@ func NewServiceWithType(cluster *v1alpha1.Cluster, typ corev1.ServiceType, port 
 		protocol = append(protocol, corev1.IPv4Protocol)
 	}
 	var ports []corev1.ServicePort
-	clientPort := corev1.ServicePort{Name: "client", Port: 6379, Protocol: "TCP", NodePort: port}
+	clientPort := corev1.ServicePort{Name: "client", Port: 6379, Protocol: "TCP"}
 	ports = append(ports, clientPort)
 
 	svc := &corev1.Service{
@@ -187,7 +186,7 @@ func NewServiceWithType(cluster *v1alpha1.Cluster, typ corev1.ServiceType, port 
 			OwnerReferences: util.BuildOwnerReferences(cluster),
 		},
 		Spec: corev1.ServiceSpec{
-			Type:           typ,
+			Type:           corev1.ServiceTypeLoadBalancer,
 			IPFamilies:     protocol,
 			IPFamilyPolicy: &ptype,
 			Ports:          ports,
@@ -197,8 +196,8 @@ func NewServiceWithType(cluster *v1alpha1.Cluster, typ corev1.ServiceType, port 
 	return svc
 }
 
-func RedisNodePortSvcName(clusterName string) string {
-	return fmt.Sprintf("drc-%s-nodeport", clusterName)
+func ValkeyLbSvcName(clusterName string) string {
+	return fmt.Sprintf("drc-%s-lb", clusterName)
 }
 
 func ClusterStatefulSetSvcName(clusterName string, index string) string {

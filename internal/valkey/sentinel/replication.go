@@ -33,9 +33,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ types.SentinelReplication = (*RedisSentinelReplication)(nil)
+var _ types.SentinelReplication = (*ValkeySentinelReplication)(nil)
 
-type RedisSentinelReplication struct {
+type ValkeySentinelReplication struct {
 	appv1.StatefulSet
 	client   clientset.ClientSet
 	instance types.SentinelInstance
@@ -43,7 +43,7 @@ type RedisSentinelReplication struct {
 	logger   logr.Logger
 }
 
-func NewRedisSentinelReplication(ctx context.Context, client clientset.ClientSet, inst types.SentinelInstance, logger logr.Logger) (*RedisSentinelReplication, error) {
+func NewValkeySentinelReplication(ctx context.Context, client clientset.ClientSet, inst types.SentinelInstance, logger logr.Logger) (*ValkeySentinelReplication, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -60,13 +60,13 @@ func NewRedisSentinelReplication(ctx context.Context, client clientset.ClientSet
 		return nil, err
 	}
 
-	node := RedisSentinelReplication{
+	node := ValkeySentinelReplication{
 		StatefulSet: *sts,
 		client:      client,
 		instance:    inst,
-		logger:      logger.WithName("RedisSentinelReplication"),
+		logger:      logger.WithName("ValkeySentinelReplication"),
 	}
-	if node.nodes, err = LoadRedisSentinelNodes(ctx, client, sts, inst.Users().GetOpUser(), logger); err != nil {
+	if node.nodes, err = LoadValkeySentinelNodes(ctx, client, sts, inst.Users().GetOpUser(), logger); err != nil {
 
 		logger.Error(err, "load shard nodes failed", "shard", sts.GetName())
 		return nil, err
@@ -74,7 +74,7 @@ func NewRedisSentinelReplication(ctx context.Context, client clientset.ClientSet
 	return &node, nil
 }
 
-func (s *RedisSentinelReplication) NamespacedName() client.ObjectKey {
+func (s *ValkeySentinelReplication) NamespacedName() client.ObjectKey {
 	if s == nil {
 		return client.ObjectKey{}
 	}
@@ -84,7 +84,7 @@ func (s *RedisSentinelReplication) NamespacedName() client.ObjectKey {
 	}
 }
 
-func (s *RedisSentinelReplication) Version() version.ValkeyVersion {
+func (s *ValkeySentinelReplication) Version() version.ValkeyVersion {
 	if s == nil {
 		return version.ValkeyVersionUnknown
 	}
@@ -93,21 +93,21 @@ func (s *RedisSentinelReplication) Version() version.ValkeyVersion {
 	return ver
 }
 
-func (s *RedisSentinelReplication) Definition() *appv1.StatefulSet {
+func (s *ValkeySentinelReplication) Definition() *appv1.StatefulSet {
 	if s == nil {
 		return nil
 	}
 	return &s.StatefulSet
 }
 
-func (s *RedisSentinelReplication) Nodes() []types.SentinelNode {
+func (s *ValkeySentinelReplication) Nodes() []types.SentinelNode {
 	if s == nil {
 		return nil
 	}
 	return s.nodes
 }
 
-func (s *RedisSentinelReplication) Restart(ctx context.Context, annotationKeyVal ...string) error {
+func (s *ValkeySentinelReplication) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	// update all shards
 	logger := s.logger.WithName("Restart")
 
@@ -136,25 +136,25 @@ func (s *RedisSentinelReplication) Restart(ctx context.Context, annotationKeyVal
 	return nil
 }
 
-func (s *RedisSentinelReplication) IsReady() bool {
+func (s *ValkeySentinelReplication) IsReady() bool {
 	if s == nil {
 		return false
 	}
 	return s.Status().ReadyReplicas == *s.Spec.Replicas && s.Status().UpdateRevision == s.Status().CurrentRevision
 }
 
-func (s *RedisSentinelReplication) Refresh(ctx context.Context) error {
+func (s *ValkeySentinelReplication) Refresh(ctx context.Context) error {
 	logger := s.logger.WithName("Refresh")
 
 	var err error
-	if s.nodes, err = LoadRedisSentinelNodes(ctx, s.client, &s.StatefulSet, s.instance.Users().GetOpUser(), logger); err != nil {
+	if s.nodes, err = LoadValkeySentinelNodes(ctx, s.client, &s.StatefulSet, s.instance.Users().GetOpUser(), logger); err != nil {
 		logger.Error(err, "load shard nodes failed", "shard", s.GetName())
 		return err
 	}
 	return nil
 }
 
-func (s *RedisSentinelReplication) Status() *appv1.StatefulSetStatus {
+func (s *ValkeySentinelReplication) Status() *appv1.StatefulSetStatus {
 	if s == nil {
 		return nil
 	}

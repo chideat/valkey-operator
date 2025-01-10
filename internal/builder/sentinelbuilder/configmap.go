@@ -45,8 +45,8 @@ func NewSentinelConfigMap(sen *v1alpha1.Sentinel, selectors map[string]string) (
 	defaultConfig["tcp-backlog"] = "511"
 
 	version, _ := version.ParseValkeyVersionFromImage(sen.Spec.Image)
-	innerRedisConfig := version.CustomConfigs(core.ValkeySentinel)
-	defaultConfig = lo.Assign(defaultConfig, innerRedisConfig)
+	innerValkeyConfig := version.CustomConfigs(core.ValkeySentinel)
+	defaultConfig = lo.Assign(defaultConfig, innerValkeyConfig)
 
 	for k, v := range sen.Spec.CustomConfigs {
 		defaultConfig[strings.ToLower(k)] = strings.TrimSpace(v)
@@ -69,10 +69,10 @@ func NewSentinelConfigMap(sen *v1alpha1.Sentinel, selectors map[string]string) (
 			continue
 		}
 
-		if _, ok := builder.MustQuoteRedisConfig[k]; ok && !strings.HasPrefix(v, `"`) {
+		if _, ok := builder.MustQuoteValkeyConfig[k]; ok && !strings.HasPrefix(v, `"`) {
 			v = fmt.Sprintf(`"%s"`, v)
 		}
-		if _, ok := builder.MustUpperRedisConfig[k]; ok {
+		if _, ok := builder.MustUpperValkeyConfig[k]; ok {
 			v = strings.ToUpper(v)
 		}
 		buffer.WriteString(fmt.Sprintf("%s %s\n", k, v))

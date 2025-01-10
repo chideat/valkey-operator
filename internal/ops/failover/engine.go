@@ -71,7 +71,7 @@ func NewRuleEngine(client kubernetes.ClientSet, eventRecorder record.EventRecord
 func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.ActorResult {
 	logger := val.Logger()
 
-	logger.V(3).Info("Inspecting redis failover")
+	logger.V(3).Info("Inspecting failover instance")
 	inst := val.(types.FailoverInstance)
 	if inst == nil {
 		return nil
@@ -147,7 +147,7 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 		})
 
 		labels := pod.GetLabels()
-		labelVal := labels[failoverbuilder.RedisRoleLabel]
+		labelVal := labels[failoverbuilder.ValkeyRoleLabel]
 		if node == nil {
 			if labelVal != "" {
 				logger.V(3).Info("node not accessable", "name", pod.GetName(), "labels", labels)
@@ -158,11 +158,11 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 
 		nodeAddr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		switch {
-		case nodeAddr == masterAddr && labelVal != failoverbuilder.RedisRoleMaster:
+		case nodeAddr == masterAddr && labelVal != failoverbuilder.ValkeyRoleMaster:
 			fallthrough
-		case labelVal == failoverbuilder.RedisRoleMaster && nodeAddr != masterAddr:
+		case labelVal == failoverbuilder.ValkeyRoleMaster && nodeAddr != masterAddr:
 			fallthrough
-		case node.Role() == core.NodeRoleReplica && labelVal != failoverbuilder.RedisRoleReplica:
+		case node.Role() == core.NodeRoleReplica && labelVal != failoverbuilder.ValkeyRoleReplica:
 			logger.V(3).Info("master labels not match", "node", node.GetName(), "labels", labels)
 			return actor.NewResult(CommandPatchLabels)
 		}
@@ -238,19 +238,19 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverI
 }
 
 func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
-	newCm, err := failoverbuilder.NewRedisConfigMap(inst, inst.Selector())
+	newCm, err := failoverbuilder.NewValkeyConfigMap(inst, inst.Selector())
 	if err != nil {
 		return actor.RequeueWithError(err)
 	}
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.RedisConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
 		err := fmt.Errorf("configmap %s not found", newCm.GetName())
 		return actor.NewResultWithError(CommandEnsureResource, err)
 	} else if err != nil {
 		return actor.RequeueWithError(err)
 	}
-	newConf, _ := clusterbuilder.LoadRedisConfig(newCm.Data[clusterbuilder.RedisConfKey])
-	oldConf, _ := clusterbuilder.LoadRedisConfig(oldCm.Data[clusterbuilder.RedisConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return actor.NewResult(CommandUpdateConfig)
@@ -308,7 +308,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			logger.Error(err, "multi master found")
 			return actor.NewResult(CommandHealMonitor)
 		} else if err == monitor.ErrAddressConflict {
-			logger.Error(err, "sentinel not update redis node announce address")
+			logger.Error(err, "sentinel not update node announce address")
 			return actor.NewResult(CommandHealMonitor)
 		}
 		logger.Error(err, "failed to check all nodes monitored")
@@ -348,14 +348,14 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		if node.IsTerminating() &&
 			now.After(node.GetDeletionTimestamp().
 				Add(time.Duration(*node.GetDeletionGracePeriodSeconds())*time.Second)) {
-			logger.Info("redis node terminted", "node", node.GetName())
+			logger.Info("node terminted", "node", node.GetName())
 			return actor.NewResult(CommandHealPod)
 		}
 	}
 
 	for i, node := range inst.Nodes() {
 		if i != node.Index() {
-			logger.Info("redis node index not match", "node", node.GetName(), "index", node.Index())
+			logger.Info("node index not match", "node", node.GetName(), "index", node.Index())
 			return actor.NewResult(CommandHealPod)
 		}
 	}

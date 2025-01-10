@@ -15,12 +15,20 @@ limitations under the License.
 */
 package builder
 
-var MustQuoteValkeyConfig = map[string]struct{}{
-	"tls-protocols": {},
-}
+import "testing"
 
-var MustUpperValkeyConfig = map[string]struct{}{
-	"tls-ciphers":      {},
-	"tls-ciphersuites": {},
-	"tls-protocols":    {},
+func TestGenerateValkeyTLSOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GenerateValkeyTLSOptions(); got != tt.want {
+				t.Errorf("GenerateValkeyTLSOptions() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

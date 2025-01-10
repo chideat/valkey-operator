@@ -22,62 +22,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var regexArr = []string{
-	"redis_instance_info",
-	"redis_master_link_up",
-	"redis_slave_info",
-	"redis_connected_clients",
-	"redis_uptime_in_seconds",
-	"redis_commands_processed_total",
-	"redis_commands_total",
-	"redis_db_keys",
-	"redis_pubsub_channels",
-	"redis_pubsub_patterns",
-	"redis_slowlog_length",
-	"redis_evicted_keys_total",
-	"redis_expired_keys_total",
-	"redis_keyspace_hits_total",
-	"redis_keyspace_misses_total",
-	"redis_blocked_clients",
-	"redis_commands_duration_seconds_total",
-	"redis_net_input_bytes_total",
-	"redis_net_output_bytes_total",
-	"redis_cpu_user_seconds_total",
-	"redis_cpu_user_children_seconds_total",
-	"redis_cpu_sys_seconds_total",
-	"redis_cpu_sys_children_seconds_total",
-	"redis_memory_used_bytes",
-	"redis_memory_used_rss_bytes",
-	"redis_memory_used_peak_bytes",
-	"redis_memory_max_bytes",
-	"redis_aof_rewrite_in_progress",
-	"redis_rdb_bgsave_in_progress",
-	"redis_aof_last_rewrite_duration_sec",
-	"redis_rdb_last_save_timestamp_seconds",
-	"redis_rdb_last_bgsave_duration_sec",
-	"redis_rdb_last_cow_size_bytes",
-	"redis_rdb_last_bgsave_status",
-	"redis_mem_fragmentation_ratio",
-	"redis_mem_fragmentation_bytes",
-	"redis_master_repl_offset",
-	"redis_lazyfree_pending_objects",
-	"redis_latest_fork_seconds",
-	"redis_defrag_misses",
-	"redis_defrag_key_misses",
-	"redis_defrag_key_hits",
-	"redis_connections_received_total",
-	"redis_connected_slaves",
-	"redis_connected_slave_lag_seconds",
-	"redis_connected_slave_offset_bytes",
-	"redis_cluster_slots_pfail",
-	"redis_cluster_slots_fail",
-	"redis_aof_last_cow_size_bytes",
-	"redis_aof_last_bgrewrite_status",
-	"redis_memory_used_lua_bytes",
-	"redis_mem.*",
-	"redis_config_maxmemory",
-}
-
 const (
 	DefaultScrapInterval = "60s"
 	DefaultScrapeTimeout = "10s"
@@ -85,20 +29,15 @@ const (
 
 func NewServiceMonitorForCR(rf *v1alpha1.Failover) *smv1.ServiceMonitor {
 	sentinelLabels := map[string]string{
-		"app.kubernetes.io/part-of": "redis-failover",
+		"app.kubernetes.io/part-of": "valkey-failover",
 	}
 
 	interval := "60s"
 	scrapeTimeout := "10s"
-	configs := []smv1.RelabelConfig{{
-		Action:       "keep",
-		Regex:        builder.BuildMetricsRegex(regexArr),
-		SourceLabels: []smv1.LabelName{"__name__"},
-	}}
 
 	sm := &smv1.ServiceMonitor{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "redis-sentinel",
+			Name: "valkey-failover",
 			Labels: map[string]string{
 				"prometheus": "kube-prometheus",
 			},
@@ -111,34 +50,15 @@ func NewServiceMonitorForCR(rf *v1alpha1.Failover) *smv1.ServiceMonitor {
 				Any: true,
 			},
 			Endpoints: []smv1.Endpoint{
-				// for sentinel metrics
 				{
-					HonorLabels:          true,
-					Port:                 "http-metrics",
-					Path:                 "/metrics",
-					Interval:             smv1.Duration(interval),
-					ScrapeTimeout:        smv1.Duration(scrapeTimeout),
-					MetricRelabelConfigs: configs,
-				},
-				{
-					HonorLabels:          true,
-					Port:                 "metrics",
-					Path:                 "/metrics",
-					Interval:             smv1.Duration(interval),
-					ScrapeTimeout:        smv1.Duration(scrapeTimeout),
-					MetricRelabelConfigs: configs,
-				},
-				// for cluster metrics
-				{
-					HonorLabels:          true,
-					Port:                 "prom-http",
-					Path:                 "/metrics",
-					Interval:             smv1.Duration(interval),
-					ScrapeTimeout:        smv1.Duration(scrapeTimeout),
-					MetricRelabelConfigs: configs,
+					HonorLabels:   true,
+					Port:          "metrics",
+					Path:          "/metrics",
+					Interval:      smv1.Duration(interval),
+					ScrapeTimeout: smv1.Duration(scrapeTimeout),
 				},
 			},
-			TargetLabels: []string{builder.LabelRedisArch},
+			TargetLabels: []string{builder.LabelValkeyArch},
 		},
 	}
 	return sm

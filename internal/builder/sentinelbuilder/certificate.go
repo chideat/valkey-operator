@@ -42,7 +42,7 @@ func NewCertificate(sen *v1alpha1.Sentinel, selectors map[string]string) *certv1
 				builder.GetServiceDNSName(GetSentinelStatefulSetName(sen.Name), sen.Namespace),
 			},
 			IssuerRef:  certmetav1.ObjectReference{Kind: certv1.ClusterIssuerKind, Name: "cpaas-ca"},
-			SecretName: builder.GetRedisSSLSecretName(sen.Name),
+			SecretName: builder.GetValkeySSLSecretName(sen.Name),
 		},
 	}
 }

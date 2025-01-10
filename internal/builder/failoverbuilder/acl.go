@@ -111,7 +111,7 @@ func GenerateFailoverUser(obj metav1.Object, u *user.User) *v1alpha1.User {
 		Spec: v1alpha1.UserSpec{
 			AccountType:     accountType,
 			Arch:            core.ValkeyFailover,
-			RedisName:       obj.GetName(),
+			InstanceName:    obj.GetName(),
 			Username:        u.Name,
 			PasswordSecrets: passwordSecrets,
 			AclRules:        strings.Join(rules, " "),

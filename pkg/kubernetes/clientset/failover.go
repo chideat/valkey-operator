@@ -29,11 +29,11 @@ import (
 
 // Failover the RF service that knows how to interact with k8s to get them
 type Failover interface {
-	// ListFailovers lists the redisfailovers on a cluster.
+	// ListFailovers
 	ListFailovers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.FailoverList, error)
-	// GetFailover get the redisfailover on a cluster.
+	// GetFailover
 	GetFailover(ctx context.Context, namespace, name string) (*v1alpha1.Failover, error)
-	// UpdateFailover update the redisfailover on a cluster.
+	// UpdateFailover
 	UpdateFailover(ctx context.Context, inst *v1alpha1.Failover) error
 	// UpdateFailoverStatus
 	UpdateFailoverStatus(ctx context.Context, inst *v1alpha1.Failover) error
@@ -55,7 +55,7 @@ func NewFailoverService(client client.Client, logger logr.Logger) *FailoverServi
 	}
 }
 
-// ListFailovers satisfies redisfailover.Service interface.
+// ListFailovers
 func (r *FailoverService) ListFailovers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.FailoverList, error) {
 	ret := v1alpha1.FailoverList{}
 	err := r.client.List(ctx, &ret, &opts)
@@ -65,7 +65,7 @@ func (r *FailoverService) ListFailovers(ctx context.Context, namespace string, o
 	return &ret, nil
 }
 
-// GetFailover satisfies redisfailover.Service interface.
+// GetFailover
 func (r *FailoverService) GetFailover(ctx context.Context, namespace, name string) (*v1alpha1.Failover, error) {
 	ret := v1alpha1.Failover{}
 	err := r.client.Get(ctx, types.NamespacedName{

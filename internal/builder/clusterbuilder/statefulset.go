@@ -39,36 +39,36 @@ import (
 )
 
 const (
-	DefaultRedisServerPort    = 6379
-	DefaultRedisServerBusPort = 16379
+	DefaultValkeyServerPort    = 6379
+	DefaultValkeyServerBusPort = 16379
 
-	GenericKey       = "redis.kun"
+	GenericKey       = "valkey.kun"
 	LabelClusterName = GenericKey + "/name"
 	StatefulSetLabel = "statefulSet"
 
 	hostnameTopologyKey = "kubernetes.io/hostname"
 
 	// Container
-	CheckContainerName         = "init"
-	ServerContainerName        = "redis"
-	ExporterContainerName      = "exporter"
-	ConfigSyncContainerName    = "sidecar"
-	RedisDataContainerPortName = "client"
+	CheckContainerName          = "init"
+	ServerContainerName         = "valkey"
+	ExporterContainerName       = "exporter"
+	ConfigSyncContainerName     = "sidecar"
+	ValkeyDataContainerPortName = "client"
 
 	// Volume
-	RedisStorageVolumeName          = "redis-data"
-	RedisTempVolumeName             = "temp"
-	RedisOperatorPasswordVolumeName = "operator-password"
-	ConfigVolumeName                = "conf"
-	RedisTLSVolumeName              = "redis-tls"
-	RedisOptVolumeName              = "redis-opt"
+	ValkeyStorageVolumeName          = "valkey-data"
+	ValkeyTempVolumeName             = "temp"
+	ValkeyOperatorPasswordVolumeName = "operator-password"
+	ConfigVolumeName                 = "conf"
+	ValkeyTLSVolumeName              = "valkey-tls"
+	ValkeyOptVolumeName              = "valkey-opt"
 	// Mount path
 	StorageVolumeMountPath          = "/data"
 	OperatorPasswordVolumeMountPath = "/account"
 	ConfigVolumeMountPath           = "/conf"
 	TLSVolumeMountPath              = "/tls"
-	RedisOptVolumeMountPath         = "/opt"
-	RedisTmpVolumeMountPath         = "/tmp"
+	ValkeyOptVolumeMountPath        = "/opt"
+	ValkeyTmpVolumeMountPath        = "/tmp"
 
 	// Env
 	OperatorUsername   = "OPERATOR_USERNAME"
@@ -101,7 +101,7 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 	}
 
 	var (
-		volumes         = redisVolumes(cluster, opUser)
+		volumes         = valkeyVolumes(cluster, opUser)
 		stsName         = ClusterStatefulSetName(cluster.Name, index)
 		labels          = GetClusterStatefulsetSelectorLabels(cluster.Name, index)
 		headlessSvcName = ClusterHeadlessSvcName(cluster.Name, index)
@@ -187,8 +187,8 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 			Value: string(cluster.Spec.Access.IPFamilyPrefer),
 		},
 		{
-			Name:  "REDIS_ADDRESS",
-			Value: net.JoinHostPort(config.LocalInjectName, strconv.FormatInt(DefaultRedisServerPort, 10)),
+			Name:  "VALKEY_ADDRESS",
+			Value: net.JoinHostPort(config.LocalInjectName, strconv.FormatInt(DefaultValkeyServerPort, 10)),
 		},
 		{
 			Name:  "SERVICE_TYPE",
@@ -202,7 +202,7 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 		})
 	}
 	if c.Version().IsClusterShardSupported() {
-		// TODO: use real shard id in redis7
+		// TODO: use real shard id in valkey7
 		data := sha1.Sum([]byte(fmt.Sprintf("%s/%s", cluster.Namespace, stsName))) // #nosec
 		shardId := fmt.Sprintf("%x", data)
 		envs = append(envs, corev1.EnvVar{
@@ -259,13 +259,13 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 						},
 					},
 					TerminationGracePeriodSeconds: ptr.To(DefaultTerminationGracePeriodSeconds),
-					ServiceAccountName:            RedisInstanceServiceAccountName,
+					ServiceAccountName:            ValkeyInstanceServiceAccountName,
 					ImagePullSecrets:              spec.ImagePullSecrets,
 					Tolerations:                   spec.Tolerations,
 					NodeSelector:                  spec.NodeSelector,
 					Affinity:                      getAffinity(cluster, labels, stsName),
 					Containers: []corev1.Container{
-						redisServerContainer(cluster, opUser, envs, index),
+						valkeyServerContainer(cluster, opUser, envs, index),
 					},
 					SecurityContext: getSecurityContext(spec.SecurityContext),
 					Volumes:         volumes,
@@ -291,7 +291,7 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 	}
 
 	if spec.Exporter != nil {
-		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, redisExporterContainer(cluster, opUser))
+		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, valkeyExporterContainer(cluster, opUser))
 	}
 	return ss, nil
 }
@@ -304,7 +304,7 @@ func persistentClaim(cluster *v1alpha1.Cluster, labels map[string]string) corev1
 	mode := corev1.PersistentVolumeFilesystem
 	return corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   RedisStorageVolumeName,
+			Name:   ValkeyStorageVolumeName,
 			Labels: labels,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -320,8 +320,8 @@ func persistentClaim(cluster *v1alpha1.Cluster, labels map[string]string) corev1
 	}
 }
 
-func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1.EnvVar, index int) corev1.Container {
-	shutdownArgs := []string{"sh", "-c", "/opt/redis-tools cluster shutdown  &> /proc/1/fd/1"}
+func valkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1.EnvVar, index int) corev1.Container {
+	shutdownArgs := []string{"sh", "-c", "/opt/valkey-tools cluster shutdown  &> /proc/1/fd/1"}
 	startArgs := []string{"sh", "/opt/run.sh"}
 
 	container := corev1.Container{
@@ -333,13 +333,13 @@ func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1
 		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
 		Ports: []corev1.ContainerPort{
 			{
-				Name:          "redis",
-				ContainerPort: DefaultRedisServerPort,
+				Name:          "valkey",
+				ContainerPort: DefaultValkeyServerPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 			{
 				Name:          "gossip",
-				ContainerPort: DefaultRedisServerBusPort,
+				ContainerPort: DefaultValkeyServerBusPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 		},
@@ -350,7 +350,7 @@ func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1
 			FailureThreshold:    5,
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(DefaultRedisServerPort),
+					Port: intstr.FromInt(DefaultValkeyServerPort),
 				},
 			},
 		},
@@ -362,7 +362,7 @@ func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"/opt/redis-tools", "helper", "healthcheck", "ping"},
+					Command: []string{"/opt/valkey-tools", "helper", "healthcheck", "ping"},
 				},
 			},
 		},
@@ -373,7 +373,7 @@ func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(DefaultRedisServerPort),
+					Port: intstr.FromInt(DefaultValkeyServerPort),
 				},
 			},
 		},
@@ -390,7 +390,7 @@ func redisServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1
 }
 
 func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.EnvVar) (*corev1.Container, *corev1.Container) {
-	image := config.GetRedisToolsImage(cluster)
+	image := config.GetValkeyToolsImage(cluster)
 	if image == "" {
 		return nil, nil
 	}
@@ -412,9 +412,9 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-			{Name: RedisOptVolumeName, MountPath: "/mnt/opt"},
-			{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
+			{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+			{Name: ValkeyOptVolumeName, MountPath: "/mnt/opt"},
+			{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
 		},
 	}
 
@@ -423,7 +423,7 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 		Image:           image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env:             envs,
-		Command:         []string{"/opt/redis-tools", "runner", "cluster", "--sync-l2c"},
+		Command:         []string{"/opt/valkey-tools", "runner", "cluster", "--sync-l2c"},
 		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -436,13 +436,13 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath, ReadOnly: true},
+			{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath, ReadOnly: true},
 		},
 	}
 
 	if user.Password.GetSecretName() != "" {
 		mount := corev1.VolumeMount{
-			Name:      RedisOperatorPasswordVolumeName,
+			Name:      ValkeyOperatorPasswordVolumeName,
 			MountPath: OperatorPasswordVolumeMountPath,
 		}
 		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
@@ -451,7 +451,7 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 
 	if cluster.Spec.Access.EnableTLS {
 		mount := corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
+			Name:      ValkeyTLSVolumeName,
 			MountPath: TLSVolumeMountPath,
 		}
 		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
@@ -460,7 +460,7 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 	return &initContainer, &container
 }
 
-func redisExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.Container {
+func valkeyExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.Container {
 	cmd := []string{
 		"/redis_exporter",
 		"--web.listen-address",
@@ -501,7 +501,7 @@ func redisExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.C
 		name = ""
 	}
 	container.Env = append(container.Env,
-		corev1.EnvVar{Name: "REDIS_USER", Value: name},
+		corev1.EnvVar{Name: "VALKEY_USER", Value: name},
 	)
 	if secretName := user.Password.GetSecretName(); secretName != "" {
 		container.Env = append(container.Env,
@@ -518,37 +518,37 @@ func redisExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.C
 
 	if cluster.Spec.Access.EnableTLS {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
+			Name:      ValkeyTLSVolumeName,
 			MountPath: TLSVolumeMountPath,
 		})
 
 		container.Env = append(container.Env, []corev1.EnvVar{
 			{
-				Name:  "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE",
 				Value: "/tls/tls.key",
 			},
 			{
-				Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE",
 				Value: "/tls/tls.crt",
 			},
 			{
-				Name:  "REDIS_EXPORTER_TLS_CA_CERT_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CA_CERT_FILE",
 				Value: "/tls/ca.crt",
 			},
 			{
-				Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
+				Name:  "VALKEY_EXPORTER_SKIP_TLS_VERIFICATION",
 				Value: "true",
 			},
 			{
-				Name: "REDIS_ADDR",
+				Name: "VALKEY_ADDR",
 				// NOTE: use dns to escape ipv4/ipv6 check
-				Value: fmt.Sprintf("rediss://%s:%d", config.LocalInjectName, DefaultRedisServerPort),
+				Value: fmt.Sprintf("valkeys://%s:%d", config.LocalInjectName, DefaultValkeyServerPort),
 			},
 		}...)
 	} else {
 		container.Env = append(container.Env, []corev1.EnvVar{
-			{Name: "REDIS_ADDR",
-				Value: fmt.Sprintf("redis://%s:%d", config.LocalInjectName, DefaultRedisServerPort)},
+			{Name: "VALKEY_ADDR",
+				Value: fmt.Sprintf("valkey://%s:%d", config.LocalInjectName, DefaultValkeyServerPort)},
 		}...)
 	}
 	return container
@@ -557,19 +557,19 @@ func redisExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.C
 func volumeMounts(cluster *v1alpha1.Cluster, user *user.User) []corev1.VolumeMount {
 	volumeMounts := []corev1.VolumeMount{
 		{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-		{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-		{Name: RedisOptVolumeName, MountPath: RedisOptVolumeMountPath},
-		{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
+		{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+		{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
+		{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
 	}
 	if user.Password.GetSecretName() != "" {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      RedisOperatorPasswordVolumeName,
+			Name:      ValkeyOperatorPasswordVolumeName,
 			MountPath: OperatorPasswordVolumeMountPath,
 		})
 	}
 	if cluster.Spec.Access.EnableTLS {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
+			Name:      ValkeyTLSVolumeName,
 			MountPath: TLSVolumeMountPath,
 		})
 	}
@@ -577,8 +577,8 @@ func volumeMounts(cluster *v1alpha1.Cluster, user *user.User) []corev1.VolumeMou
 }
 
 func getSecurityContext(secctx *corev1.PodSecurityContext) *corev1.PodSecurityContext {
-	// 999 is the default userid for redis official docker image
-	// 1000 is the default groupid for redis official docker image
+	// 999 is the default userid for valkey official docker image
+	// 1000 is the default groupid for valkey official docker image
 	groupID := int64(1000)
 	if secctx == nil {
 		secctx = &corev1.PodSecurityContext{
@@ -593,7 +593,7 @@ func getSecurityContext(secctx *corev1.PodSecurityContext) *corev1.PodSecurityCo
 	return secctx
 }
 
-func redisVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
+func valkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 	// NOTE: when upgrade from 3.8.1 to 3.8.2,3.10.1
 	// the SecurityContext not updated, which specified the runAsUser, runAsGroup, fsGroup
 	// if use 0400, without fsGroup specified, the mounted file will not readable to non root uses.
@@ -605,19 +605,19 @@ func redisVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: RedisConfigMapName(cluster.Name),
+						Name: ValkeyConfigMapName(cluster.Name),
 					},
 				},
 			},
 		},
 		{
-			Name: RedisOptVolumeName,
+			Name: ValkeyOptVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 		{
-			Name: RedisTempVolumeName,
+			Name: ValkeyTempVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
 					Medium:    corev1.StorageMediumMemory,
@@ -629,7 +629,7 @@ func redisVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 
 	if user.Password.GetSecretName() != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: RedisOperatorPasswordVolumeName,
+			Name: ValkeyOperatorPasswordVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: user.Password.GetSecretName(),
@@ -640,23 +640,23 @@ func redisVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 
 	if cluster.Spec.Access.EnableTLS {
 		volumes = append(volumes, corev1.Volume{
-			Name: RedisTLSVolumeName,
+			Name: ValkeyTLSVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: builder.GetRedisSSLSecretName(cluster.Name),
+					SecretName: builder.GetValkeySSLSecretName(cluster.Name),
 				},
 			},
 		})
 	}
 
-	dataVolume := redisDataVolume(cluster)
+	dataVolume := valkeyDataVolume(cluster)
 	if dataVolume != nil {
 		volumes = append(volumes, *dataVolume)
 	}
 	return volumes
 }
 
-func redisDataVolume(cluster *v1alpha1.Cluster) *corev1.Volume {
+func valkeyDataVolume(cluster *v1alpha1.Cluster) *corev1.Volume {
 	// This will find the volumed desired by the user. If no volume defined
 	// an EmptyDir will be used by default
 	if cluster.Spec.Storage == nil {

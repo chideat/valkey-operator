@@ -30,7 +30,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-func TestCreateRedisExporterContainer(t *testing.T) {
+func TestCreateValkeyExporterContainer(t *testing.T) {
 	tests := []struct {
 		name     string
 		rf       *v1alpha1.Failover
@@ -61,15 +61,15 @@ func TestCreateRedisExporterContainer(t *testing.T) {
 				Image:           "redis-exporter:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Env: []corev1.EnvVar{
-					{Name: "REDIS_ALIAS", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
-					{Name: "REDIS_USER", Value: ""},
-					{Name: "REDIS_PASSWORD", ValueFrom: &corev1.EnvVarSource{
+					{Name: "VALKEY_ALIAS", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+					{Name: "VALKEY_USER", Value: ""},
+					{Name: "VALKEY_PASSWORD", ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							Key:                  "password",
 							LocalObjectReference: corev1.LocalObjectReference{Name: "secret-name"},
 						},
 					}},
-					{Name: "REDIS_ADDR", Value: "redis://local.inject:6379"},
+					{Name: "VALKEY_ADDR", Value: "valkey://local.inject:6379"},
 				},
 				Ports: []corev1.ContainerPort{
 					{Name: "metrics", ContainerPort: 9121, Protocol: corev1.ProtocolTCP},
@@ -111,19 +111,19 @@ func TestCreateRedisExporterContainer(t *testing.T) {
 				Image:           "redis-exporter:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Env: []corev1.EnvVar{
-					{Name: "REDIS_ALIAS", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
-					{Name: "REDIS_USER", Value: ""},
-					{Name: "REDIS_PASSWORD", ValueFrom: &corev1.EnvVarSource{
+					{Name: "VALKEY_ALIAS", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+					{Name: "VALKEY_USER", Value: ""},
+					{Name: "VALKEY_PASSWORD", ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							Key:                  "password",
 							LocalObjectReference: corev1.LocalObjectReference{Name: "secret-name"},
 						},
 					}},
-					{Name: "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
-					{Name: "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
-					{Name: "REDIS_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
-					{Name: "REDIS_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
-					{Name: "REDIS_ADDR", Value: "rediss://local.inject:6379"},
+					{Name: "VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
+					{Name: "VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
+					{Name: "VALKEY_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
+					{Name: "VALKEY_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
+					{Name: "VALKEY_ADDR", Value: "valkeys://local.inject:6379"},
 				},
 				Ports: []corev1.ContainerPort{
 					{Name: "metrics", ContainerPort: 9121, Protocol: corev1.ProtocolTCP},
@@ -139,7 +139,7 @@ func TestCreateRedisExporterContainer(t *testing.T) {
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{
-					{Name: RedisTLSVolumeName, MountPath: "/tls"},
+					{Name: ValkeyTLSVolumeName, MountPath: "/tls"},
 				},
 				SecurityContext: builder.GetSecurityContext(nil),
 			},
@@ -148,7 +148,7 @@ func TestCreateRedisExporterContainer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			container := createRedisExporterContainer(tt.rf, tt.opUser)
+			container := createValkeyExporterContainer(tt.rf, tt.opUser)
 			assert.Equal(t, tt.expected.Name, container.Name)
 			assert.Equal(t, tt.expected.Image, container.Image)
 			assert.Equal(t, tt.expected.ImagePullPolicy, container.ImagePullPolicy)
@@ -178,13 +178,13 @@ func TestCreateStandaloneInitContainer(t *testing.T) {
 			},
 			expected: corev1.Container{
 				Name:            "standalone-pod",
-				Image:           "redis-tools:latest",
+				Image:           "valkey-tools:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				VolumeMounts: []corev1.VolumeMount{
-					{Name: "redis-data", MountPath: "/data"},
-					{Name: "redis-standalone", MountPath: "/tmp-data"},
+					{Name: "valkey-data", MountPath: "/data"},
+					{Name: "valkey-standalone", MountPath: "/tmp-data"},
 				},
-				Command: []string{"sh", "-c", "if [ -e '/data/dump.rdb' ]; then\necho 'redis storage file exist,skip' \nelse \necho 'copy redis storage file' && cp /tmp-data/dump.rdb /data/dump.rdb && chown 999:1000 /data/dump.rdb && chmod 644 /data/dump.rdb \nfi"},
+				Command: []string{"sh", "-c", "if [ -e '/data/dump.rdb' ]; then\necho 'valkey storage file exist,skip' \nelse \necho 'copy valkey storage file' && cp /tmp-data/dump.rdb /data/dump.rdb && chown 999:1000 /data/dump.rdb && chmod 644 /data/dump.rdb \nfi"},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -212,13 +212,13 @@ func TestCreateStandaloneInitContainer(t *testing.T) {
 			},
 			expected: corev1.Container{
 				Name:            "standalone-pod",
-				Image:           "redis-tools:latest",
+				Image:           "valkey-tools:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				VolumeMounts: []corev1.VolumeMount{
-					{Name: "redis-data", MountPath: "/data"},
-					{Name: "redis-standalone", MountPath: "/tmp-data"},
+					{Name: "valkey-data", MountPath: "/data"},
+					{Name: "valkey-standalone", MountPath: "/tmp-data"},
 				},
-				Command: []string{"sh", "-c", "if [ -e '/data/appendonly.aof' ]; then\necho 'redis storage file exist,skip' \nelse \necho 'copy redis storage file' && cp /tmp-data/appendonly.aof /data/appendonly.aof && chown 999:1000 /data/appendonly.aof && chmod 644 /data/appendonly.aof \nfi"},
+				Command: []string{"sh", "-c", "if [ -e '/data/appendonly.aof' ]; then\necho 'valkey storage file exist,skip' \nelse \necho 'copy valkey storage file' && cp /tmp-data/appendonly.aof /data/appendonly.aof && chown 999:1000 /data/appendonly.aof && chmod 644 /data/appendonly.aof \nfi"},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -241,7 +241,7 @@ func TestCreateStandaloneInitContainer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("REDIS_TOOLS_IMAGE", "redis-tools:latest")
+			os.Setenv("VALKEY_TOOLS_IMAGE", "valkey-tools:latest")
 
 			container := createStandaloneInitContainer(tt.rf)
 			assert.Equal(t, tt.expected.Name, container.Name)

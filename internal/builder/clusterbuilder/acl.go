@@ -59,7 +59,7 @@ func GenerateClusterOperatorsUser(rc types.ClusterInstance, passwordsecret strin
 		Spec: v1alpha1.UserSpec{
 			AccountType:     v1alpha1.System,
 			Arch:            core.ValkeyCluster,
-			RedisName:       rc.GetName(),
+			InstanceName:    rc.GetName(),
 			Username:        "operator",
 			PasswordSecrets: passwordsecrets,
 			AclRules:        rule,
@@ -105,7 +105,7 @@ func GenerateClusterUser(obj metav1.Object, u *user.User) *v1alpha1.User {
 		Spec: v1alpha1.UserSpec{
 			AccountType:     accountType,
 			Arch:            core.ValkeyCluster,
-			RedisName:       obj.GetName(),
+			InstanceName:    obj.GetName(),
 			Username:        u.Name,
 			PasswordSecrets: passwordSecrets,
 			AclRules:        strings.Join(rules, " "),

@@ -44,7 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ types.ValkeyNode = (*RedisNode)(nil)
+var _ types.ValkeyNode = (*ValkeyNode)(nil)
 
 // LoadNodes
 func LoadNodes(ctx context.Context, client kubernetes.ClientSet, sts *appv1.StatefulSet, newUser *user.User, logger logr.Logger) ([]types.ValkeyNode, error) {
@@ -76,8 +76,8 @@ func LoadNodes(ctx context.Context, client kubernetes.ClientSet, sts *appv1.Stat
 			continue
 		}
 
-		if node, err := NewRedisNode(ctx, client, sts, pod, newUser, logger); err != nil {
-			logger.Error(err, "parse redis node failed", "pod", pod.Name)
+		if node, err := NewValkeyNode(ctx, client, sts, pod, newUser, logger); err != nil {
+			logger.Error(err, "parse valkey node failed", "pod", pod.Name)
 		} else {
 			nodes = append(nodes, node)
 		}
@@ -88,7 +88,7 @@ func LoadNodes(ctx context.Context, client kubernetes.ClientSet, sts *appv1.Stat
 	return nodes, nil
 }
 
-type RedisNode struct {
+type ValkeyNode struct {
 	corev1.Pod
 
 	client      kubernetes.ClientSet
@@ -101,20 +101,20 @@ type RedisNode struct {
 	nodes       vkcli.ClusterNodes
 	config      map[string]string
 
-	// TODO: added a flag to indicate redis-server is not connectable
+	// TODO: added a flag to indicate valkey-server is not connectable
 
 	logger logr.Logger
 }
 
-func (n *RedisNode) Definition() *corev1.Pod {
+func (n *ValkeyNode) Definition() *corev1.Pod {
 	if n == nil {
 		return nil
 	}
 	return &n.Pod
 }
 
-// NewRedisNode
-func NewRedisNode(ctx context.Context, client kubernetes.ClientSet, sts *appv1.StatefulSet, pod *corev1.Pod, newUser *user.User, logger logr.Logger) (types.ValkeyNode, error) {
+// NewValkeyNode
+func NewValkeyNode(ctx context.Context, client kubernetes.ClientSet, sts *appv1.StatefulSet, pod *corev1.Pod, newUser *user.User, logger logr.Logger) (types.ValkeyNode, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -125,12 +125,12 @@ func NewRedisNode(ctx context.Context, client kubernetes.ClientSet, sts *appv1.S
 		return nil, fmt.Errorf("require pod")
 	}
 
-	node := RedisNode{
+	node := ValkeyNode{
 		Pod:         *pod,
 		client:      client,
 		statefulSet: sts,
 		newUser:     newUser,
-		logger:      logger.WithName("RedisNode"),
+		logger:      logger.WithName("ValkeyNode"),
 	}
 
 	var err error
@@ -142,15 +142,15 @@ func NewRedisNode(ctx context.Context, client kubernetes.ClientSet, sts *appv1.S
 	}
 
 	if node.IsContainerReady() {
-		vkcli, err := node.getRedisConnect(ctx, &node)
+		vkcli, err := node.getValkeyConnect(ctx, &node)
 		if err != nil {
 			return nil, err
 		}
 		defer vkcli.Close()
 
-		// TODO: list the pod status, but added a flag to indicate redis-server is not connectable,
-		// maybe redis-server blocked or the host node is down
-		if node.info, node.cinfo, node.config, node.nodes, err = node.loadRedisInfo(ctx, &node, vkcli); err != nil {
+		// TODO: list the pod status, but added a flag to indicate valkey-server is not connectable,
+		// maybe valkey-server blocked or the host node is down
+		if node.info, node.cinfo, node.config, node.nodes, err = node.loadValkeyInfo(ctx, &node, vkcli); err != nil {
 			return nil, err
 		}
 	}
@@ -165,7 +165,7 @@ func NewRedisNode(ctx context.Context, client kubernetes.ClientSet, sts *appv1.S
 //
 // this method is used to fetch pod's operator secret
 // for versions without acl supported, there exists cases that the env secret not consistent with the server
-func (s *RedisNode) loadLocalUser(ctx context.Context) (*user.User, error) {
+func (s *ValkeyNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -191,7 +191,7 @@ func (s *RedisNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 	if secretName == "" {
 		// COMPAT: for old sentinel version, the secret is mounted to the pod
 		for _, vol := range s.Spec.Volumes {
-			if vol.Name == "redis-auth" && vol.Secret != nil {
+			if vol.Name == "valkey-auth" && vol.Secret != nil {
 				secretName = vol.Secret.SecretName
 				break
 			}
@@ -212,7 +212,7 @@ func (s *RedisNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 	return user.NewUser("", user.RoleDeveloper, nil, s.CurrentVersion().IsACLSupported())
 }
 
-func (n *RedisNode) loadTLS(ctx context.Context) (*tls.Config, error) {
+func (n *ValkeyNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 	if n == nil {
 		return nil, nil
 	}
@@ -220,7 +220,7 @@ func (n *RedisNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 
 	var name string
 	for _, vol := range n.Spec.Volumes {
-		if vol.Name == clusterbuilder.RedisTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
+		if vol.Name == clusterbuilder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
 			name = vol.Secret.SecretName
 			break
 		}
@@ -258,14 +258,14 @@ func (n *RedisNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 	}, nil
 }
 
-func (n *RedisNode) getRedisConnect(ctx context.Context, node *RedisNode) (vkcli.ValkeyClient, error) {
+func (n *ValkeyNode) getValkeyConnect(ctx context.Context, node *ValkeyNode) (vkcli.ValkeyClient, error) {
 	if n == nil {
 		return nil, fmt.Errorf("nil node")
 	}
-	logger := n.logger.WithName("getRedisConnect")
+	logger := n.logger.WithName("getValkeyConnect")
 
 	if !n.IsContainerReady() {
-		logger.Error(fmt.Errorf("get redis info failed"), "pod not ready", "target",
+		logger.Error(fmt.Errorf("get valkey info failed"), "pod not ready", "target",
 			client.ObjectKey{Namespace: node.Namespace, Name: node.Name})
 		return nil, fmt.Errorf("node not ready")
 	}
@@ -297,38 +297,38 @@ func (n *RedisNode) getRedisConnect(ctx context.Context, node *RedisNode) (vkcli
 				strings.Contains(err.Error(), "invalid username-password pair") {
 				continue
 			}
-			logger.Error(err, "check connection to redis failed", "address", node.DefaultInternalIP().String())
+			logger.Error(err, "check connection to valkey failed", "address", node.DefaultInternalIP().String())
 			return nil, err
 		}
 		return vkcli, nil
 	}
 	if err == nil {
-		err = fmt.Errorf("no usable account to connect to redis instance")
+		err = fmt.Errorf("no usable account to connect to valkey instance")
 	}
 	return nil, err
 }
 
-// loadRedisInfo
-func (n *RedisNode) loadRedisInfo(ctx context.Context, node *RedisNode, vkcli vkcli.ValkeyClient) (info *vkcli.NodeInfo,
+// loadValkeyInfo
+func (n *ValkeyNode) loadValkeyInfo(ctx context.Context, node *ValkeyNode, vkcli vkcli.ValkeyClient) (info *vkcli.NodeInfo,
 	cinfo *vkcli.ClusterNodeInfo, config map[string]string, nodes vkcli.ClusterNodes, err error) {
-	// fetch redis info
+	// fetch valkey info
 	if info, err = vkcli.Info(ctx); err != nil {
-		n.logger.Error(err, "load redis info failed")
+		n.logger.Error(err, "load valkey info failed")
 		return nil, nil, nil, nil, err
 	}
 	// fetch current config
 	if config, err = vkcli.ConfigGet(ctx, "*"); err != nil {
-		n.logger.Error(err, "get redis config failed, ignore")
+		n.logger.Error(err, "get valkey config failed, ignore")
 	}
 
 	if info.ClusterEnabled == "1" {
 		if cinfo, err = vkcli.ClusterInfo(ctx); err != nil {
-			n.logger.Error(err, "load redis cluster info failed")
+			n.logger.Error(err, "load valkey cluster info failed")
 		}
 
 		// load cluster nodes
 		if items, err := vkcli.Nodes(ctx); err != nil {
-			n.logger.Error(err, "load redis cluster nodes info failed, ignore")
+			n.logger.Error(err, "load valkey cluster nodes info failed, ignore")
 		} else {
 			// TODO: port this logic to Clean actor
 			for _, n := range items {
@@ -348,7 +348,7 @@ func (n *RedisNode) loadRedisInfo(ctx context.Context, node *RedisNode, vkcli vk
 }
 
 // Refresh not concurrency safe
-func (n *RedisNode) Refresh(ctx context.Context) (err error) {
+func (n *ValkeyNode) Refresh(ctx context.Context) (err error) {
 	if n == nil {
 		return nil
 	}
@@ -369,13 +369,13 @@ func (n *RedisNode) Refresh(ctx context.Context) (err error) {
 	}
 
 	if n.IsContainerReady() {
-		vkcli, err := n.getRedisConnect(ctx, n)
+		vkcli, err := n.getValkeyConnect(ctx, n)
 		if err != nil {
 			return err
 		}
 		defer vkcli.Close()
 
-		if n.info, n.cinfo, n.config, n.nodes, err = n.loadRedisInfo(ctx, n, vkcli); err != nil {
+		if n.info, n.cinfo, n.config, n.nodes, err = n.loadValkeyInfo(ctx, n, vkcli); err != nil {
 			n.logger.Error(err, "refresh info failed")
 			return err
 		}
@@ -386,7 +386,7 @@ func (n *RedisNode) Refresh(ctx context.Context) (err error) {
 // ID get cluster id
 //
 // TODO: if it's possible generate a const id, use this id as cluster id
-func (n *RedisNode) ID() string {
+func (n *ValkeyNode) ID() string {
 	if n == nil || n.nodes == nil {
 		return ""
 	}
@@ -396,7 +396,7 @@ func (n *RedisNode) ID() string {
 	return ""
 }
 
-func (n *RedisNode) MasterID() string {
+func (n *ValkeyNode) MasterID() string {
 	if n == nil {
 		return ""
 	}
@@ -407,7 +407,7 @@ func (n *RedisNode) MasterID() string {
 }
 
 // IsMasterFailed
-func (n *RedisNode) IsMasterFailed() bool {
+func (n *ValkeyNode) IsMasterFailed() bool {
 	if n == nil {
 		return false
 	}
@@ -429,7 +429,7 @@ func (n *RedisNode) IsMasterFailed() bool {
 }
 
 // IsConnected
-func (n *RedisNode) IsConnected() bool {
+func (n *ValkeyNode) IsConnected() bool {
 	if n == nil {
 		return false
 	}
@@ -440,7 +440,7 @@ func (n *RedisNode) IsConnected() bool {
 }
 
 // IsContainerReady
-func (n *RedisNode) IsContainerReady() bool {
+func (n *ValkeyNode) IsContainerReady() bool {
 	if n == nil {
 		return false
 	}
@@ -458,7 +458,7 @@ func (n *RedisNode) IsContainerReady() bool {
 }
 
 // IsReady
-func (n *RedisNode) IsReady() bool {
+func (n *ValkeyNode) IsReady() bool {
 	if n == nil {
 		return false
 	}
@@ -472,7 +472,7 @@ func (n *RedisNode) IsReady() bool {
 }
 
 // IsTerminating
-func (n *RedisNode) IsTerminating() bool {
+func (n *ValkeyNode) IsTerminating() bool {
 	if n == nil {
 		return false
 	}
@@ -481,7 +481,7 @@ func (n *RedisNode) IsTerminating() bool {
 }
 
 // master_link_status is up
-func (n *RedisNode) IsMasterLinkUp() bool {
+func (n *ValkeyNode) IsMasterLinkUp() bool {
 	if n == nil || n.info == nil {
 		return false
 	}
@@ -493,7 +493,7 @@ func (n *RedisNode) IsMasterLinkUp() bool {
 }
 
 // IsJoined
-func (n *RedisNode) IsJoined() bool {
+func (n *ValkeyNode) IsJoined() bool {
 	if n == nil {
 		return false
 	}
@@ -507,7 +507,7 @@ func (n *RedisNode) IsJoined() bool {
 }
 
 // Slots
-func (n *RedisNode) Slots() *slot.Slots {
+func (n *ValkeyNode) Slots() *slot.Slots {
 	if n == nil {
 		return nil
 	}
@@ -520,7 +520,7 @@ func (n *RedisNode) Slots() *slot.Slots {
 }
 
 // Index returns the index of the related pod
-func (n *RedisNode) Index() int {
+func (n *ValkeyNode) Index() int {
 	if n == nil {
 		return -1
 	}
@@ -533,7 +533,7 @@ func (n *RedisNode) Index() int {
 	return -1
 }
 
-func (n *RedisNode) IsACLApplied() bool {
+func (n *ValkeyNode) IsACLApplied() bool {
 	// check if acl have been applied to container
 	container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName)
 	for _, env := range container.Env {
@@ -544,7 +544,7 @@ func (n *RedisNode) IsACLApplied() bool {
 	return false
 }
 
-func (n *RedisNode) CurrentVersion() version.ValkeyVersion {
+func (n *ValkeyNode) CurrentVersion() version.ValkeyVersion {
 	if n == nil {
 		return ""
 	}
@@ -559,28 +559,28 @@ func (n *RedisNode) CurrentVersion() version.ValkeyVersion {
 	return v
 }
 
-func (n *RedisNode) Role() core.NodeRole {
+func (n *ValkeyNode) Role() core.NodeRole {
 	if n == nil || n.info == nil {
 		return core.NodeRoleNone
 	}
 	return types.NewNodeRole(n.info.Role)
 }
 
-func (n *RedisNode) Config() map[string]string {
+func (n *ValkeyNode) Config() map[string]string {
 	if n == nil || n.config == nil {
 		return nil
 	}
 	return n.config
 }
 
-func (n *RedisNode) ConfigedMasterIP() string {
+func (n *ValkeyNode) ConfigedMasterIP() string {
 	if n == nil || n.info == nil {
 		return ""
 	}
 	return n.info.MasterHost
 }
 
-func (n *RedisNode) ConfigedMasterPort() string {
+func (n *ValkeyNode) ConfigedMasterPort() string {
 	if n == nil || n.info == nil {
 		return ""
 	}
@@ -588,12 +588,12 @@ func (n *RedisNode) ConfigedMasterPort() string {
 }
 
 // Setup only return the last command error
-func (n *RedisNode) Setup(ctx context.Context, margs ...[]any) (err error) {
+func (n *ValkeyNode) Setup(ctx context.Context, margs ...[]any) (err error) {
 	if n == nil {
 		return nil
 	}
 
-	vkcli, err := n.getRedisConnect(ctx, n)
+	vkcli, err := n.getValkeyConnect(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -622,12 +622,12 @@ func (n *RedisNode) Setup(ctx context.Context, margs ...[]any) (err error) {
 	return
 }
 
-func (n *RedisNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (interface{}, error) {
+func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (interface{}, error) {
 	if n == nil {
 		return nil, nil
 	}
 
-	vkconn, err := n.getRedisConnect(ctx, n)
+	vkconn, err := n.getValkeyConnect(ctx, n)
 	if err != nil {
 		return nil, err
 	}
@@ -690,12 +690,12 @@ func (n *RedisNode) SetACLUser(ctx context.Context, username string, passwords [
 	}
 }
 
-func (n *RedisNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {
+func (n *ValkeyNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {
 	if n == nil {
 		return nil, nil
 	}
 
-	vkcli, err := n.getRedisConnect(ctx, n)
+	vkcli, err := n.getValkeyConnect(ctx, n)
 	if err != nil {
 		return nil, err
 	}
@@ -707,21 +707,21 @@ func (n *RedisNode) Query(ctx context.Context, cmd string, args ...any) (any, er
 	return vkcli.Do(ctx, cmd, args...)
 }
 
-func (n *RedisNode) Info() vkcli.NodeInfo {
+func (n *ValkeyNode) Info() vkcli.NodeInfo {
 	if n == nil || n.info == nil {
 		return vkcli.NodeInfo{}
 	}
 	return *n.info
 }
 
-func (n *RedisNode) ClusterInfo() vkcli.ClusterNodeInfo {
+func (n *ValkeyNode) ClusterInfo() vkcli.ClusterNodeInfo {
 	if n == nil || n.cinfo == nil {
 		return vkcli.ClusterNodeInfo{}
 	}
 	return *n.cinfo
 }
 
-func (n *RedisNode) Port() int {
+func (n *ValkeyNode) Port() int {
 	if value := n.Pod.Labels[builder.PodAnnouncePortLabelKey]; value != "" {
 		if port, _ := strconv.Atoi(value); port > 0 {
 			return port
@@ -730,11 +730,11 @@ func (n *RedisNode) Port() int {
 	return n.InternalPort()
 }
 
-func (n *RedisNode) InternalPort() int {
+func (n *ValkeyNode) InternalPort() int {
 	port := 6379
 	if container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName); container != nil {
 		for _, p := range container.Ports {
-			if p.Name == clusterbuilder.RedisDataContainerPortName {
+			if p.Name == clusterbuilder.ValkeyDataContainerPortName {
 				port = int(p.ContainerPort)
 				break
 			}
@@ -743,7 +743,7 @@ func (n *RedisNode) InternalPort() int {
 	return port
 }
 
-func (n *RedisNode) DefaultIP() net.IP {
+func (n *ValkeyNode) DefaultIP() net.IP {
 	if value := n.Pod.Labels[builder.PodAnnounceIPLabelKey]; value != "" {
 		address := strings.Replace(value, "-", ":", -1)
 		return net.ParseIP(address)
@@ -751,7 +751,7 @@ func (n *RedisNode) DefaultIP() net.IP {
 	return n.DefaultInternalIP()
 }
 
-func (n *RedisNode) DefaultInternalIP() net.IP {
+func (n *ValkeyNode) DefaultInternalIP() net.IP {
 	ips := n.IPs()
 	if len(ips) == 0 {
 		return nil
@@ -782,7 +782,7 @@ func (n *RedisNode) DefaultInternalIP() net.IP {
 	return ips[0]
 }
 
-func (n *RedisNode) IPort() int {
+func (n *ValkeyNode) IPort() int {
 	if value := n.Pod.Labels[builder.PodAnnounceIPortLabelKey]; value != "" {
 		port, err := strconv.Atoi(value)
 		if err == nil {
@@ -792,11 +792,11 @@ func (n *RedisNode) IPort() int {
 	return n.InternalIPort()
 }
 
-func (n *RedisNode) InternalIPort() int {
+func (n *ValkeyNode) InternalIPort() int {
 	return n.InternalPort() + 10000
 }
 
-func (n *RedisNode) IPs() []net.IP {
+func (n *ValkeyNode) IPs() []net.IP {
 	if n == nil {
 		return nil
 	}
@@ -807,11 +807,11 @@ func (n *RedisNode) IPs() []net.IP {
 	return ips
 }
 
-func (n *RedisNode) GetPod() *corev1.Pod {
+func (n *ValkeyNode) GetPod() *corev1.Pod {
 	return &n.Pod
 }
 
-func (n *RedisNode) NodeIP() net.IP {
+func (n *ValkeyNode) NodeIP() net.IP {
 	if n == nil {
 		return nil
 	}
@@ -819,7 +819,7 @@ func (n *RedisNode) NodeIP() net.IP {
 }
 
 // ContainerStatus
-func (n *RedisNode) ContainerStatus() *corev1.ContainerStatus {
+func (n *ValkeyNode) ContainerStatus() *corev1.ContainerStatus {
 	if n == nil {
 		return nil
 	}
@@ -832,14 +832,14 @@ func (n *RedisNode) ContainerStatus() *corev1.ContainerStatus {
 }
 
 // Status
-func (n *RedisNode) Status() corev1.PodPhase {
+func (n *ValkeyNode) Status() corev1.PodPhase {
 	if n == nil {
 		return corev1.PodUnknown
 	}
 	return n.Pod.Status.Phase
 }
 
-func (n *RedisNode) ReplicaOf(ctx context.Context, ip, port string) error {
+func (n *ValkeyNode) ReplicaOf(ctx context.Context, ip, port string) error {
 	if n.DefaultIP().String() == ip && strconv.Itoa(n.Port()) == port {
 		return nil
 	}

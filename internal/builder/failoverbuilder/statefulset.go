@@ -40,31 +40,31 @@ import (
 )
 
 const (
-	redisStorageVolumeName       = "redis-data"
-	exporterContainerName        = "redis-exporter"
-	graceTime                    = 30
-	PasswordENV                  = "REDIS_PASSWORD"
-	redisConfigurationVolumeName = "redis-config"
-	RedisTmpVolumeName           = "redis-tmp"
-	RedisTLSVolumeName           = "redis-tls"
-	redisAuthName                = "redis-auth"
-	redisStandaloneVolumeName    = "redis-standalone"
-	redisOptName                 = "redis-opt"
-	OperatorUsername             = "OPERATOR_USERNAME"
-	OperatorSecretName           = "OPERATOR_SECRET_NAME"
-	MonitorOperatorSecretName    = "MONITOR_OPERATOR_SECRET_NAME"
-	ServerContainerName          = "redis"
+	valkeyStorageVolumeName       = "valkey-data"
+	exporterContainerName         = "valkey-exporter"
+	graceTime                     = 30
+	PasswordENV                   = "VALKEY_PASSWORD"
+	valkeyConfigurationVolumeName = "valkey-config"
+	ValkeyTmpVolumeName           = "valkey-tmp"
+	ValkeyTLSVolumeName           = "valkey-tls"
+	valkeyAuthName                = "valkey-auth"
+	valkeyStandaloneVolumeName    = "valkey-standalone"
+	valkeyOptName                 = "valkey-opt"
+	OperatorUsername              = "OPERATOR_USERNAME"
+	OperatorSecretName            = "OPERATOR_SECRET_NAME"
+	MonitorOperatorSecretName     = "MONITOR_OPERATOR_SECRET_NAME"
+	ServerContainerName           = "valkey"
 )
 
-func GetRedisRWServiceName(failoverName string) string {
+func GetValkeyRWServiceName(failoverName string) string {
 	return fmt.Sprintf("rfr-%s-read-write", failoverName)
 }
 
-func GetRedisROServiceName(failoverName string) string {
+func GetValkeyROServiceName(failoverName string) string {
 	return fmt.Sprintf("rfr-%s-read-only", failoverName)
 }
 
-func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]string, isAllACLSupported bool) *appv1.StatefulSet {
+func GenerateValkeyStatefulSet(inst types.FailoverInstance, selectors map[string]string, isAllACLSupported bool) *appv1.StatefulSet {
 
 	var (
 		rf = inst.Definition()
@@ -81,19 +81,19 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 	}
 
 	if len(selectors) == 0 {
-		selectors = lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(RedisArchRoleRedis, rf.Name))
+		selectors = lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name))
 	} else {
-		selectors = lo.Assign(selectors, GenerateSelectorLabels(RedisArchRoleRedis, rf.Name))
+		selectors = lo.Assign(selectors, GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name))
 	}
-	labels := lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(RedisArchRoleRedis, rf.Name), selectors)
+	labels := lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name), selectors)
 
 	secretName := rf.Spec.Access.DefaultPasswordSecret
 	if opUser.GetPassword() != nil {
 		secretName = opUser.GetPassword().SecretName
 	}
-	redisCommand := getRedisCommand(rf)
-	volumeMounts := getRedisVolumeMounts(rf, secretName)
-	volumes := getRedisVolumes(inst, rf, secretName)
+	valkeyCommand := getValkeyCommand(rf)
+	volumeMounts := getValkeyVolumeMounts(rf, secretName)
+	volumes := getValkeyVolumes(inst, rf, secretName)
 
 	localhost := "127.0.0.1"
 	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -125,7 +125,7 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 					HostAliases: []corev1.HostAlias{
 						{IP: localhost, Hostnames: []string{config.LocalInjectName}},
 					},
-					ServiceAccountName:            clusterbuilder.RedisInstanceServiceAccountName,
+					ServiceAccountName:            clusterbuilder.ValkeyInstanceServiceAccountName,
 					Affinity:                      getAffinity(rf.Spec.Affinity, selectors),
 					Tolerations:                   rf.Spec.Tolerations,
 					NodeSelector:                  rf.Spec.NodeSelector,
@@ -134,19 +134,19 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 					TerminationGracePeriodSeconds: ptr.To(clusterbuilder.DefaultTerminationGracePeriodSeconds),
 					Containers: []corev1.Container{
 						{
-							Name:            "redis",
+							Name:            "valkey",
 							Image:           rf.Spec.Image,
 							ImagePullPolicy: builder.GetPullPolicy(rf.Spec.ImagePullPolicy),
-							Env:             createRedisContainerEnvs(inst, opUser, aclConfigMapName),
+							Env:             createValkeyContainerEnvs(inst, opUser, aclConfigMapName),
 							Ports: []corev1.ContainerPort{
 								{
-									Name:          "redis",
+									Name:          "valkey",
 									ContainerPort: 6379,
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
 							VolumeMounts: volumeMounts,
-							Command:      redisCommand,
+							Command:      valkeyCommand,
 							StartupProbe: &corev1.Probe{
 								InitialDelaySeconds: graceTime,
 								TimeoutSeconds:      5,
@@ -181,7 +181,7 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 							Lifecycle: &corev1.Lifecycle{
 								PreStop: &corev1.LifecycleHandler{
 									Exec: &corev1.ExecAction{
-										Command: []string{"/bin/sh", "-c", "/opt/redis-tools failover shutdown &> /proc/1/fd/1"},
+										Command: []string{"/bin/sh", "-c", "/opt/valkey-tools failover shutdown &> /proc/1/fd/1"},
 									},
 								},
 							},
@@ -200,7 +200,7 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 	if storage := rf.Spec.Storage; storage != nil {
 		pvc := corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: getRedisDataVolumeName(rf),
+				Name: getValkeyDataVolumeName(rf),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -234,14 +234,14 @@ func GenerateRedisStatefulSet(inst types.FailoverInstance, selectors map[string]
 		}
 		ss.Spec.Template.Annotations = lo.Assign(ss.Spec.Template.Annotations, defaultAnnotations)
 
-		exporter := createRedisExporterContainer(rf, opUser)
+		exporter := createValkeyExporterContainer(rf, opUser)
 		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, exporter)
 	}
 	return ss
 }
 
 func createExposeContainer(rf *v1alpha1.Failover) corev1.Container {
-	image := config.GetRedisToolsImage(rf)
+	image := config.GetValkeyToolsImage(rf)
 	container := corev1.Container{
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -258,11 +258,11 @@ func createExposeContainer(rf *v1alpha1.Failover) corev1.Container {
 		ImagePullPolicy: builder.GetPullPolicy(rf.Spec.ImagePullPolicy),
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      redisOptName,
+				Name:      valkeyOptName,
 				MountPath: "/mnt/opt/",
 			},
 			{
-				Name:      getRedisDataVolumeName(rf),
+				Name:      getValkeyDataVolumeName(rf),
 				MountPath: "/data",
 			},
 		},
@@ -302,7 +302,7 @@ func createExposeContainer(rf *v1alpha1.Failover) corev1.Container {
 	return container
 }
 
-func createRedisContainerEnvs(inst types.FailoverInstance, opUser *user.User, aclConfigMapName string) []corev1.EnvVar {
+func createValkeyContainerEnvs(inst types.FailoverInstance, opUser *user.User, aclConfigMapName string) []corev1.EnvVar {
 	rf := inst.Definition()
 
 	var monitorUri string
@@ -314,7 +314,7 @@ func createRedisContainerEnvs(inst types.FailoverInstance, opUser *user.User, ac
 		monitorUri = fmt.Sprintf("sentinel://%s", strings.Join(sentinelNodes, ","))
 	}
 
-	redisEnvs := []corev1.EnvVar{
+	valkeyEnvs := []corev1.EnvVar{
 		{
 			Name: "NAMESPACE",
 			ValueFrom: &corev1.EnvVarSource{
@@ -401,7 +401,7 @@ func createRedisContainerEnvs(inst types.FailoverInstance, opUser *user.User, ac
 			Value: rf.Status.Monitor.PasswordSecret,
 		},
 	}
-	return redisEnvs
+	return valkeyEnvs
 }
 
 func createStandaloneInitContainer(rf *v1alpha1.Failover) corev1.Container {
@@ -416,9 +416,9 @@ func createStandaloneInitContainer(rf *v1alpha1.Failover) corev1.Container {
 
 	filepath = path.Join(tmpPath, filepath)
 	command := fmt.Sprintf("if [ -e '%s' ]; then", targetFile) + "\n" +
-		"echo 'redis storage file exist,skip' \n" +
+		"echo 'valkey storage file exist,skip' \n" +
 		"else \n" +
-		fmt.Sprintf("echo 'copy redis storage file' && cp %s %s ", filepath, targetFile) +
+		fmt.Sprintf("echo 'copy valkey storage file' && cp %s %s ", filepath, targetFile) +
 		fmt.Sprintf("&& chown 999:1000 %s ", targetFile) +
 		fmt.Sprintf("&& chmod 644 %s \n", targetFile) +
 		"fi"
@@ -435,15 +435,15 @@ func createStandaloneInitContainer(rf *v1alpha1.Failover) corev1.Container {
 			},
 		},
 		Name:            "standalone-pod",
-		Image:           config.GetRedisToolsImage(rf),
+		Image:           config.GetValkeyToolsImage(rf),
 		ImagePullPolicy: builder.GetPullPolicy(rf.Spec.ImagePullPolicy),
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      getRedisDataVolumeName(rf),
+				Name:      getValkeyDataVolumeName(rf),
 				MountPath: "/data",
 			},
 			{
-				Name:      redisStandaloneVolumeName,
+				Name:      valkeyStandaloneVolumeName,
 				MountPath: tmpPath,
 			},
 		},
@@ -464,7 +464,7 @@ func createStandaloneInitContainer(rf *v1alpha1.Failover) corev1.Container {
 	return container
 }
 
-func createRedisExporterContainer(rf *v1alpha1.Failover, opUser *user.User) corev1.Container {
+func createValkeyExporterContainer(rf *v1alpha1.Failover, opUser *user.User) corev1.Container {
 	var (
 		username string
 		secret   string
@@ -484,7 +484,7 @@ func createRedisExporterContainer(rf *v1alpha1.Failover, opUser *user.User) core
 		ImagePullPolicy: builder.GetPullPolicy(rf.Spec.Exporter.ImagePullPolicy, rf.Spec.ImagePullPolicy),
 		Env: []corev1.EnvVar{
 			{
-				Name: "REDIS_ALIAS",
+				Name: "VALKEY_ALIAS",
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						FieldPath: "metadata.name",
@@ -492,7 +492,7 @@ func createRedisExporterContainer(rf *v1alpha1.Failover, opUser *user.User) core
 				},
 			},
 			{
-				Name:  "REDIS_USER",
+				Name:  "VALKEY_USER",
 				Value: username,
 			},
 		},
@@ -532,40 +532,40 @@ func createRedisExporterContainer(rf *v1alpha1.Failover, opUser *user.User) core
 
 	if rf.Spec.Access.EnableTLS {
 		container.VolumeMounts = append(container.VolumeMounts,
-			corev1.VolumeMount{Name: RedisTLSVolumeName, MountPath: "/tls"},
+			corev1.VolumeMount{Name: ValkeyTLSVolumeName, MountPath: "/tls"},
 		)
 		container.Env = append(container.Env, []corev1.EnvVar{
 			{
-				Name:  "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE",
 				Value: "/tls/tls.key",
 			},
 			{
-				Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE",
 				Value: "/tls/tls.crt",
 			},
 			{
-				Name:  "REDIS_EXPORTER_TLS_CA_CERT_FILE",
+				Name:  "VALKEY_EXPORTER_TLS_CA_CERT_FILE",
 				Value: "/tls/ca.crt",
 			},
 			{
-				Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
+				Name:  "VALKEY_EXPORTER_SKIP_TLS_VERIFICATION",
 				Value: "true",
 			},
 			{
-				Name:  "REDIS_ADDR",
-				Value: fmt.Sprintf("rediss://%s:6379", config.LocalInjectName),
+				Name:  "VALKEY_ADDR",
+				Value: fmt.Sprintf("valkeys://%s:6379", config.LocalInjectName),
 			},
 		}...)
 	} else {
 		container.Env = append(container.Env, []corev1.EnvVar{
-			{Name: "REDIS_ADDR",
-				Value: fmt.Sprintf("redis://%s:6379", config.LocalInjectName)},
+			{Name: "VALKEY_ADDR",
+				Value: fmt.Sprintf("valkey://%s:6379", config.LocalInjectName)},
 		}...)
 	}
 	return container
 }
 
-func getRedisCommand(rf *v1alpha1.Failover) []string {
+func getValkeyCommand(rf *v1alpha1.Failover) []string {
 	cmds := []string{"sh", "/opt/run_failover.sh"}
 	return cmds
 }
@@ -593,51 +593,51 @@ func getAffinity(affinity *corev1.Affinity, labels map[string]string) *corev1.Af
 	}
 }
 
-func getRedisVolumeMounts(rf *v1alpha1.Failover, secret string) []corev1.VolumeMount {
+func getValkeyVolumeMounts(rf *v1alpha1.Failover, secret string) []corev1.VolumeMount {
 	volumeMounts := []corev1.VolumeMount{
 		{
-			Name:      redisConfigurationVolumeName,
-			MountPath: "/redis",
+			Name:      valkeyConfigurationVolumeName,
+			MountPath: "/valkey",
 		},
 		{
-			Name:      getRedisDataVolumeName(rf),
+			Name:      getValkeyDataVolumeName(rf),
 			MountPath: "/data",
 		},
 		{
-			Name:      RedisTmpVolumeName,
+			Name:      ValkeyTmpVolumeName,
 			MountPath: "/tmp",
 		},
 		{
-			Name:      redisOptName,
+			Name:      valkeyOptName,
 			MountPath: "/opt",
 		},
 	}
 
 	if rf.Spec.Access.EnableTLS {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
+			Name:      ValkeyTLSVolumeName,
 			MountPath: "/tls",
 		})
 	}
 	if rf.Spec.Access.DefaultPasswordSecret != "" || secret != "" {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      redisAuthName,
+			Name:      valkeyAuthName,
 			MountPath: "/account",
 		})
 	}
 	return volumeMounts
 }
 
-func getRedisDataVolumeName(_ *v1alpha1.Failover) string {
-	return redisStorageVolumeName
+func getValkeyDataVolumeName(_ *v1alpha1.Failover) string {
+	return valkeyStorageVolumeName
 }
 
-func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretName string) []corev1.Volume {
+func getValkeyVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretName string) []corev1.Volume {
 	executeMode := int32(0400)
-	configname := GetRedisConfigMapName(rf)
+	configname := GetValkeyConfigMapName(rf)
 	volumes := []corev1.Volume{
 		{
-			Name: redisConfigurationVolumeName,
+			Name: valkeyConfigurationVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -648,7 +648,7 @@ func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretN
 			},
 		},
 		{
-			Name: RedisTmpVolumeName,
+			Name: ValkeyTmpVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
 					Medium:    corev1.StorageMediumMemory,
@@ -657,29 +657,29 @@ func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretN
 			},
 		},
 		{
-			Name: redisOptName,
+			Name: valkeyOptName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 	}
 
-	if dataVolume := getRedisDataVolume(rf); dataVolume != nil {
+	if dataVolume := getValkeyDataVolume(rf); dataVolume != nil {
 		volumes = append(volumes, *dataVolume)
 	}
 	if rf.Spec.Access.EnableTLS {
 		volumes = append(volumes, corev1.Volume{
-			Name: RedisTLSVolumeName,
+			Name: ValkeyTLSVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: builder.GetRedisSSLSecretName(rf.Name),
+					SecretName: builder.GetValkeySSLSecretName(rf.Name),
 				},
 			},
 		})
 	}
 	if secretName != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: redisAuthName,
+			Name: valkeyAuthName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: secretName,
@@ -694,7 +694,7 @@ func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretN
 			if rf.Annotations[AnnotationStandaloneInitHostPath] != "" {
 				hostpathType := corev1.HostPathDirectory
 				volumes = append(volumes, corev1.Volume{
-					Name: redisStandaloneVolumeName,
+					Name: valkeyStandaloneVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: rf.Annotations[AnnotationStandaloneInitHostPath],
@@ -707,7 +707,7 @@ func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretN
 			// pvc
 			if rf.Annotations[AnnotationStandaloneInitPvcName] != "" {
 				volumes = append(volumes, corev1.Volume{
-					Name: redisStandaloneVolumeName,
+					Name: valkeyStandaloneVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 							ClaimName: rf.Annotations[AnnotationStandaloneInitPvcName],
@@ -720,12 +720,12 @@ func getRedisVolumes(inst types.FailoverInstance, rf *v1alpha1.Failover, secretN
 	return volumes
 }
 
-func getRedisDataVolume(rf *v1alpha1.Failover) *corev1.Volume {
+func getValkeyDataVolume(rf *v1alpha1.Failover) *corev1.Volume {
 	if rf.Spec.Storage != nil {
 		return nil
 	}
 	return &corev1.Volume{
-		Name: redisStorageVolumeName,
+		Name: valkeyStorageVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		},

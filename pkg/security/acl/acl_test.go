@@ -63,7 +63,7 @@ func TestLoadACLUsers(t *testing.T) {
 	})
 
 	t.Run("valid ConfigMap", func(t *testing.T) {
-		secretName := "redis-sen-customport-sm8r5"
+		secretName := "valkey-sen-customport-sm8r5"
 		namespace := "default"
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -81,7 +81,7 @@ func TestLoadACLUsers(t *testing.T) {
 				Namespace: namespace,
 			},
 			Data: map[string]string{
-				"default": `{"name":"default","role":"Developer","password":{"secretName":"redis-sen-customport-sm8r5"},"rules":[{"categories":["all"],"disallowedCommands":["acl","flushall","flushdb","keys"],"keyPatterns":["*"]}]}`,
+				"default": `{"name":"default","role":"Developer","password":{"secretName":"valkey-sen-customport-sm8r5"},"rules":[{"categories":["all"],"disallowedCommands":["acl","flushall","flushdb","keys"],"keyPatterns":["*"]}]}`,
 			},
 		}
 		users, err := LoadACLUsers(ctx, clientset, cm)

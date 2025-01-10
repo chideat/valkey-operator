@@ -40,7 +40,7 @@ func IsStatefulsetChanged(newSts, sts *appsv1.StatefulSet, logger logr.Logger) b
 	}
 
 	for _, name := range []string{
-		RedisStorageVolumeName,
+		ValkeyStorageVolumeName,
 	} {
 		oldPvc := util.GetVolumeClaimTemplatesByName(sts.Spec.VolumeClaimTemplates, name)
 		newPvc := util.GetVolumeClaimTemplatesByName(newSts.Spec.VolumeClaimTemplates, name)

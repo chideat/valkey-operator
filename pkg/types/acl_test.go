@@ -218,7 +218,7 @@ func TestPatchClusterClientRequiredRules(t *testing.T) {
 			if rule != nil {
 				rule = PatchClusterClientRequiredRules(rule)
 				if got := rule.Encode(); got != tt.want {
-					t.Errorf("PatchRedisClusterClientRequiredRules() = %v, want %v", got, tt.want)
+					t.Errorf("PatchValkeyClusterClientRequiredRules() = %v, want %v", got, tt.want)
 				}
 			}
 		})
@@ -267,7 +267,7 @@ func TestPatchPubsubRules(t *testing.T) {
 			if rule != nil {
 				rule = PatchPubsubRules(rule)
 				if got := rule.Encode(); got != tt.want {
-					t.Errorf("PatchRedisPubsubRules() = %v, want %v", got, tt.want)
+					t.Errorf("PatchValkeyPubsubRules() = %v, want %v", got, tt.want)
 				}
 			}
 		})
@@ -289,8 +289,7 @@ var (
 		},
 		Data: map[string][]byte{},
 	}
-	validPassword, _   = user.NewPassword(validSecret)
-	invalidPassword, _ = user.NewPassword(invalidSecret)
+	validPassword, _ = user.NewPassword(validSecret)
 )
 
 func TestNewOperatorUser(t *testing.T) {

@@ -27,48 +27,48 @@ const (
 	SentinelName           = "s"
 	SentinelRoleName       = "sentinel"
 	SentinelConfigFileName = "sentinel.conf"
-	RedisConfigFileName    = "redis.conf"
-	RedisName              = "r"
-	RedisShutdownName      = "r-s"
-	RedisReadinessName     = "r-readiness"
-	RedisRoleName          = "redis"
-	RedisMasterName        = "mymaster"
+	ValkeyConfigFileName   = "valkey.conf"
+	ValkeyName             = "r"
+	ValkeyShutdownName     = "r-s"
+	ValkeyReadinessName    = "r-readiness"
+	ValkeyRoleName         = "valkey"
+	ValkeyMasterName       = "mymaster"
 
 	// TODO: reserverd for compatibility, remove in 3.22
-	RedisSentinelSVCHostKey = "RFS_REDIS_SERVICE_HOST"
-	RedisSentinelSVCPortKey = "RFS_REDIS_SERVICE_PORT_SENTINEL"
+	ValkeySentinelSVCHostKey = "RFS_VALKEY_SERVICE_HOST"
+	ValkeySentinelSVCPortKey = "RFS_VALKEY_SERVICE_PORT_SENTINEL"
 )
 
-// variables refering to the redis exporter port
+// variables refering to the exporter port
 const (
 	ExporterPort                  = 9121
 	SentinelExporterPort          = 9355
 	SentinelPort                  = "26379"
 	ExporterPortName              = "http-metrics"
-	RedisPort                     = 6379
-	RedisPortString               = "6379"
-	RedisPortName                 = "redis"
-	ExporterContainerName         = "redis-exporter"
+	ValkeyPort                    = 6379
+	ValkeyPortString              = "6379"
+	ValkeyPortName                = "valkey"
+	ExporterContainerName         = "valkey-exporter"
 	SentinelExporterContainerName = "sentinel-exporter"
 )
 
 // label
 const (
-	LabelInstanceName     = "app.kubernetes.io/name"
-	LabelPartOf           = "app.kubernetes.io/part-of"
-	LabelRedisConfig      = "redis.middleware.alauda.io/config"
-	LabelRedisConfigValue = "true"
-	LabelRedisRole        = "redis.middleware.alauda.io/role"
+	LabelInstanceName      = "app.kubernetes.io/name"
+	LabelPartOf            = "app.kubernetes.io/part-of"
+	LabelValkeyConfig      = "valkey.middleware.alauda.io/config"
+	LabelValkeyConfigValue = "true"
+	LabelValkeyRole        = "valkey.middleware.alauda.io/role"
 )
 
-// Redis arch
+// Valkey arch
 const (
 	Standalone = "standalone"
 	Sentinel   = "sentinel"
 	Cluster    = "cluster"
 )
 
-// Redis role
+// Valkey role
 const (
 	Master = "master"
 	Slave  = "slave"
@@ -86,16 +86,16 @@ func GetCommonLabels(name string, extra ...map[string]string) map[string]string 
 
 func getPublicLabels(name string) map[string]string {
 	return map[string]string{
-		"redisfailovers.databases.spotahome.com/name": name,
-		"app.kubernetes.io/managed-by":                "redis-operator",
-		builder.InstanceNameLabel:                     name,
-		builder.InstanceTypeLabel:                     "redis-failover",
+		"valkeyfailovers.databases.spotahome.com/name": name,
+		"app.kubernetes.io/managed-by":                 "valkey-operator",
+		builder.InstanceNameLabel:                      name,
+		builder.InstanceTypeLabel:                      "valkey-failover",
 	}
 }
 
 func GenerateSelectorLabels(component, name string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/part-of":   "redis-failover",
+		"app.kubernetes.io/part-of":   "valkey-failover",
 		"app.kubernetes.io/component": component,
 		"app.kubernetes.io/name":      name,
 	}
@@ -111,12 +111,12 @@ func GetFailoverDeploymentName(sentinelName string) string {
 	return fmt.Sprintf("rfs-%s", sentinelName)
 }
 
-// Redis standalone annotation
+// Valkey standalone annotation
 const (
-	AnnotationStandaloneLoadFilePath = "redis-standalone/filepath"
-	AnnotationStandaloneInitStorage  = "redis-standalone/storage-type"
-	AnnotationStandaloneInitPvcName  = "redis-standalone/pvc-name"
-	AnnotationStandaloneInitHostPath = "redis-standalone/hostpath"
+	AnnotationStandaloneLoadFilePath = "valkey-standalone/filepath"
+	AnnotationStandaloneInitStorage  = "valkey-standalone/storage-type"
+	AnnotationStandaloneInitPvcName  = "valkey-standalone/pvc-name"
+	AnnotationStandaloneInitHostPath = "valkey-standalone/hostpath"
 )
 
 func NeedStandaloneInit(rf *v1alpha1.Failover) bool {
@@ -132,8 +132,8 @@ func GenerateName(typeName, metaName string) string {
 	return fmt.Sprintf("%s%s-%s", BaseName, typeName, metaName)
 }
 
-func GetRedisName(rf *v1alpha1.Failover) string {
-	return GenerateName(RedisName, rf.Name)
+func GetValkeyName(rf *v1alpha1.Failover) string {
+	return GenerateName(ValkeyName, rf.Name)
 }
 
 func GetFailoverNodePortServiceName(rf *v1alpha1.Failover, index int) string {
@@ -141,28 +141,28 @@ func GetFailoverNodePortServiceName(rf *v1alpha1.Failover, index int) string {
 	return fmt.Sprintf("%s-%d", name, index)
 }
 
-func GetRedisShutdownName(rf *v1alpha1.Failover) string {
-	return GenerateName(RedisShutdownName, rf.Name)
+func GetValkeyShutdownName(rf *v1alpha1.Failover) string {
+	return GenerateName(ValkeyShutdownName, rf.Name)
 }
 
-func GetRedisNameExporter(rf *v1alpha1.Failover) string {
-	return GenerateName(fmt.Sprintf("%s%s", RedisName, "e"), rf.Name)
+func GetValkeyNameExporter(rf *v1alpha1.Failover) string {
+	return GenerateName(fmt.Sprintf("%s%s", ValkeyName, "e"), rf.Name)
 }
 
-func GetRedisNodePortSvc(rf *v1alpha1.Failover) string {
-	return GenerateName(fmt.Sprintf("%s-%s", RedisName, "n"), rf.Name)
+func GetValkeyNodePortSvc(rf *v1alpha1.Failover) string {
+	return GenerateName(fmt.Sprintf("%s-%s", ValkeyName, "n"), rf.Name)
 }
 
-func GetRedisSecretName(rf *v1alpha1.Failover) string {
-	return GenerateName(fmt.Sprintf("%s-%s", RedisName, "p"), rf.Name)
+func GetValkeySecretName(rf *v1alpha1.Failover) string {
+	return GenerateName(fmt.Sprintf("%s-%s", ValkeyName, "p"), rf.Name)
 }
 
-func GetRedisShutdownConfigMapName(rf *v1alpha1.Failover) string {
-	return GenerateName(fmt.Sprintf("%s-%s", RedisName, "s"), rf.Name)
+func GetValkeyShutdownConfigMapName(rf *v1alpha1.Failover) string {
+	return GenerateName(fmt.Sprintf("%s-%s", ValkeyName, "s"), rf.Name)
 }
 
-func GetCronJobName(redisName, scheduleName string) string {
-	return fmt.Sprintf("%s-%s", redisName, scheduleName)
+func GetCronJobName(valkeyName, scheduleName string) string {
+	return fmt.Sprintf("%s-%s", valkeyName, scheduleName)
 }
 
 // Sentinel

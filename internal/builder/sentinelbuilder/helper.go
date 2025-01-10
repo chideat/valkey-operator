@@ -32,20 +32,20 @@ func GetCommonLabels(name string, extra ...map[string]string) map[string]string 
 
 func getPublicLabels(name string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/component":                 RedisArchRoleSEN,
-		"app.kubernetes.io/managed-by":                "redis-operator",
-		builder.InstanceNameLabel:                     name,
-		builder.InstanceTypeLabel:                     "redis-failover",
-		"redissentinels.databases.spotahome.com/name": name,
+		"app.kubernetes.io/component":            ValkeyArchRoleSEN,
+		"app.kubernetes.io/managed-by":           "valkey-operator",
+		builder.InstanceNameLabel:                name,
+		builder.InstanceTypeLabel:                "valkey-failover",
+		"sentinels.databases.spotahome.com/name": name,
 	}
 }
 
 func GenerateSelectorLabels(component, name string) map[string]string {
 	// NOTE: not use "middleware.instance/name" and "middleware.instance/type" for compatibility for old instances
 	return map[string]string{
-		"app.kubernetes.io/name":                      name,
-		"redissentinels.databases.spotahome.com/name": name,
-		"app.kubernetes.io/component":                 component,
+		"app.kubernetes.io/name":                 name,
+		"sentinels.databases.spotahome.com/name": name,
+		"app.kubernetes.io/component":            component,
 	}
 }
 

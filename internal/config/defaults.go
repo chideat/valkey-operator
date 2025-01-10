@@ -29,23 +29,21 @@ var (
 	ErrInvalidImage  = errors.New("invalid source image")
 )
 
-const DefaultRedisVersion = "6.0"
+const DefaultValkeyVersion = "8.0"
 
-var redisVersionEnvs = []string{
-	"REDIS_VERSION_4_IMAGE",
-	"REDIS_VERSION_5_IMAGE",
-	"REDIS_VERSION_6_IMAGE",
-	"REDIS_VERSION_7_IMAGE",
-	"REDIS_VERSION_7_2_IMAGE",
+var valkeyVersionEnvs = []string{
+	"VALKEY_VERSION_7_2_IMAGE",
+	"VALKEY_VERSION_7_4_IMAGE",
+	"VALKEY_VERSION_8_0_IMAGE",
 }
 
 func GetOperatorVersion() string {
-	return os.Getenv("REDIS_OPERATOR_VERSION")
+	return os.Getenv("VALKEY_OPERATOR_VERSION")
 }
 
-func GetRedisVersion(image string) string {
+func GetValkeyVersion(image string) string {
 	if image == "" {
-		image = GetDefaultRedisImage()
+		image = GetDefaultValkeyImage()
 	}
 	if idx := strings.Index(image, ":"); idx != -1 {
 		if dashIdx := strings.Index(image[idx+1:], "-"); dashIdx != -1 {
@@ -89,52 +87,18 @@ func Getenv(name string, defaults ...string) string {
 	return ""
 }
 
-func GetDefaultRedisImage() string {
-	return Getenv("DEFAULT_REDIS_IMAGE")
+func GetDefaultValkeyImage() string {
+	return Getenv("DEFAULT_VALKEY_IMAGE")
 }
 
-func GetRedisImageByVersion(version string) (string, error) {
+func GetValkeyImageByVersion(version string) (string, error) {
 	wantedVersion, err := semver.NewVersion(version)
 	if err != nil {
 		return "", ErrInvalidImage
 	}
 
 	var lastErr error
-	for _, name := range redisVersionEnvs {
-		val := os.Getenv(name)
-		if val == "" {
-			continue
-		}
-		fields := strings.SplitN(val, ":", 2)
-		if len(fields) != 2 {
-			continue
-		}
-
-		ver, err := semver.NewVersion(fields[1])
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if ver.Major() == wantedVersion.Major() && ver.Minor() == wantedVersion.Minor() {
-			return val, nil
-		}
-	}
-	if lastErr != nil {
-		return "", lastErr
-	}
-	return "", ErrImageNotFound
-}
-
-func GetActiveRedisImageByVersion(version string) (string, error) {
-	wantedVersion, err := semver.NewVersion(version)
-	if err != nil {
-		return "", ErrInvalidImage
-	}
-
-	var lastErr error
-	for _, name := range []string{
-		"ACTIVE_REDIS_VERSION_6_IMAGE",
-	} {
+	for _, name := range valkeyVersionEnvs {
 		val := os.Getenv(name)
 		if val == "" {
 			continue
@@ -163,52 +127,22 @@ func BuildImageVersionKey(typ string) string {
 	return ImageVersionKeyPrefix + typ
 }
 
-func GetProxyImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "redis-proxy"
+func GetValkeyToolsImage(obj v1.Object) string {
+	key := ImageVersionKeyPrefix + "valkey-operator"
 	if obj != nil {
 		if val := obj.GetAnnotations()[key]; val != "" {
 			return val
 		}
 	}
-	return Getenv("DEFAULT_PROXY_IMAGE")
+	return Getenv("VALKEY_TOOLS_IMAGE")
 }
 
-func GetShakeImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "redis-shake"
-	if obj != nil {
-		if val := obj.GetAnnotations()[key]; val != "" {
-			return val
-		}
-	}
-	return Getenv("DEFAULT_SHAKE_IMAGE")
-}
-
-func GetRedisToolsImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "redis-tools"
-	if obj != nil {
-		if val := obj.GetAnnotations()[key]; val != "" {
-			return val
-		}
-	}
-	return Getenv("REDIS_TOOLS_IMAGE")
-}
-
-func GetRedisExporterImage(obj v1.Object) string {
+func GetValkeyExporterImage(obj v1.Object) string {
 	key := ImageVersionKeyPrefix + "redis-exporter"
 	if obj != nil {
 		if val := obj.GetAnnotations()[key]; val != "" {
 			return val
 		}
 	}
-	return Getenv("REDIS_EXPORTER_IMAGE", Getenv("DEFAULT_EXPORTER_IMAGE"))
-}
-
-func GetRedisExposeImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "expose-pod"
-	if obj != nil {
-		if val := obj.GetAnnotations()[key]; val != "" {
-			return val
-		}
-	}
-	return ""
+	return Getenv("VALKEY_EXPORTER_IMAGE", Getenv("DEFAULT_EXPORTER_IMAGE"))
 }

@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
@@ -45,21 +46,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ types.SentinelInstance = (*RedisSentinel)(nil)
+var _ types.SentinelInstance = (*ValkeySentinel)(nil)
 
-type RedisSentinel struct {
+type ValkeySentinel struct {
 	v1alpha1.Sentinel
 
 	client        clientset.ClientSet
 	eventRecorder record.EventRecorder
 
-	replication *RedisSentinelReplication
+	replication *ValkeySentinelReplication
 	tlsConfig   *tls.Config
 	users       types.Users
 	logger      logr.Logger
 }
 
-func NewSentinel(ctx context.Context, cliset clientset.ClientSet, eventRecorder record.EventRecorder, def *v1alpha1.Sentinel, logger logr.Logger) (*RedisSentinel, error) {
+func NewSentinel(ctx context.Context, cliset clientset.ClientSet, eventRecorder record.EventRecorder, def *v1alpha1.Sentinel, logger logr.Logger) (*ValkeySentinel, error) {
 	if cliset == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -67,7 +68,7 @@ func NewSentinel(ctx context.Context, cliset clientset.ClientSet, eventRecorder 
 		return nil, fmt.Errorf("require sentinel instance")
 	}
 
-	inst := RedisSentinel{
+	inst := ValkeySentinel{
 		Sentinel: *def,
 
 		client:        cliset,
@@ -84,14 +85,14 @@ func NewSentinel(ctx context.Context, cliset clientset.ClientSet, eventRecorder 
 		inst.logger.Error(err, "load users failed")
 		return nil, err
 	}
-	if inst.replication, err = NewRedisSentinelReplication(ctx, cliset, &inst, inst.logger); err != nil {
+	if inst.replication, err = NewValkeySentinelReplication(ctx, cliset, &inst, inst.logger); err != nil {
 		inst.logger.Error(err, "create replication failed")
 		return nil, err
 	}
 	return &inst, nil
 }
 
-func (s *RedisSentinel) loadUsers(ctx context.Context, logger logr.Logger) (types.Users, error) {
+func (s *ValkeySentinel) loadUsers(ctx context.Context, logger logr.Logger) (types.Users, error) {
 	if s == nil {
 		return nil, fmt.Errorf("nil sentinel instance")
 	}
@@ -112,7 +113,7 @@ func (s *RedisSentinel) loadUsers(ctx context.Context, logger logr.Logger) (type
 	return types.Users{u}, nil
 }
 
-func (s *RedisSentinel) loadTLS(ctx context.Context, logger logr.Logger) (*tls.Config, error) {
+func (s *ValkeySentinel) loadTLS(ctx context.Context, logger logr.Logger) (*tls.Config, error) {
 	if s == nil {
 		return nil, fmt.Errorf("nil sentinel instance")
 	}
@@ -147,18 +148,28 @@ func (s *RedisSentinel) loadTLS(ctx context.Context, logger logr.Logger) (*tls.C
 	}
 }
 
-func (s *RedisSentinel) NamespacedName() client.ObjectKey {
+func (s *ValkeySentinel) NamespacedName() client.ObjectKey {
 	if s == nil {
 		return client.ObjectKey{}
 	}
 	return client.ObjectKey{Namespace: s.GetNamespace(), Name: s.GetName()}
 }
 
-func (s *RedisSentinel) Arch() core.Arch {
+func (s *ValkeySentinel) Arch() core.Arch {
 	return core.ValkeySentinel
 }
 
-func (s *RedisSentinel) Version() version.ValkeyVersion {
+func (c *ValkeySentinel) Issuer() *certmetav1.ObjectReference {
+	if c.Spec.Access.EnableTLS {
+		return &certmetav1.ObjectReference{
+			Name: c.Spec.Access.CertIssuer,
+			Kind: c.Spec.Access.CertIssuerType,
+		}
+	}
+	return nil
+}
+
+func (s *ValkeySentinel) Version() version.ValkeyVersion {
 	if s == nil || s.Spec.Image == "" {
 		return version.ValkeyVersionUnknown
 	}
@@ -166,37 +177,36 @@ func (s *RedisSentinel) Version() version.ValkeyVersion {
 	return ver
 }
 
-func (s *RedisSentinel) Definition() *v1alpha1.Sentinel {
+func (s *ValkeySentinel) Definition() *v1alpha1.Sentinel {
 	if s == nil {
 		return nil
 	}
 	return &s.Sentinel
 }
 
-// TODO: implement acl when redis 5.0 deprecated and import redis 8 or valkey 8
-func (s *RedisSentinel) Users() types.Users {
+func (s *ValkeySentinel) Users() types.Users {
 	return nil
 }
 
-func (s *RedisSentinel) Replication() types.SentinelReplication {
+func (s *ValkeySentinel) Replication() types.SentinelReplication {
 	return s.replication
 }
 
-func (s *RedisSentinel) TLSConfig() *tls.Config {
+func (s *ValkeySentinel) TLSConfig() *tls.Config {
 	if s == nil {
 		return nil
 	}
 	return s.tlsConfig
 }
 
-func (s *RedisSentinel) Nodes() []types.SentinelNode {
+func (s *ValkeySentinel) Nodes() []types.SentinelNode {
 	if s == nil || s.replication == nil {
 		return nil
 	}
 	return s.replication.Nodes()
 }
 
-func (s *RedisSentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
+func (s *ValkeySentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -219,23 +229,23 @@ func (s *RedisSentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return ret.Items, nil
 }
 
-func (s *RedisSentinel) Selector() map[string]string {
+func (s *ValkeySentinel) Selector() map[string]string {
 	// TODO: delete this method
 	return sentinelbuilder.GenerateSelectorLabels("sentinel", s.GetName())
 }
 
-func (s *RedisSentinel) Restart(ctx context.Context, annotationKeyVal ...string) error {
+func (s *ValkeySentinel) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	// update all shards
 	logger := s.logger.WithName("Restart")
 
 	if s.replication != nil {
-		logger.V(3).Info("restart replication", "target", s.replication.NamespacedName)
+		logger.V(3).Info("restart replication", "target", s.replication)
 		return s.replication.Restart(ctx, annotationKeyVal...)
 	}
 	return nil
 }
 
-func (s *RedisSentinel) Refresh(ctx context.Context) error {
+func (s *ValkeySentinel) Refresh(ctx context.Context) error {
 	logger := s.logger.WithName("Refresh")
 
 	var err error
@@ -249,14 +259,14 @@ func (s *RedisSentinel) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (s *RedisSentinel) IsReady() bool {
+func (s *ValkeySentinel) IsReady() bool {
 	if s == nil || s.replication == nil {
 		return false
 	}
 	return s.replication.IsReady()
 }
 
-func (s *RedisSentinel) IsInService() bool {
+func (s *ValkeySentinel) IsInService() bool {
 	if s == nil || s.replication == nil {
 		return false
 	}
@@ -264,7 +274,7 @@ func (s *RedisSentinel) IsInService() bool {
 	return readyReplicas >= (s.Spec.Replicas/2)+1
 }
 
-func (s *RedisSentinel) IsResourceFullfilled(ctx context.Context) (bool, error) {
+func (s *ValkeySentinel) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	if s == nil {
 		return false, fmt.Errorf("nil sentinel instance")
 	}
@@ -316,7 +326,7 @@ func (s *RedisSentinel) IsResourceFullfilled(ctx context.Context) (bool, error) 
 	return true, nil
 }
 
-func (s *RedisSentinel) GetPassword() (string, error) {
+func (s *ValkeySentinel) GetPassword() (string, error) {
 	if s == nil {
 		return "", nil
 	}
@@ -330,7 +340,7 @@ func (s *RedisSentinel) GetPassword() (string, error) {
 	return string(secret.Data["password"]), nil
 }
 
-func (s *RedisSentinel) UpdateStatus(ctx context.Context, st types.InstanceStatus, msg string) error {
+func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStatus, msg string) error {
 	if s == nil {
 		return fmt.Errorf("nil sentinel instance")
 	}
@@ -437,35 +447,35 @@ func (s *RedisSentinel) UpdateStatus(ctx context.Context, st types.InstanceStatu
 	// update status
 	s.Sentinel.Status = *status
 	if err := s.client.UpdateSentinelStatus(ctx, &s.Sentinel); err != nil {
-		s.logger.Error(err, "update RedisFailover status failed")
+		s.logger.Error(err, "update Failover status failed")
 		return err
 	}
 	return nil
 }
 
-func (s *RedisSentinel) IsACLAppliedToAll() bool {
-	// TODO: implement acl when redis 5.0 deprecated and import redis 8 or valkey 8
+func (s *ValkeySentinel) IsACLAppliedToAll() bool {
+	// TODO
 	return false
 }
 
-func (s *RedisSentinel) IsACLUserExists() bool {
-	// TODO: implement acl when redis 5.0 deprecated and import redis 8 or valkey 8
+func (s *ValkeySentinel) IsACLUserExists() bool {
+	// TODO
 	return false
 }
 
-func (s *RedisSentinel) IsACLApplied() bool {
-	// TODO: implement acl when redis 5.0 deprecated and import redis 8 or valkey 8
+func (s *ValkeySentinel) IsACLApplied() bool {
+	// TODO
 	return false
 }
 
-func (c *RedisSentinel) Logger() logr.Logger {
+func (c *ValkeySentinel) Logger() logr.Logger {
 	if c == nil {
 		return logr.Discard()
 	}
 	return c.logger
 }
 
-func (c *RedisSentinel) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeySentinel) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
 	if c == nil {
 		return
 	}

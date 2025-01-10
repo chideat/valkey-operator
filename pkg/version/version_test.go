@@ -197,7 +197,7 @@ func TestCustomConfigs(t *testing.T) {
 		want map[string]string
 	}{
 		{
-			name: "Redis 7.4 with ARM64",
+			name: "Valkey 7.4 with ARM64",
 			v:    ValkeyVersion("7.4"),
 			arch: core.ValkeyCluster,
 			want: map[string]string{
@@ -207,7 +207,7 @@ func TestCustomConfigs(t *testing.T) {
 			},
 		},
 		{
-			name: "Redis 8.0 with ARM64",
+			name: "Valkey 8.0 with ARM64",
 			v:    ValkeyVersion("8.0"),
 			arch: core.ValkeyCluster,
 			want: map[string]string{

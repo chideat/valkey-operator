@@ -33,37 +33,37 @@ import (
 )
 
 const (
-	RedisConfKey = "redis.conf"
+	ValkeyConfKey = "valkey.conf"
 )
 
 // NewConfigMapForCR creates a new ConfigMap for the given Cluster
 func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error) {
-	redisConfContent, err := buildRedisConfigs(cluster)
+	valkeyConfContent, err := buildValkeyConfigs(cluster)
 	if err != nil {
 		return nil, err
 	}
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            RedisConfigMapName(cluster.GetName()),
+			Name:            ValkeyConfigMapName(cluster.GetName()),
 			Namespace:       cluster.GetNamespace(),
 			Labels:          GetClusterLabels(cluster.GetName(), nil),
 			OwnerReferences: util.BuildOwnerReferences(cluster.Definition()),
 		},
 		Data: map[string]string{
-			RedisConfKey: redisConfContent,
+			ValkeyConfKey: valkeyConfContent,
 		},
 	}, nil
 }
 
 const (
-	RedisConfig_MaxMemory               = "maxmemory"
-	RedisConfig_MaxMemoryPolicy         = "maxmemory-policy"
-	RedisConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
-	RedisConfig_Save                    = "save"
-	RedisConfig_RenameCommand           = "rename-command"
-	RedisConfig_Appendonly              = "appendonly"
-	RedisConfig_ReplDisklessSync        = "repl-diskless-sync"
+	ValkeyConfig_MaxMemory               = "maxmemory"
+	ValkeyConfig_MaxMemoryPolicy         = "maxmemory-policy"
+	ValkeyConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
+	ValkeyConfig_Save                    = "save"
+	ValkeyConfig_RenameCommand           = "rename-command"
+	ValkeyConfig_Appendonly              = "appendonly"
+	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
 )
 
 var ForbidToRenameCommands = map[string]struct{}{
@@ -71,49 +71,49 @@ var ForbidToRenameCommands = map[string]struct{}{
 	"cluster": {},
 }
 
-// buildRedisConfigs
+// buildValkeyConfigs
 //
 // TODO: validate config and config value. check the empty value
-func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
+func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	cr := cluster.Definition()
 	var buffer bytes.Buffer
 
 	var (
-		keys             = make([]string, 0, len(cr.Spec.CustomConfigs))
-		innerRedisConfig = cluster.Version().CustomConfigs(core.ValkeyCluster)
-		configMap        = lo.Assign(cr.Spec.CustomConfigs, innerRedisConfig)
+		keys              = make([]string, 0, len(cr.Spec.CustomConfigs))
+		innerValkeyConfig = cluster.Version().CustomConfigs(core.ValkeyCluster)
+		configMap         = lo.Assign(cr.Spec.CustomConfigs, innerValkeyConfig)
 	)
 
 	// check memory-policy
 	if cluster != nil && cr.Spec.Resources != nil && cr.Spec.Resources.Limits != nil {
 		osMem, _ := cr.Spec.Resources.Limits.Memory().AsInt64()
-		if configedMem := configMap[RedisConfig_MaxMemory]; configedMem == "" {
+		if configedMem := configMap[ValkeyConfig_MaxMemory]; configedMem == "" {
 			var recommendMem int64
-			if policy := cr.Spec.CustomConfigs[RedisConfig_MaxMemoryPolicy]; policy == "noeviction" {
+			if policy := cr.Spec.CustomConfigs[ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
 				recommendMem = int64(float64(osMem) * 0.8)
 			} else {
 				recommendMem = int64(float64(osMem) * 0.7)
 			}
-			configMap[RedisConfig_MaxMemory] = fmt.Sprintf("%d", recommendMem)
+			configMap[ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", recommendMem)
 		}
 		// TODO: validate user input
 	}
 
 	// check if it's needed to set default save
 	// check if aof enabled
-	if configMap[RedisConfig_Appendonly] != "yes" &&
-		configMap[RedisConfig_ReplDisklessSync] != "yes" &&
-		(configMap[RedisConfig_Save] == "" || configMap[RedisConfig_Save] == `""`) {
+	if configMap[ValkeyConfig_Appendonly] != "yes" &&
+		configMap[ValkeyConfig_ReplDisklessSync] != "yes" &&
+		(configMap[ValkeyConfig_Save] == "" || configMap[ValkeyConfig_Save] == `""`) {
 
 		configMap["save"] = "60 10000 300 100 600 1"
 	}
 
-	// for redis >=6.0, disable rename-command
+	// for valkey >=6.0, disable rename-command
 	if !cluster.Version().IsACLSupported() {
 		var (
 			renameVal []string
 		)
-		renameConfig, err := ParseRenameConfigs(configMap[RedisConfig_RenameCommand])
+		renameConfig, err := ParseRenameConfigs(configMap[ValkeyConfig_RenameCommand])
 		if err != nil {
 			return "", err
 		}
@@ -124,14 +124,14 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 			renameVal = append(renameVal, k, v)
 		}
 		if len(renameVal) > 0 {
-			configMap[RedisConfig_RenameCommand] = strings.Join(renameVal, " ")
+			configMap[ValkeyConfig_RenameCommand] = strings.Join(renameVal, " ")
 		}
 	} else {
-		delete(configMap, RedisConfig_RenameCommand)
+		delete(configMap, ValkeyConfig_RenameCommand)
 	}
 
 	for k, v := range configMap {
-		if policy := RedisConfigRestartPolicy[k]; policy == Forbid {
+		if policy := ValkeyConfigRestartPolicy[k]; policy == Forbid {
 			continue
 		}
 
@@ -153,7 +153,7 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 		}
 
 		switch k {
-		case RedisConfig_ClientOutputBufferLimit:
+		case ValkeyConfig_ClientOutputBufferLimit:
 			fields := strings.Fields(v)
 			if len(fields)%4 != 0 {
 				return "", fmt.Errorf(`value "%s" for config %s is invalid`, v, k)
@@ -161,7 +161,7 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 			for i := 0; i < len(fields); i += 4 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s %s %s\n", k, fields[i], fields[i+1], fields[i+2], fields[i+3]))
 			}
-		case RedisConfig_Save:
+		case ValkeyConfig_Save:
 			fields := strings.Fields(v)
 			if len(fields)%2 != 0 {
 				return "", fmt.Errorf(`value "%s" for config %s is invalid`, v, k)
@@ -169,7 +169,7 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 			for i := 0; i < len(fields); i += 2 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
 			}
-		case RedisConfig_RenameCommand:
+		case ValkeyConfig_RenameCommand:
 			// DEPRECATED: for consistence of the config
 			fields := strings.Fields(v)
 			if len(fields)%2 != 0 {
@@ -179,10 +179,10 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
 			}
 		default:
-			if _, ok := builder.MustQuoteRedisConfig[k]; ok && !strings.HasPrefix(v, `"`) {
+			if _, ok := builder.MustQuoteValkeyConfig[k]; ok && !strings.HasPrefix(v, `"`) {
 				v = fmt.Sprintf(`"%s"`, v)
 			}
-			if _, ok := builder.MustUpperRedisConfig[k]; ok {
+			if _, ok := builder.MustUpperValkeyConfig[k]; ok {
 				v = strings.ToUpper(v)
 			}
 			buffer.WriteString(fmt.Sprintf("%s %s\n", k, v))
@@ -191,19 +191,19 @@ func buildRedisConfigs(cluster types.ClusterInstance) (string, error) {
 	return buffer.String(), nil
 }
 
-func RedisConfigMapName(clusterName string) string {
-	return fmt.Sprintf("%s-%s", "redis-cluster", clusterName)
+func ValkeyConfigMapName(clusterName string) string {
+	return fmt.Sprintf("%s-%s", "valkey-cluster", clusterName)
 }
 
-type RedisConfigSettingRule string
+type ValkeyConfigSettingRule string
 
 const (
-	OK             RedisConfigSettingRule = "OK"
-	RequireRestart RedisConfigSettingRule = "Restart"
-	Forbid         RedisConfigSettingRule = "Forbid"
+	OK             ValkeyConfigSettingRule = "OK"
+	RequireRestart ValkeyConfigSettingRule = "Restart"
+	Forbid         ValkeyConfigSettingRule = "Forbid"
 )
 
-var RedisConfigRestartPolicy = map[string]RedisConfigSettingRule{
+var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
 	// forbid
 	"include":          Forbid,
 	"loadmodule":       Forbid,
@@ -252,9 +252,9 @@ var RedisConfigRestartPolicy = map[string]RedisConfigSettingRule{
 	"io-threads-do-reads": RequireRestart,
 }
 
-type RedisConfigValues []string
+type ValkeyConfigValues []string
 
-func (v *RedisConfigValues) String() string {
+func (v *ValkeyConfigValues) String() string {
 	if v == nil {
 		return ""
 	}
@@ -262,12 +262,12 @@ func (v *RedisConfigValues) String() string {
 	return strings.Join(*v, " ")
 }
 
-// RedisConfig
-type RedisConfig map[string]RedisConfigValues
+// ValkeyConfig
+type ValkeyConfig map[string]ValkeyConfigValues
 
-// LoadRedisConfig
-func LoadRedisConfig(data string) (RedisConfig, error) {
-	conf := RedisConfig{}
+// LoadValkeyConfig
+func LoadValkeyConfig(data string) (ValkeyConfig, error) {
+	conf := ValkeyConfig{}
 	for _, line := range strings.Split(data, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -280,7 +280,7 @@ func LoadRedisConfig(data string) (RedisConfig, error) {
 		}
 		key := fields[0]
 		// filter unsupported config
-		if policy := RedisConfigRestartPolicy[key]; policy == Forbid {
+		if policy := ValkeyConfigRestartPolicy[key]; policy == Forbid {
 			continue
 		}
 		val := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(fields[1]), `"`), `"`)
@@ -289,8 +289,8 @@ func LoadRedisConfig(data string) (RedisConfig, error) {
 	return conf, nil
 }
 
-// Diff return diff two n RedisConfig
-func (o RedisConfig) Diff(n RedisConfig) (added, changed, deleted map[string]RedisConfigValues) {
+// Diff return diff two n ValkeyConfig
+func (o ValkeyConfig) Diff(n ValkeyConfig) (added, changed, deleted map[string]ValkeyConfigValues) {
 	if len(n) == 0 {
 		return nil, nil, o
 	}
@@ -302,7 +302,7 @@ func (o RedisConfig) Diff(n RedisConfig) (added, changed, deleted map[string]Red
 		return nil, nil, nil
 	}
 
-	added, changed, deleted = map[string]RedisConfigValues{}, map[string]RedisConfigValues{}, map[string]RedisConfigValues{}
+	added, changed, deleted = map[string]ValkeyConfigValues{}, map[string]ValkeyConfigValues{}, map[string]ValkeyConfigValues{}
 	for key, vals := range n {
 		val := util.UnifyValueUnit(vals.String())
 		if oldVals, ok := o[key]; ok {

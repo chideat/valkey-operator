@@ -49,9 +49,9 @@ type ClusterReplicas struct {
 
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
-	// Image is the Redis image
+	// Image valkey image
 	Image string `json:"image,omitempty"`
-	// ImagePullPolicy is the Redis image pull policy
+	// ImagePullPolicy is the image pull policy
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	// ImagePullSecrets
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
@@ -59,7 +59,7 @@ type ClusterSpec struct {
 	// Replicas is the number of cluster replicas
 	Replicas ClusterReplicas `json:"replicas"`
 
-	// CustomConfigs is the custom redis configuration
+	// CustomConfigs is the custom configuration
 	//
 	// Most of the settings is key-value format.
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
@@ -67,7 +67,7 @@ type ClusterSpec struct {
 	// Resources
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Access defines the access for redis
+	// Access defines the access for valkey
 	Access core.InstanceAccess `json:"expose,omitempty"`
 	// Storage
 	Storage *core.Storage `json:"storage,omitempty"`
@@ -90,7 +90,7 @@ type ClusterSpec struct {
 	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 }
 
-// ClusterPhase Redis Cluster status
+// ClusterPhase Valkey Cluster status
 type ClusterPhase string
 
 const (
@@ -127,7 +127,7 @@ type ClusterShardsSlotStatus struct {
 
 // ClusterShards
 type ClusterShards struct {
-	// ID match the shard-id in redis 7.0
+	// ID match the shard-id in cluster shard
 	Id string `json:"id,omitempty"`
 	// Index the shard index
 	Index int32 `json:"index"`
@@ -141,7 +141,7 @@ type ClusterStatus struct {
 	Phase ClusterPhase `json:"status"`
 	// Message the message of the status
 	Message string `json:"message,omitempty"`
-	// Nodes the redis cluster nodes
+	// Nodes the cluster nodes
 	Nodes []core.ValkeyNode `json:"nodes,omitempty"`
 	// ServiceStatus the cluster service status
 	ServiceStatus ClusterServiceStatus `json:"clusterStatus,omitempty"`

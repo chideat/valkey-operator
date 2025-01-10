@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
@@ -48,16 +49,16 @@ import (
 )
 
 var (
-	_ types.Instance        = (*RedisCluster)(nil)
-	_ types.ClusterInstance = (*RedisCluster)(nil)
+	_ types.Instance        = (*ValkeyCluster)(nil)
+	_ types.ClusterInstance = (*ValkeyCluster)(nil)
 )
 
-type RedisCluster struct {
+type ValkeyCluster struct {
 	v1alpha1.Cluster
 
 	client        clientset.ClientSet
 	eventRecorder record.EventRecorder
-	redisUsers    []*v1alpha1.User
+	userInsts     []*v1alpha1.User
 	shards        []types.ClusterShard
 	users         types.Users
 	tlsConfig     *tls.Config
@@ -65,9 +66,9 @@ type RedisCluster struct {
 	logger logr.Logger
 }
 
-// NewRedisCluster
-func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorder record.EventRecorder, def *v1alpha1.Cluster, logger logr.Logger) (*RedisCluster, error) {
-	cluster := RedisCluster{
+// NewValkeyCluster
+func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorder record.EventRecorder, def *v1alpha1.Cluster, logger logr.Logger) (*ValkeyCluster, error) {
+	cluster := ValkeyCluster{
 		Cluster: *def,
 
 		client:        k8sClient,
@@ -89,7 +90,7 @@ func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorde
 	}
 
 	// load shards
-	if cluster.shards, err = LoadRedisClusterShards(ctx, k8sClient, &cluster, cluster.logger); err != nil {
+	if cluster.shards, err = LoadValkeyClusterShards(ctx, k8sClient, &cluster, cluster.logger); err != nil {
 		cluster.logger.Error(err, "loads cluster shards failed", "cluster", def.Name)
 		return nil, err
 	}
@@ -101,22 +102,32 @@ func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorde
 	return &cluster, nil
 }
 
-func (c *RedisCluster) Arch() core.Arch {
+func (c *ValkeyCluster) Arch() core.Arch {
 	return core.ValkeyCluster
 }
 
-func (c *RedisCluster) NamespacedName() client.ObjectKey {
+func (c *ValkeyCluster) Issuer() *certmetav1.ObjectReference {
+	if c.Spec.Access.EnableTLS {
+		return &certmetav1.ObjectReference{
+			Name: c.Spec.Access.CertIssuer,
+			Kind: c.Spec.Access.CertIssuerType,
+		}
+	}
+	return nil
+}
+
+func (c *ValkeyCluster) NamespacedName() client.ObjectKey {
 	return client.ObjectKey{Namespace: c.GetNamespace(), Name: c.GetName()}
 }
 
-func (c *RedisCluster) LoadUsers(ctx context.Context) {
+func (c *ValkeyCluster) LoadUsers(ctx context.Context) {
 	oldOpUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterOperatorsUserName(c.GetName()))
 	oldDefultUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterDefaultUserName(c.GetName()))
-	c.redisUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
+	c.userInsts = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
 // ctx
-func (c *RedisCluster) Restart(ctx context.Context, annotationKeyVal ...string) error {
+func (c *ValkeyCluster) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	if c == nil {
 		return nil
 	}
@@ -131,7 +142,7 @@ func (c *RedisCluster) Restart(ctx context.Context, annotationKeyVal ...string) 
 }
 
 // Refresh refresh users, shards
-func (c *RedisCluster) Refresh(ctx context.Context) error {
+func (c *ValkeyCluster) Refresh(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
@@ -154,7 +165,7 @@ func (c *RedisCluster) Refresh(ctx context.Context) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
-		logger.Error(err, "get DistributedRedisCluster failed")
+		logger.Error(err, "get DistributedValkeyCluster failed")
 		return err
 	}
 	// TODO: reset default
@@ -167,7 +178,7 @@ func (c *RedisCluster) Refresh(ctx context.Context) error {
 		return err
 	}
 
-	if c.shards, err = LoadRedisClusterShards(ctx, c.client, c, logger); err != nil {
+	if c.shards, err = LoadValkeyClusterShards(ctx, c.client, c, logger); err != nil {
 		logger.Error(err, "refresh cluster shards failed", "cluster", c.GetName())
 		return err
 	}
@@ -175,7 +186,7 @@ func (c *RedisCluster) Refresh(ctx context.Context) error {
 }
 
 // RewriteShards
-func (c *RedisCluster) RewriteShards(ctx context.Context, shards []*v1alpha1.ClusterShards) error {
+func (c *ValkeyCluster) RewriteShards(ctx context.Context, shards []*v1alpha1.ClusterShards) error {
 	if c == nil || len(shards) == 0 {
 		return nil
 	}
@@ -190,13 +201,13 @@ func (c *RedisCluster) RewriteShards(ctx context.Context, shards []*v1alpha1.Clu
 		cr.Status.Shards = shards
 	}
 	if err := c.client.UpdateClusterStatus(ctx, cr); err != nil {
-		logger.Error(err, "update DistributedRedisCluster status failed")
+		logger.Error(err, "update DistributedValkeyCluster status failed")
 		return err
 	}
 	return c.UpdateStatus(ctx, types.Any, "")
 }
 
-func (c *RedisCluster) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
+func (c *ValkeyCluster) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
 	if c == nil {
 		return nil
 	}
@@ -370,14 +381,14 @@ __end_slot_migrating__:
 	if err := c.client.UpdateClusterStatus(ctx, cr); errors.IsNotFound(err) {
 		return nil
 	} else if err != nil {
-		logger.Error(err, "get DistributedRedisCluster failed")
+		logger.Error(err, "get DistributedValkeyCluster failed")
 		return err
 	}
 	return nil
 }
 
 // Status return the status of the cluster
-func (c *RedisCluster) Status() *v1alpha1.ClusterStatus {
+func (c *ValkeyCluster) Status() *v1alpha1.ClusterStatus {
 	if c == nil {
 		return nil
 	}
@@ -385,7 +396,7 @@ func (c *RedisCluster) Status() *v1alpha1.ClusterStatus {
 }
 
 // Definition
-func (c *RedisCluster) Definition() *v1alpha1.Cluster {
+func (c *ValkeyCluster) Definition() *v1alpha1.Cluster {
 	if c == nil {
 		return nil
 	}
@@ -393,27 +404,27 @@ func (c *RedisCluster) Definition() *v1alpha1.Cluster {
 }
 
 // Version
-func (c *RedisCluster) Version() version.ValkeyVersion {
+func (c *ValkeyCluster) Version() version.ValkeyVersion {
 	if c == nil {
 		return version.ValkeyVersionUnknown
 	}
 
 	if ver, err := version.ParseValkeyVersionFromImage(c.Spec.Image); err != nil {
-		c.logger.Error(err, "parse redis version failed")
+		c.logger.Error(err, "parse valkey version failed")
 		return version.ValkeyVersionUnknown
 	} else {
 		return ver
 	}
 }
 
-func (c *RedisCluster) Shards() []types.ClusterShard {
+func (c *ValkeyCluster) Shards() []types.ClusterShard {
 	if c == nil {
 		return nil
 	}
 	return c.shards
 }
 
-func (c *RedisCluster) Nodes() []types.ValkeyNode {
+func (c *ValkeyCluster) Nodes() []types.ValkeyNode {
 	var ret []types.ValkeyNode
 	for _, shard := range c.shards {
 		ret = append(ret, shard.Nodes()...)
@@ -421,7 +432,7 @@ func (c *RedisCluster) Nodes() []types.ValkeyNode {
 	return ret
 }
 
-func (c *RedisCluster) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
+func (c *ValkeyCluster) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -436,7 +447,7 @@ func (c *RedisCluster) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return ret.Items, nil
 }
 
-func (c *RedisCluster) Masters() []types.ValkeyNode {
+func (c *ValkeyCluster) Masters() []types.ValkeyNode {
 	var ret []types.ValkeyNode
 	for _, shard := range c.shards {
 		ret = append(ret, shard.Master())
@@ -445,7 +456,7 @@ func (c *RedisCluster) Masters() []types.ValkeyNode {
 }
 
 // IsInService
-func (c *RedisCluster) IsInService() bool {
+func (c *ValkeyCluster) IsInService() bool {
 	if c == nil {
 		return false
 	}
@@ -459,7 +470,7 @@ func (c *RedisCluster) IsInService() bool {
 }
 
 // IsReady
-func (c *RedisCluster) IsReady() bool {
+func (c *ValkeyCluster) IsReady() bool {
 	for _, shard := range c.shards {
 		status := shard.Status()
 		if !(status.ReadyReplicas == *shard.Definition().Spec.Replicas &&
@@ -471,7 +482,7 @@ func (c *RedisCluster) IsReady() bool {
 	return true
 }
 
-func (c *RedisCluster) Users() (us types.Users) {
+func (c *ValkeyCluster) Users() (us types.Users) {
 	if c == nil {
 		return nil
 	}
@@ -488,7 +499,7 @@ func (c *RedisCluster) Users() (us types.Users) {
 	return
 }
 
-func (c *RedisCluster) TLSConfig() *tls.Config {
+func (c *ValkeyCluster) TLSConfig() *tls.Config {
 	if c == nil {
 		return nil
 	}
@@ -496,7 +507,7 @@ func (c *RedisCluster) TLSConfig() *tls.Config {
 }
 
 // TLS
-func (c *RedisCluster) TLS() *tls.Config {
+func (c *ValkeyCluster) TLS() *tls.Config {
 	if c == nil {
 		return nil
 	}
@@ -504,13 +515,13 @@ func (c *RedisCluster) TLS() *tls.Config {
 }
 
 // loadUsers
-func (c *RedisCluster) loadUsers(ctx context.Context) (types.Users, error) {
+func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 	var (
 		name  = clusterbuilder.GenerateClusterACLConfigMapName(c.GetName())
 		users types.Users
 	)
 	// NOTE: load acl config first. if acl config not exists, then this may be
-	// an old instance(upgrade from old redis or operator version).
+	// an old instance(upgrade from old valkey or operator version).
 	// migrate old password account to acl
 	if cm, err := c.client.GetConfigMap(ctx, c.GetNamespace(), name); errors.IsNotFound(err) {
 		var (
@@ -608,7 +619,7 @@ func (c *RedisCluster) loadUsers(ctx context.Context) (types.Users, error) {
 		rule.Channels = []string{"*"}
 	}
 
-	renameVal := c.Definition().Spec.CustomConfigs[clusterbuilder.RedisConfig_RenameCommand]
+	renameVal := c.Definition().Spec.CustomConfigs[clusterbuilder.ValkeyConfig_RenameCommand]
 	renames, _ := clusterbuilder.ParseRenameConfigs(renameVal)
 	if len(renames) > 0 {
 		rule.DisallowedCommands = []string{}
@@ -624,7 +635,7 @@ func (c *RedisCluster) loadUsers(ctx context.Context) (types.Users, error) {
 }
 
 // loadUserSecret
-func (c *RedisCluster) loadUserSecret(ctx context.Context, objKey client.ObjectKey) (*corev1.Secret, error) {
+func (c *ValkeyCluster) loadUserSecret(ctx context.Context, objKey client.ObjectKey) (*corev1.Secret, error) {
 	secret, err := c.client.GetSecret(ctx, objKey.Namespace, objKey.Name)
 	if err != nil && !errors.IsNotFound(err) {
 		c.logger.Error(err, "load default users's password secret failed", "target", objKey.String())
@@ -643,14 +654,14 @@ func (c *RedisCluster) loadUserSecret(ctx context.Context, objKey client.ObjectK
 	return secret, nil
 }
 
-func (c *RedisCluster) IsACLUserExists() bool {
+func (c *ValkeyCluster) IsACLUserExists() bool {
 	if !c.Version().IsACLSupported() {
 		return false
 	}
-	if len(c.redisUsers) == 0 {
+	if len(c.userInsts) == 0 {
 		return false
 	}
-	for _, v := range c.redisUsers {
+	for _, v := range c.userInsts {
 		if v == nil {
 			return false
 		}
@@ -661,7 +672,7 @@ func (c *RedisCluster) IsACLUserExists() bool {
 	return true
 }
 
-func (c *RedisCluster) IsResourceFullfilled(ctx context.Context) (bool, error) {
+func (c *ValkeyCluster) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	var (
 		serviceKey = corev1.SchemeGroupVersion.WithKind("Service")
 		stsKey     = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
@@ -677,7 +688,6 @@ func (c *RedisCluster) IsResourceFullfilled(ctx context.Context) (bool, error) {
 		resources[stsKey] = append(resources[stsKey], stsName)
 	}
 	if c.Spec.Access.ServiceType == corev1.ServiceTypeLoadBalancer || c.Spec.Access.ServiceType == corev1.ServiceTypeNodePort {
-		resources[serviceKey] = append(resources[serviceKey], clusterbuilder.RedisNodePortSvcName(c.GetName())) // drc-<name>-nodeport
 		for i := 0; i < int(c.Spec.Replicas.Shards); i++ {
 			stsName := clusterbuilder.ClusterStatefulSetName(c.GetName(), i)
 			for j := 0; j < int(c.Spec.Replicas.ReplicasOfShard+1); j++ {
@@ -720,7 +730,7 @@ func (c *RedisCluster) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (c *RedisCluster) IsACLAppliedToAll() bool {
+func (c *ValkeyCluster) IsACLAppliedToAll() bool {
 	if c == nil || !c.Version().IsACLSupported() {
 		return false
 	}
@@ -734,14 +744,14 @@ func (c *RedisCluster) IsACLAppliedToAll() bool {
 	return true
 }
 
-func (c *RedisCluster) Logger() logr.Logger {
+func (c *ValkeyCluster) Logger() logr.Logger {
 	if c == nil {
 		return logr.Discard()
 	}
 	return c.logger
 }
 
-func (c *RedisCluster) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeyCluster) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
 	if c == nil {
 		return
 	}
@@ -749,7 +759,7 @@ func (c *RedisCluster) SendEventf(eventtype, reason, messageFmt string, args ...
 }
 
 // loadTLS
-func (c *RedisCluster) loadTLS(ctx context.Context) (*tls.Config, error) {
+func (c *ValkeyCluster) loadTLS(ctx context.Context) (*tls.Config, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -768,7 +778,7 @@ func (c *RedisCluster) loadTLS(ctx context.Context) (*tls.Config, error) {
 			continue
 		} else {
 			for _, vol := range sts.Spec.Template.Spec.Volumes {
-				if vol.Name == clusterbuilder.RedisTLSVolumeName {
+				if vol.Name == clusterbuilder.ValkeyTLSVolumeName {
 					secretName = vol.VolumeSource.Secret.SecretName
 				}
 			}

@@ -26,16 +26,16 @@ import (
 )
 
 const (
-	RedisInstanceServiceAccountName = "redis-instance-account"
-	RedisInstanceRoleName           = "redis-instance-role"
-	RedisInstanceRoleBindingName    = "redis-instance-rolebinding"
+	ValkeyInstanceServiceAccountName = "valkey-instance-account"
+	ValkeyInstanceRoleName           = "valkey-instance-role"
+	ValkeyInstanceRoleBindingName    = "valkey-instance-rolebinding"
 )
 
 // NewServiceAccount
 func NewServiceAccount(obj client.Object) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      RedisInstanceServiceAccountName,
+			Name:      ValkeyInstanceServiceAccountName,
 			Namespace: obj.GetNamespace(),
 		},
 	}
@@ -45,7 +45,7 @@ func NewServiceAccount(obj client.Object) *corev1.ServiceAccount {
 func NewRole(obj client.Object) *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      RedisInstanceRoleName,
+			Name:      ValkeyInstanceRoleName,
 			Namespace: obj.GetNamespace(),
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -73,18 +73,18 @@ func NewRole(obj client.Object) *rbacv1.Role {
 func NewRoleBinding(obj client.Object) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      RedisInstanceRoleBindingName,
+			Name:      ValkeyInstanceRoleBindingName,
 			Namespace: obj.GetNamespace(),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "Role",
-			Name:     RedisInstanceRoleName,
+			Name:     ValkeyInstanceRoleName,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      RedisInstanceServiceAccountName,
+				Name:      ValkeyInstanceServiceAccountName,
 				Namespace: obj.GetNamespace(),
 			},
 		},
@@ -94,7 +94,7 @@ func NewRoleBinding(obj client.Object) *rbacv1.RoleBinding {
 func NewClusterRole(obj client.Object) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: RedisInstanceRoleName,
+			Name: ValkeyInstanceRoleName,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -109,17 +109,17 @@ func NewClusterRole(obj client.Object) *rbacv1.ClusterRole {
 func NewClusterRoleBinding(obj client.Object) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%s-%s", obj.GetNamespace(), RedisInstanceRoleBindingName),
+			Name: fmt.Sprintf("%s-%s", obj.GetNamespace(), ValkeyInstanceRoleBindingName),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "ClusterRole",
-			Name:     RedisInstanceRoleName,
+			Name:     ValkeyInstanceRoleName,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      RedisInstanceServiceAccountName,
+				Name:      ValkeyInstanceServiceAccountName,
 				Namespace: obj.GetNamespace(),
 			},
 		},

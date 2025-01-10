@@ -18,7 +18,7 @@ package clientset
 import (
 	"context"
 
-	redisv1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,18 +27,18 @@ import (
 
 type User interface {
 	// ListUsers lists the users on a cluster.
-	ListUsers(ctx context.Context, namespace string, opts client.ListOptions) (*redisv1.UserList, error)
+	ListUsers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.UserList, error)
 	// GetUser get the user on a cluster.
-	GetUser(ctx context.Context, namespace, name string) (*redisv1.User, error)
+	GetUser(ctx context.Context, namespace, name string) (*v1alpha1.User, error)
 	// UpdateUser update the user on a cluster.
-	UpdateUser(ctx context.Context, ru *redisv1.User) error
+	UpdateUser(ctx context.Context, ru *v1alpha1.User) error
 	// Create
-	CreateUser(ctx context.Context, ru *redisv1.User) error
+	CreateUser(ctx context.Context, ru *v1alpha1.User) error
 	//create if not exites
-	CreateIfNotExistsUser(ctx context.Context, ru *redisv1.User) error
+	CreateIfNotExistsUser(ctx context.Context, ru *v1alpha1.User) error
 
 	//create or update
-	CreateOrUpdateUser(ctx context.Context, ru *redisv1.User) error
+	CreateOrUpdateUser(ctx context.Context, ru *v1alpha1.User) error
 }
 
 type UserOption struct {
@@ -54,8 +54,8 @@ func NewUserService(client client.Client, logger logr.Logger) *UserOption {
 	}
 }
 
-func (r *UserOption) ListUsers(ctx context.Context, namespace string, opts client.ListOptions) (*redisv1.UserList, error) {
-	ret := redisv1.UserList{}
+func (r *UserOption) ListUsers(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.UserList, error) {
+	ret := v1alpha1.UserList{}
 	err := r.client.List(ctx, &ret, &opts)
 	if err != nil {
 		return nil, err
@@ -63,8 +63,8 @@ func (r *UserOption) ListUsers(ctx context.Context, namespace string, opts clien
 	return &ret, nil
 }
 
-func (r *UserOption) GetUser(ctx context.Context, namespace, name string) (*redisv1.User, error) {
-	ret := redisv1.User{}
+func (r *UserOption) GetUser(ctx context.Context, namespace, name string) (*v1alpha1.User, error) {
+	ret := v1alpha1.User{}
 	err := r.client.Get(ctx, types.NamespacedName{
 		Name:      name,
 		Namespace: namespace,
@@ -75,8 +75,8 @@ func (r *UserOption) GetUser(ctx context.Context, namespace, name string) (*redi
 	return &ret, nil
 }
 
-func (r *UserOption) UpdateUser(ctx context.Context, ru *redisv1.User) error {
-	o := redisv1.User{}
+func (r *UserOption) UpdateUser(ctx context.Context, ru *v1alpha1.User) error {
+	o := v1alpha1.User{}
 	err := r.client.Get(ctx, types.NamespacedName{
 		Name:      ru.Name,
 		Namespace: ru.Namespace,
@@ -100,7 +100,7 @@ func (r *UserOption) UpdateUser(ctx context.Context, ru *redisv1.User) error {
 }
 
 func (r *UserOption) DeleteUser(ctx context.Context, namespace string, name string) error {
-	ret := redisv1.User{}
+	ret := v1alpha1.User{}
 	if err := r.client.Get(ctx, types.NamespacedName{
 		Name:      name,
 		Namespace: namespace,
@@ -113,14 +113,14 @@ func (r *UserOption) DeleteUser(ctx context.Context, namespace string, name stri
 	return nil
 }
 
-func (r *UserOption) CreateUser(ctx context.Context, ru *redisv1.User) error {
+func (r *UserOption) CreateUser(ctx context.Context, ru *v1alpha1.User) error {
 	if err := r.client.Create(ctx, ru); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *UserOption) CreateIfNotExistsUser(ctx context.Context, ru *redisv1.User) error {
+func (r *UserOption) CreateIfNotExistsUser(ctx context.Context, ru *v1alpha1.User) error {
 	if _, err := r.GetUser(ctx, ru.Namespace, ru.Name); err != nil {
 		if errors.IsNotFound(err) {
 			return r.CreateUser(ctx, ru)
@@ -130,7 +130,7 @@ func (r *UserOption) CreateIfNotExistsUser(ctx context.Context, ru *redisv1.User
 	return nil
 }
 
-func (r *UserOption) CreateOrUpdateUser(ctx context.Context, ru *redisv1.User) error {
+func (r *UserOption) CreateOrUpdateUser(ctx context.Context, ru *v1alpha1.User) error {
 	if oldRu, err := r.GetUser(ctx, ru.Namespace, ru.Name); err != nil {
 		if errors.IsNotFound(err) {
 			return r.CreateUser(ctx, ru)

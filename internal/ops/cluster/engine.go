@@ -98,8 +98,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 		logger.V(3).Info("check_1")
 
 		// check password, make sure the password sync with the cr setting
-		// before update password, we should first make sure all the pod supports acl.
-		// or the upgrade of redis from 5 to 6 will fail with unexcpeted errors
+		// before update password, we should first make sure all the pods enabled acl.
 		if changed, err := g.isPasswordChanged(ctx, cluster); err != nil {
 			return actor.NewResultWithValue(CommandRequeue, err)
 		} else if changed {
@@ -593,7 +592,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	logger := g.logger.WithName("isConfigMapChanged")
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.RedisConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
 		return true, nil
 	} else if err != nil {
 		logger.Error(err, "get old configmap failed")
@@ -601,8 +600,8 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadRedisConfig(newCm.Data[clusterbuilder.RedisConfKey])
-	oldConf, _ := clusterbuilder.LoadRedisConfig(oldCm.Data[clusterbuilder.RedisConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return true, nil

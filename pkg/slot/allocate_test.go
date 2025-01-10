@@ -198,7 +198,7 @@ func TestAllocate(t *testing.T) {
 			}
 
 			allSlots := NewSlots()
-			maxCount := int(math.Ceil(float64(RedisMaxSlots) / float64(tt.args.desired)))
+			maxCount := int(math.Ceil(float64(ValkeyMaxSlots) / float64(tt.args.desired)))
 			for _, slot := range gotRet {
 				allSlots = allSlots.Union(slot)
 				if count := slot.Count(SlotAssigned); count != maxCount && maxCount != count+1 {

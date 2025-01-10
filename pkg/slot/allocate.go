@@ -33,7 +33,7 @@ func Allocate(desired int, shards []*Slots) (ret []*Slots) {
 		}
 		ret = append(ret, s)
 	}
-	avg, rest := RedisMaxSlots/desired, RedisMaxSlots%desired
+	avg, rest := ValkeyMaxSlots/desired, ValkeyMaxSlots%desired
 
 	if len(shards) == 0 {
 		offset := 0

@@ -1000,7 +1000,7 @@ spec:
                 additionalProperties:
                   type: string
                 description: |-
-                  CustomConfigs is the custom redis configuration
+                  CustomConfigs is the custom configuration
 
                   Most of the settings is key-value format.
                 type: object
@@ -1078,7 +1078,7 @@ spec:
                     type: object
                 type: object
               expose:
-                description: Access defines the access for redis
+                description: Access defines the access for valkey
                 properties:
                   annotations:
                     additionalProperties:
@@ -1126,10 +1126,10 @@ spec:
                     type: string
                 type: object
               image:
-                description: Image is the Redis image
+                description: Image valkey image
                 type: string
               imagePullPolicy:
-                description: ImagePullPolicy is the Redis image pull policy
+                description: ImagePullPolicy is the image pull policy
                 type: string
               imagePullSecrets:
                 description: ImagePullSecrets
@@ -1557,7 +1557,7 @@ spec:
                 description: Message the message of the status
                 type: string
               nodes:
-                description: Nodes the redis cluster nodes
+                description: Nodes the cluster nodes
                 items:
                   description: ValkeyNode represent a ValkeyCluster Node
                   properties:
@@ -1609,7 +1609,7 @@ spec:
                   description: ClusterShards
                   properties:
                     id:
-                      description: ID match the shard-id in redis 7.0
+                      description: ID match the shard-id in cluster shard
                       type: string
                     index:
                       description: Index the shard index

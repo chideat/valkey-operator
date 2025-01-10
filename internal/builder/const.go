@@ -16,7 +16,7 @@ limitations under the License.
 package builder
 
 const (
-	LabelRedisArch    = "redisarch"
+	LabelValkeyArch   = "valkeyarch"
 	ManagedByLabel    = "managed-by"
 	InstanceTypeLabel = "middleware.instance/type"
 	InstanceNameLabel = "middleware.instance/name"
@@ -26,7 +26,7 @@ const (
 	PodAnnouncePortLabelKey  = "middleware.alauda.io/announce_port"
 	PodAnnounceIPortLabelKey = "middleware.alauda.io/announce_iport"
 
-	AppLabel             = "redis-failover"
+	AppLabel             = "valkey-failover"
 	HostnameTopologyKey  = "kubernetes.io/hostname"
 	RestartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
 

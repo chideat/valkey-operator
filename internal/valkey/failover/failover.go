@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
@@ -65,7 +66,7 @@ type Failover struct {
 	replication types.Replication
 	monitor     types.FailoverMonitor
 
-	redisUsers []*v1alpha1.User
+	valkeyUsers []*v1alpha1.User
 
 	logger logr.Logger
 }
@@ -89,7 +90,7 @@ func NewFailover(ctx context.Context, k8sClient clientset.ClientSet, eventRecord
 		return nil, err
 	}
 
-	if inst.replication, err = LoadRedisReplication(ctx, k8sClient, inst, inst.logger); err != nil {
+	if inst.replication, err = LoadValkeyReplication(ctx, k8sClient, inst, inst.logger); err != nil {
 		inst.logger.Error(err, "load replicas failed")
 		return nil, err
 	}
@@ -104,15 +105,28 @@ func NewFailover(ctx context.Context, k8sClient clientset.ClientSet, eventRecord
 	return inst, nil
 }
 
+func (s *Failover) Arch() core.Arch {
+	return core.ValkeyFailover
+}
+
+func (c *Failover) Issuer() *certmetav1.ObjectReference {
+	if c == nil {
+		return nil
+	}
+	if c.Spec.Access.EnableTLS {
+		return &certmetav1.ObjectReference{
+			Name: c.Spec.Access.CertIssuer,
+			Kind: c.Spec.Access.CertIssuerType,
+		}
+	}
+	return nil
+}
+
 func (s *Failover) NamespacedName() client.ObjectKey {
 	if s == nil {
 		return client.ObjectKey{}
 	}
 	return client.ObjectKey{Namespace: s.GetNamespace(), Name: s.GetName()}
-}
-
-func (s *Failover) Arch() core.Arch {
-	return core.ValkeyFailover
 }
 
 func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, msg string) error {
@@ -145,7 +159,7 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 
 	if s.IsBindedSentinel() {
 		if sentinel, err = s.client.GetSentinel(ctx, s.GetNamespace(), s.GetName()); err != nil && !errors.IsNotFound(err) {
-			s.logger.Error(err, "get RedisSentinel failed")
+			s.logger.Error(err, "get ValkeySentinel failed")
 			return err
 		}
 	}
@@ -269,7 +283,7 @@ func (s *Failover) Version() version.ValkeyVersion {
 	}
 
 	if ver, err := version.ParseValkeyVersionFromImage(s.Spec.Image); err != nil {
-		s.logger.Error(err, "parse redis version failed")
+		s.logger.Error(err, "parse valkey version failed")
 		return version.ValkeyVersionUnknown
 	} else {
 		return ver
@@ -413,7 +427,7 @@ func (s *Failover) Refresh(ctx context.Context) (err error) {
 		return err
 	}
 
-	if s.replication, err = LoadRedisReplication(ctx, s.client, s, logger); err != nil {
+	if s.replication, err = LoadValkeyReplication(ctx, s.client, s, logger); err != nil {
 		logger.Error(err, "load replicas failed")
 		return err
 	}
@@ -423,7 +437,7 @@ func (s *Failover) Refresh(ctx context.Context) (err error) {
 func (s *Failover) LoadUsers(ctx context.Context) {
 	oldOpUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverOperatorsUserName(s.GetName()))
 	oldDefultUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverDefaultUserName(s.GetName()))
-	s.redisUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
+	s.valkeyUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
 func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
@@ -505,7 +519,7 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 				if passwordSecret == "" {
 					// COMPAT: for old sentinel version, the secret is mounted to the pod
 					for _, vol := range spec.Volumes {
-						if vol.Name == "redis-auth" && vol.Secret != nil {
+						if vol.Name == "valkey-auth" && vol.Secret != nil {
 							passwordSecret = vol.Secret.SecretName
 							break
 						}
@@ -581,7 +595,7 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 		rule.Channels = []string{"*"}
 	}
 
-	renameVal := s.Definition().Spec.CustomConfigs[failoverbuilder.RedisConfig_RenameCommand]
+	renameVal := s.Definition().Spec.CustomConfigs[failoverbuilder.ValkeyConfig_RenameCommand]
 	renames, _ := clusterbuilder.ParseRenameConfigs(renameVal)
 	if len(renameVal) > 0 {
 		rule.DisallowedCommands = []string{}
@@ -628,7 +642,7 @@ func (s *Failover) loadTLS(ctx context.Context) (*tls.Config, error) {
 			s.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(s.GetNamespace(), s.GetName()))
 		} else {
 			for _, vol := range sts.Spec.Template.Spec.Volumes {
-				if vol.Name == failoverbuilder.RedisTLSVolumeName {
+				if vol.Name == failoverbuilder.ValkeyTLSVolumeName {
 					secretName = vol.VolumeSource.Secret.SecretName
 				}
 			}
@@ -669,10 +683,10 @@ func (s *Failover) IsACLUserExists() bool {
 	if !s.Version().IsACLSupported() {
 		return false
 	}
-	if len(s.redisUsers) == 0 {
+	if len(s.valkeyUsers) == 0 {
 		return false
 	}
-	for _, v := range s.redisUsers {
+	for _, v := range s.valkeyUsers {
 		if v == nil {
 			return false
 		}
@@ -684,13 +698,13 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	var (
 		serviceKey  = corev1.SchemeGroupVersion.WithKind("Service")
 		stsKey      = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
-		sentinelKey = databasesv1.GroupVersion.WithKind("RedisSentinel")
+		sentinelKey = databasesv1.GroupVersion.WithKind("ValkeySentinel")
 	)
 	resources := map[schema.GroupVersionKind][]string{
 		serviceKey: {
 			failoverbuilder.GetFailoverStatefulSetName(s.GetName()), // rfr-<name>
-			failoverbuilder.GetRedisROServiceName(s.GetName()),      // rfr-<name>-read-only
-			failoverbuilder.GetRedisRWServiceName(s.GetName()),      // rfr-<name>-read-write
+			failoverbuilder.GetValkeyROServiceName(s.GetName()),     // rfr-<name>-read-only
+			failoverbuilder.GetValkeyRWServiceName(s.GetName()),     // rfr-<name>-read-write
 		},
 		stsKey: {
 			failoverbuilder.GetFailoverStatefulSetName(s.GetName()),

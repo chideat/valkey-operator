@@ -40,12 +40,12 @@ func NewCertificate(rf *v1alpha1.Failover, selectors map[string]string) *certv1.
 			// 10 year
 			Duration: &metav1.Duration{Duration: 87600 * time.Hour},
 			DNSNames: []string{
-				builder.GetServiceDNSName(GetRedisROServiceName(rf.Name), rf.Namespace),
-				builder.GetServiceDNSName(GetRedisRWServiceName(rf.Name), rf.Namespace),
+				builder.GetServiceDNSName(GetValkeyROServiceName(rf.Name), rf.Namespace),
+				builder.GetServiceDNSName(GetValkeyRWServiceName(rf.Name), rf.Namespace),
 				builder.GetServiceDNSName(sentinelbuilder.GetSentinelStatefulSetName(rf.Name), rf.Namespace),
 			},
 			IssuerRef:  v12.ObjectReference{Kind: certv1.ClusterIssuerKind, Name: "cpaas-ca"},
-			SecretName: builder.GetRedisSSLSecretName(rf.Name),
+			SecretName: builder.GetValkeySSLSecretName(rf.Name),
 		},
 	}
 }

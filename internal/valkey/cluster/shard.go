@@ -38,9 +38,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ types.ClusterShard = (*RedisClusterShard)(nil)
+var _ types.ClusterShard = (*ValkeyClusterShard)(nil)
 
-func LoadRedisClusterShards(ctx context.Context, client clientset.ClientSet, cluster types.ClusterInstance, logger logr.Logger) ([]types.ClusterShard, error) {
+func LoadValkeyClusterShards(ctx context.Context, client clientset.ClientSet, cluster types.ClusterInstance, logger logr.Logger) ([]types.ClusterShard, error) {
 	// load pods by label
 	labels := clusterbuilder.GetClusterLabels(cluster.GetName(), nil)
 
@@ -51,7 +51,7 @@ func LoadRedisClusterShards(ctx context.Context, client clientset.ClientSet, clu
 	} else {
 		for _, sts := range resp.Items {
 			sts := sts.DeepCopy()
-			if shard, err := NewRedisClusterShard(ctx, client, cluster, sts, logger); err != nil {
+			if shard, err := NewValkeyClusterShard(ctx, client, cluster, sts, logger); err != nil {
 				logger.Error(err, fmt.Sprintf("parse shard %s failed", sts.GetName()))
 			} else {
 				shards = append(shards, shard)
@@ -64,8 +64,8 @@ func LoadRedisClusterShards(ctx context.Context, client clientset.ClientSet, clu
 	return shards, nil
 }
 
-// NewRedisClusterShard
-func NewRedisClusterShard(ctx context.Context, client clientset.ClientSet, cluster types.ClusterInstance, sts *appv1.StatefulSet, logger logr.Logger) (types.ClusterShard, error) {
+// NewValkeyClusterShard
+func NewValkeyClusterShard(ctx context.Context, client clientset.ClientSet, cluster types.ClusterInstance, sts *appv1.StatefulSet, logger logr.Logger) (types.ClusterShard, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -76,7 +76,7 @@ func NewRedisClusterShard(ctx context.Context, client clientset.ClientSet, clust
 		return nil, fmt.Errorf("require statefulset")
 	}
 
-	shard := RedisClusterShard{
+	shard := ValkeyClusterShard{
 		StatefulSet: *sts,
 		client:      client,
 		cluster:     cluster,
@@ -92,8 +92,8 @@ func NewRedisClusterShard(ctx context.Context, client clientset.ClientSet, clust
 	return &shard, nil
 }
 
-// RedisClusterShard
-type RedisClusterShard struct {
+// ValkeyClusterShard
+type ValkeyClusterShard struct {
 	appv1.StatefulSet
 
 	client  clientset.ClientSet
@@ -103,7 +103,7 @@ type RedisClusterShard struct {
 	logger logr.Logger
 }
 
-func (s *RedisClusterShard) NamespacedName() apitypes.NamespacedName {
+func (s *ValkeyClusterShard) NamespacedName() apitypes.NamespacedName {
 	if s.StatefulSet.Namespace == "" || s.StatefulSet.Name == "" {
 		return apitypes.NamespacedName{}
 	}
@@ -114,7 +114,7 @@ func (s *RedisClusterShard) NamespacedName() apitypes.NamespacedName {
 }
 
 // Version
-func (s *RedisClusterShard) Version() version.ValkeyVersion {
+func (s *ValkeyClusterShard) Version() version.ValkeyVersion {
 	if s == nil {
 		return version.ValkeyVersionUnknown
 	}
@@ -124,8 +124,8 @@ func (s *RedisClusterShard) Version() version.ValkeyVersion {
 	return ver
 }
 
-// Index redis shard index. so the statefulset name must match ^drc-<name>-[0-9]+$ format
-func (s *RedisClusterShard) Index() int {
+// Index valkey shard index. so the statefulset name must match ^drc-<name>-[0-9]+$ format
+func (s *ValkeyClusterShard) Index() int {
 	if s == nil || s.StatefulSet.GetName() == "" {
 		return -1
 	}
@@ -142,7 +142,7 @@ func (s *RedisClusterShard) Index() int {
 }
 
 // Nodes returns all the nodes of this slots
-func (s *RedisClusterShard) Nodes() []types.ValkeyNode {
+func (s *ValkeyClusterShard) Nodes() []types.ValkeyNode {
 	if s == nil {
 		return nil
 	}
@@ -150,7 +150,7 @@ func (s *RedisClusterShard) Nodes() []types.ValkeyNode {
 }
 
 // Master for nodes not join the cluster, it's role is also master
-func (s *RedisClusterShard) Master() types.ValkeyNode {
+func (s *ValkeyClusterShard) Master() types.ValkeyNode {
 	if s == nil || len(s.nodes) == 0 {
 		return nil
 	}
@@ -171,7 +171,7 @@ func (s *RedisClusterShard) Master() types.ValkeyNode {
 	return emptyMaster
 }
 
-func (s *RedisClusterShard) Replicas() []types.ValkeyNode {
+func (s *ValkeyClusterShard) Replicas() []types.ValkeyNode {
 	if s == nil || len(s.nodes) == 0 {
 		return nil
 	}
@@ -185,7 +185,7 @@ func (s *RedisClusterShard) Replicas() []types.ValkeyNode {
 }
 
 // Slots
-func (s *RedisClusterShard) Slots() *slot.Slots {
+func (s *ValkeyClusterShard) Slots() *slot.Slots {
 	if s == nil {
 		return nil
 	}
@@ -198,7 +198,7 @@ func (s *RedisClusterShard) Slots() *slot.Slots {
 	return nil
 }
 
-func (s *RedisClusterShard) IsReady() bool {
+func (s *ValkeyClusterShard) IsReady() bool {
 	if s == nil {
 		return false
 	}
@@ -206,7 +206,7 @@ func (s *RedisClusterShard) IsReady() bool {
 }
 
 // IsImporting
-func (s *RedisClusterShard) IsImporting() bool {
+func (s *ValkeyClusterShard) IsImporting() bool {
 	if s == nil {
 		return false
 	}
@@ -224,7 +224,7 @@ func (s *RedisClusterShard) IsImporting() bool {
 }
 
 // IsMigrating
-func (s *RedisClusterShard) IsMigrating() bool {
+func (s *ValkeyClusterShard) IsMigrating() bool {
 	if s == nil {
 		return false
 	}
@@ -242,7 +242,7 @@ func (s *RedisClusterShard) IsMigrating() bool {
 }
 
 // Restart
-func (s *RedisClusterShard) Restart(ctx context.Context, annotationKeyVal ...string) error {
+func (s *ValkeyClusterShard) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	// update all shards
 	logger := s.logger.WithName("Restart")
 
@@ -272,7 +272,7 @@ func (s *RedisClusterShard) Restart(ctx context.Context, annotationKeyVal ...str
 }
 
 // Refresh
-func (s *RedisClusterShard) Refresh(ctx context.Context) error {
+func (s *ValkeyClusterShard) Refresh(ctx context.Context) error {
 	logger := s.logger.WithName("Refresh")
 
 	var err error
@@ -283,14 +283,14 @@ func (s *RedisClusterShard) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (s *RedisClusterShard) Status() *appv1.StatefulSetStatus {
+func (s *ValkeyClusterShard) Status() *appv1.StatefulSetStatus {
 	if s == nil {
 		return nil
 	}
 	return &s.StatefulSet.Status
 }
 
-func (s *RedisClusterShard) Definition() *appv1.StatefulSet {
+func (s *ValkeyClusterShard) Definition() *appv1.StatefulSet {
 	if s == nil {
 		return nil
 	}

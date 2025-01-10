@@ -84,10 +84,10 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 			return false
 		})
 
-		roleLabelVal := pod.GetLabels()[failoverbuilder.RedisRoleLabel]
+		roleLabelVal := pod.GetLabels()[failoverbuilder.ValkeyRoleLabel]
 		if node == nil {
 			if roleLabelVal != "" {
-				if err := a.client.PatchPodLabel(ctx, pod.DeepCopy(), failoverbuilder.RedisRoleLabel, ""); err != nil {
+				if err := a.client.PatchPodLabel(ctx, pod.DeepCopy(), failoverbuilder.ValkeyRoleLabel, ""); err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
 				}
@@ -96,16 +96,16 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 		}
 		nodeAddr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		if node.Role() == core.NodeRoleMaster && nodeAddr == masterAddr {
-			if roleLabelVal != failoverbuilder.RedisRoleMaster {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.RedisRoleLabel, failoverbuilder.RedisRoleMaster)
+			if roleLabelVal != failoverbuilder.ValkeyRoleMaster {
+				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, failoverbuilder.ValkeyRoleMaster)
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
 				}
 			}
 		} else if node.Role() == core.NodeRoleReplica {
-			if roleLabelVal != failoverbuilder.RedisRoleReplica {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.RedisRoleLabel, failoverbuilder.RedisRoleReplica)
+			if roleLabelVal != failoverbuilder.ValkeyRoleReplica {
+				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, failoverbuilder.ValkeyRoleReplica)
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
@@ -113,7 +113,7 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 			}
 		} else {
 			if roleLabelVal != "" {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.RedisRoleLabel, "")
+				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, "")
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)

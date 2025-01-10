@@ -19,6 +19,6 @@ import (
 	"fmt"
 )
 
-func RedisProxySvcName(clusterName string) string {
+func ValkeyProxySvcName(clusterName string) string {
 	return fmt.Sprintf("%s-proxy", clusterName)
 }

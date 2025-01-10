@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	RedisMaxSlots = 16384
+	ValkeyMaxSlots = 16384
 )
 
 // SlotAssignStatus slot assign status
@@ -97,7 +97,7 @@ func LoadSlots(v interface{}) (*Slots, error) {
 
 func NewFullSlots() *Slots {
 	s := NewSlots()
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		_ = s.Set(i, SlotAssigned)
 	}
 	return s
@@ -117,7 +117,7 @@ func (s *Slots) IsFullfilled() bool {
 		return false
 	}
 
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 
 		if (s.data[index]>>offset)&uint8(SlotAssigned) == 0 {
@@ -188,7 +188,7 @@ func (s *Slots) Load(v interface{}) error {
 		return nil
 	}
 	handler := func(i int, status SlotAssignStatus, nodeId string) error {
-		if (i >= RedisMaxSlots) || (i < 0) {
+		if (i >= ValkeyMaxSlots) || (i < 0) {
 			return fmt.Errorf("invalid slot %d", i)
 		}
 		index, offset := convertIndex(i)
@@ -325,7 +325,7 @@ func (s *Slots) Sub(n *Slots) *Slots {
 		return ret
 	}
 	ret := NewSlots()
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 
 		valA := ((s.data[index] >> offset) & uint8(SlotAssigned))
@@ -364,7 +364,7 @@ func (s *Slots) Slots(ss ...SlotAssignStatus) (ret []int) {
 	if len(ss) == 0 {
 		ss = []SlotAssignStatus{SlotAssigned}
 	}
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 		for _, st := range ss {
 			if (s.data[index]>>offset)&uint8(SlotMigrating) == uint8(st) {
@@ -381,7 +381,7 @@ func (s *Slots) SlotsByStatus(status SlotAssignStatus) (ret []int) {
 	if s == nil {
 		return nil
 	}
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&uint8(SlotMigrating) == uint8(status) {
 			ret = append(ret, i)
@@ -401,7 +401,7 @@ func (s *Slots) String() string {
 		lastIndex      = -1
 		ret            []string
 	)
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&uint8(SlotAssigned) > 0 {
 			if lastIndex == -1 {
@@ -440,7 +440,7 @@ func (s *Slots) Count(status SlotAssignStatus) (c int) {
 		mask = uint8(SlotAssigned)
 	}
 
-	for i := 0; i < RedisMaxSlots; i++ {
+	for i := 0; i < ValkeyMaxSlots; i++ {
 		index, offset := convertIndex(i)
 		if (s.data[index]>>offset)&mask == uint8(status) {
 			c += 1

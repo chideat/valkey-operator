@@ -37,14 +37,14 @@ import (
 const (
 	SentinelConfigVolumeName      = "sentinel-config"
 	SentinelConfigVolumeMountPath = "/conf"
-	RedisTLSVolumeName            = "redis-tls"
-	RedisTLSVolumeMountPath       = "/tls"
-	RedisDataVolumeName           = "data"
-	RedisDataVolumeMountPath      = "/data"
-	RedisAuthName                 = "redis-auth"
-	RedisAuthMountPath            = "/account"
-	RedisOptName                  = "redis-opt"
-	RedisOptMountPath             = "/opt"
+	ValkeyTLSVolumeName           = "valkey-tls"
+	ValkeyTLSVolumeMountPath      = "/tls"
+	ValkeyDataVolumeName          = "data"
+	ValkeyDataVolumeMountPath     = "/data"
+	ValkeyAuthName                = "valkey-auth"
+	ValkeyAuthMountPath           = "/account"
+	ValkeyOptName                 = "valkey-opt"
+	ValkeyOptMountPath            = "/opt"
 	OperatorUsername              = "OPERATOR_USERNAME"
 	OperatorSecretName            = "OPERATOR_SECRET_NAME"
 	SentinelContainerName         = "sentinel"
@@ -58,17 +58,17 @@ func NewSentinelStatefulset(sen types.SentinelInstance, selectors map[string]str
 		passwordSecret = inst.Spec.Access.DefaultPasswordSecret
 	)
 	if len(selectors) == 0 {
-		selectors = GenerateSelectorLabels(RedisArchRoleSEN, inst.GetName())
+		selectors = GenerateSelectorLabels(ValkeyArchRoleSEN, inst.GetName())
 	} else {
-		selectors = lo.Assign(selectors, GenerateSelectorLabels(RedisArchRoleSEN, inst.GetName()))
+		selectors = lo.Assign(selectors, GenerateSelectorLabels(ValkeyArchRoleSEN, inst.GetName()))
 	}
 	labels := lo.Assign(GetCommonLabels(inst.GetName()), selectors)
 
 	startArgs := []string{"sh", "/opt/run_sentinel.sh"}
-	shutdownArgs := []string{"sh", "-c", "/opt/redis-tools sentinel shutdown &> /proc/1/fd/1"}
+	shutdownArgs := []string{"sh", "-c", "/opt/valkey-tools sentinel shutdown &> /proc/1/fd/1"}
 	volumes := getVolumes(inst, passwordSecret)
-	volumeMounts := getRedisVolumeMounts(inst, passwordSecret)
-	envs := createRedisContainerEnvs(inst)
+	volumeMounts := getValkeyVolumeMounts(inst, passwordSecret)
+	envs := createValkeyContainerEnvs(inst)
 
 	localhost := "127.0.0.1"
 	if inst.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -148,7 +148,7 @@ func NewSentinelStatefulset(sen types.SentinelInstance, selectors map[string]str
 					},
 					ImagePullSecrets:              inst.Spec.ImagePullSecrets,
 					SecurityContext:               builder.GetPodSecurityContext(inst.Spec.SecurityContext),
-					ServiceAccountName:            clusterbuilder.RedisInstanceServiceAccountName,
+					ServiceAccountName:            clusterbuilder.ValkeyInstanceServiceAccountName,
 					Affinity:                      getAffinity(inst.Spec.Affinity, selectors),
 					Tolerations:                   inst.Spec.Tolerations,
 					NodeSelector:                  inst.Spec.NodeSelector,
@@ -183,10 +183,10 @@ func buildExposeContainer(inst *v1alpha1.Sentinel) corev1.Container {
 			},
 		},
 		Name:            "expose",
-		Image:           config.GetRedisToolsImage(inst),
+		Image:           config.GetValkeyToolsImage(inst),
 		ImagePullPolicy: builder.GetPullPolicy(inst.Spec.ImagePullPolicy),
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: RedisDataVolumeName, MountPath: RedisDataVolumeMountPath},
+			{Name: ValkeyDataVolumeName, MountPath: ValkeyDataVolumeMountPath},
 		},
 		Env: []corev1.EnvVar{
 			{
@@ -217,14 +217,14 @@ func buildExposeContainer(inst *v1alpha1.Sentinel) corev1.Container {
 				Value: string(inst.Spec.Access.ServiceType),
 			},
 		},
-		Command:         []string{"/opt/redis-tools", "sentinel", "expose"},
+		Command:         []string{"/opt/valkey-tools", "sentinel", "expose"},
 		SecurityContext: builder.GetSecurityContext(inst.Spec.SecurityContext),
 	}
 	return container
 }
 
 func buildInitContainer(inst *v1alpha1.Sentinel, _ []corev1.EnvVar) *corev1.Container {
-	image := config.GetRedisToolsImage(inst)
+	image := config.GetValkeyToolsImage(inst)
 	if image == "" {
 		return nil
 	}
@@ -232,7 +232,7 @@ func buildInitContainer(inst *v1alpha1.Sentinel, _ []corev1.EnvVar) *corev1.Cont
 	return &corev1.Container{
 		Name:            "init",
 		Image:           image,
-		ImagePullPolicy: util.GetPullPolicy(inst.Spec.ImagePullPolicy),
+		ImagePullPolicy: builder.GetPullPolicy(inst.Spec.ImagePullPolicy),
 		Command:         []string{"sh", "/opt/init_sentinel.sh"},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -245,22 +245,22 @@ func buildInitContainer(inst *v1alpha1.Sentinel, _ []corev1.EnvVar) *corev1.Cont
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: RedisOptName, MountPath: path.Join("/mnt", RedisOptMountPath)},
+			{Name: ValkeyOptName, MountPath: path.Join("/mnt", ValkeyOptMountPath)},
 		},
 	}
 }
 
 func buildAgentContainer(inst *v1alpha1.Sentinel, envs []corev1.EnvVar) *corev1.Container {
-	image := config.GetRedisToolsImage(inst)
+	image := config.GetValkeyToolsImage(inst)
 	if image == "" {
 		return nil
 	}
 	container := corev1.Container{
 		Name:            "agent",
 		Image:           image,
-		ImagePullPolicy: util.GetPullPolicy(inst.Spec.ImagePullPolicy),
+		ImagePullPolicy: builder.GetPullPolicy(inst.Spec.ImagePullPolicy),
 		Env:             envs,
-		Command:         []string{"/opt/redis-tools", "sentinel", "agent"},
+		Command:         []string{"/opt/valkey-tools", "sentinel", "agent"},
 		SecurityContext: builder.GetSecurityContext(inst.Spec.SecurityContext),
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -274,31 +274,31 @@ func buildAgentContainer(inst *v1alpha1.Sentinel, envs []corev1.EnvVar) *corev1.
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      RedisDataVolumeName,
-				MountPath: RedisDataVolumeMountPath,
+				Name:      ValkeyDataVolumeName,
+				MountPath: ValkeyDataVolumeMountPath,
 			},
 		},
 	}
 
 	if inst.Spec.Access.DefaultPasswordSecret != "" {
 		vol := corev1.VolumeMount{
-			Name:      RedisAuthName,
-			MountPath: RedisAuthMountPath,
+			Name:      ValkeyAuthName,
+			MountPath: ValkeyAuthMountPath,
 		}
 		container.VolumeMounts = append(container.VolumeMounts, vol)
 	}
 	if inst.Spec.Access.EnableTLS {
 		vol := corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
-			MountPath: RedisTLSVolumeMountPath,
+			Name:      ValkeyTLSVolumeName,
+			MountPath: ValkeyTLSVolumeMountPath,
 		}
 		container.VolumeMounts = append(container.VolumeMounts, vol)
 	}
 	return &container
 }
 
-func createRedisContainerEnvs(inst *v1alpha1.Sentinel) []corev1.EnvVar {
-	redisEnvs := []corev1.EnvVar{
+func createValkeyContainerEnvs(inst *v1alpha1.Sentinel) []corev1.EnvVar {
+	valkeyEnvs := []corev1.EnvVar{
 		{
 			Name: "NAMESPACE",
 			ValueFrom: &corev1.EnvVarSource{
@@ -356,7 +356,7 @@ func createRedisContainerEnvs(inst *v1alpha1.Sentinel) []corev1.EnvVar {
 			Value: string(inst.Spec.Access.IPFamilyPrefer),
 		},
 	}
-	return redisEnvs
+	return valkeyEnvs
 }
 
 func getAffinity(affinity *corev1.Affinity, labels map[string]string) *corev1.Affinity {
@@ -382,32 +382,32 @@ func getAffinity(affinity *corev1.Affinity, labels map[string]string) *corev1.Af
 	}
 }
 
-func getRedisVolumeMounts(inst *v1alpha1.Sentinel, secretName string) []corev1.VolumeMount {
+func getValkeyVolumeMounts(inst *v1alpha1.Sentinel, secretName string) []corev1.VolumeMount {
 	volumeMounts := []corev1.VolumeMount{
 		{
 			Name:      SentinelConfigVolumeName,
 			MountPath: SentinelConfigVolumeMountPath,
 		},
 		{
-			Name:      RedisDataVolumeName,
-			MountPath: RedisDataVolumeMountPath,
+			Name:      ValkeyDataVolumeName,
+			MountPath: ValkeyDataVolumeMountPath,
 		},
 		{
-			Name:      RedisOptName,
-			MountPath: RedisOptMountPath,
+			Name:      ValkeyOptName,
+			MountPath: ValkeyOptMountPath,
 		},
 	}
 
 	if inst.Spec.Access.EnableTLS {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      RedisTLSVolumeName,
-			MountPath: RedisTLSVolumeMountPath,
+			Name:      ValkeyTLSVolumeName,
+			MountPath: ValkeyTLSVolumeMountPath,
 		})
 	}
 	if secretName != "" {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      RedisAuthName,
-			MountPath: RedisAuthMountPath,
+			Name:      ValkeyAuthName,
+			MountPath: ValkeyAuthMountPath,
 		})
 	}
 	return volumeMounts
@@ -427,13 +427,13 @@ func getVolumes(inst *v1alpha1.Sentinel, secretName string) []corev1.Volume {
 			},
 		},
 		{
-			Name: RedisDataVolumeName,
+			Name: ValkeyDataVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 		{
-			Name: RedisOptName,
+			Name: ValkeyOptName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
@@ -441,10 +441,10 @@ func getVolumes(inst *v1alpha1.Sentinel, secretName string) []corev1.Volume {
 	}
 	if inst.Spec.Access.EnableTLS {
 		volumes = append(volumes, corev1.Volume{
-			Name: RedisTLSVolumeName,
+			Name: ValkeyTLSVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName:  builder.GetRedisSSLSecretName(inst.Name),
+					SecretName:  builder.GetValkeySSLSecretName(inst.Name),
 					DefaultMode: ptr.To(int32(0400)),
 				},
 			},
@@ -452,7 +452,7 @@ func getVolumes(inst *v1alpha1.Sentinel, secretName string) []corev1.Volume {
 	}
 	if secretName != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: RedisAuthName,
+			Name: ValkeyAuthName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  secretName,

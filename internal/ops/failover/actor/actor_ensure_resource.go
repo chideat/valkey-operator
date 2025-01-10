@@ -87,7 +87,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 		return actor.Pause()
 	}
 
-	if ret := a.ensureRedisSSL(ctx, inst, logger); ret != nil {
+	if ret := a.ensureValkeySSL(ctx, inst, logger); ret != nil {
 		return ret
 	}
 	if ret := a.ensureServiceAccount(ctx, inst, logger); ret != nil {
@@ -102,13 +102,13 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	if ret := a.ensureConfigMap(ctx, inst, logger); ret != nil {
 		return ret
 	}
-	if ret := a.ensureRedisStatefulSet(ctx, inst, logger); ret != nil {
+	if ret := a.ensureValkeyStatefulSet(ctx, inst, logger); ret != nil {
 		return ret
 	}
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	var (
 		err      error
 		cr       = inst.Definition()
@@ -122,7 +122,7 @@ func (a *actorEnsureResource) ensureRedisStatefulSet(ctx context.Context, inst t
 		return ret
 	}
 
-	sts := failoverbuilder.GenerateRedisStatefulSet(inst, selector, isAllACLSupported)
+	sts := failoverbuilder.GenerateValkeyStatefulSet(inst, selector, isAllACLSupported)
 	oldSts, err := a.client.GetStatefulSet(ctx, cr.Namespace, sts.Name)
 	if errors.IsNotFound(err) {
 		if err := a.client.CreateStatefulSet(ctx, cr.Namespace, sts); err != nil {
@@ -201,8 +201,8 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf 
 func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	selector := inst.Selector()
-	// ensure Redis configMap
-	if ret := a.ensureRedisConfigMap(ctx, inst, logger, selector); ret != nil {
+	// ensure Valkey configMap
+	if ret := a.ensureValkeyConfigMap(ctx, inst, logger, selector); ret != nil {
 		return ret
 	}
 
@@ -216,9 +216,9 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Fa
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisConfigMap(ctx context.Context, st types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyConfigMap(ctx context.Context, st types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	rf := st.Definition()
-	configMap, err := failoverbuilder.NewRedisConfigMap(st, selectors)
+	configMap, err := failoverbuilder.NewValkeyConfigMap(st, selectors)
 	if err != nil {
 		return actor.RequeueWithError(err)
 	}
@@ -228,7 +228,7 @@ func (a *actorEnsureResource) ensureRedisConfigMap(ctx context.Context, st types
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	rf := inst.Definition()
 	if !rf.Spec.Access.EnableTLS {
 		return nil
@@ -244,7 +244,7 @@ func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.Fai
 	}
 
 	var (
-		secretName = builder.GetRedisSSLSecretName(rf.Name)
+		secretName = builder.GetValkeySSLSecretName(rf.Name)
 		secret     *corev1.Secret
 	)
 	for i := 0; i < 5; i++ {
@@ -302,7 +302,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst typ
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.RedisInstanceServiceAccountName,
+					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
 					Namespace: inst.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -322,7 +322,7 @@ func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.Fai
 	{
 		// COMP: patch labels for old deployment pods
 		// TODO: remove in 3.22
-		selectors := sentinelbuilder.GenerateSelectorLabels(sentinelbuilder.RedisArchRoleSEN, inst.GetName())
+		selectors := sentinelbuilder.GenerateSelectorLabels(sentinelbuilder.ValkeyArchRoleSEN, inst.GetName())
 		name := sentinelbuilder.GetSentinelStatefulSetName(inst.GetName())
 		if ret, err := a.client.GetDeploymentPods(ctx, inst.GetNamespace(), name); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "get sentinel deployment pods failed", "target", util.ObjectKey(inst.GetNamespace(), name))
@@ -332,7 +332,7 @@ func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.Fai
 				pod := item.DeepCopy()
 				pod.Labels = lo.Assign(pod.Labels, selectors)
 				// not patch sentinel labels
-				delete(pod.Labels, "redissentinels.databases.spotahome.com/name")
+				delete(pod.Labels, "sentinels.databases.spotahome.com/name")
 				if !reflect.DeepEqual(pod.Labels, item.Labels) {
 					if err := a.client.UpdatePod(ctx, pod.GetNamespace(), pod); err != nil {
 						logger.Error(err, "patch sentinel pod label failed", "target", client.ObjectKeyFromObject(pod))
@@ -392,26 +392,26 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Fail
 	}
 	switch cr.Spec.Access.ServiceType {
 	case corev1.ServiceTypeNodePort:
-		if ret := a.ensureRedisSpecifiedNodePortService(ctx, inst, logger, selector); ret != nil {
+		if ret := a.ensureValkeySpecifiedNodePortService(ctx, inst, logger, selector); ret != nil {
 			return ret
 		}
 	case corev1.ServiceTypeLoadBalancer:
-		if ret := a.ensureRedisPodService(ctx, cr, logger, selector); ret != nil {
+		if ret := a.ensureValkeyPodService(ctx, cr, logger, selector); ret != nil {
 			return ret
 		}
 	}
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Context,
+func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.Context,
 	inst types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	cr := inst.Definition()
 
 	if cr.Spec.Access.Ports == "" {
-		return a.ensureRedisPodService(ctx, cr, logger, selectors)
+		return a.ensureValkeyPodService(ctx, cr, logger, selectors)
 	}
 
-	logger.V(3).Info("ensure redis cluster nodeports", "namepspace", cr.Namespace, "name", cr.Name)
+	logger.V(3).Info("ensure cluster nodeports", "namepspace", cr.Namespace, "name", cr.Name)
 	configedPorts, err := helper.ParsePorts(cr.Spec.Access.Ports)
 	if err != nil {
 		return actor.RequeueWithError(err)
@@ -443,7 +443,7 @@ func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Co
 	// when pod not exists and service not in nodeport range, delete service
 	// NOTE: only delete service whose pod is not found
 	//       let statefulset auto scale up/down for pods
-	labels := failoverbuilder.GenerateSelectorLabels("redis", cr.Name)
+	labels := failoverbuilder.GenerateSelectorLabels("valkey", cr.Name)
 	services, ret := a.fetchAllPodBindedServices(ctx, cr.Namespace, labels)
 	if ret != nil {
 		return ret
@@ -550,7 +550,7 @@ func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Co
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	for i := 0; i < int(rf.Spec.Replicas); i++ {
 		newSvc := failoverbuilder.NewPodService(rf, i, selectors)
 		if svc, err := a.client.GetService(ctx, rf.Namespace, newSvc.Name); errors.IsNotFound(err) {

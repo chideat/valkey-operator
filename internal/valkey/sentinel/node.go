@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func LoadRedisSentinelNodes(ctx context.Context, client kubernetes.ClientSet, sts metav1.Object, newUser *user.User, logger logr.Logger) ([]types.SentinelNode, error) {
+func LoadValkeySentinelNodes(ctx context.Context, client kubernetes.ClientSet, sts metav1.Object, newUser *user.User, logger logr.Logger) ([]types.SentinelNode, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -60,8 +60,8 @@ func LoadRedisSentinelNodes(ctx context.Context, client kubernetes.ClientSet, st
 	nodes := []types.SentinelNode{}
 	for _, pod := range pods.Items {
 		pod := pod.DeepCopy()
-		if node, err := NewRedisSentinelNode(ctx, client, sts, pod, newUser, logger); err != nil {
-			logger.Error(err, "parse redis node failed", "pod", pod.Name)
+		if node, err := NewValkeySentinelNode(ctx, client, sts, pod, newUser, logger); err != nil {
+			logger.Error(err, "parse node failed", "pod", pod.Name)
 		} else {
 			nodes = append(nodes, node)
 		}
@@ -69,7 +69,7 @@ func LoadRedisSentinelNodes(ctx context.Context, client kubernetes.ClientSet, st
 	return nodes, nil
 }
 
-func LoadDeploymentRedisSentinelNodes(ctx context.Context, client kubernetes.ClientSet, obj metav1.Object, newUser *user.User, logger logr.Logger) ([]types.SentinelNode, error) {
+func LoadDeploymentValkeySentinelNodes(ctx context.Context, client kubernetes.ClientSet, obj metav1.Object, newUser *user.User, logger logr.Logger) ([]types.SentinelNode, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -87,8 +87,8 @@ func LoadDeploymentRedisSentinelNodes(ctx context.Context, client kubernetes.Cli
 	nodes := []types.SentinelNode{}
 	for _, pod := range pods.Items {
 		pod := pod.DeepCopy()
-		if node, err := NewRedisSentinelNode(ctx, client, obj, pod, newUser, logger); err != nil {
-			logger.Error(err, "parse redis node failed", "pod", pod.Name)
+		if node, err := NewValkeySentinelNode(ctx, client, obj, pod, newUser, logger); err != nil {
+			logger.Error(err, "parse node failed", "pod", pod.Name)
 		} else {
 			nodes = append(nodes, node)
 		}
@@ -96,7 +96,7 @@ func LoadDeploymentRedisSentinelNodes(ctx context.Context, client kubernetes.Cli
 	return nodes, nil
 }
 
-func NewRedisSentinelNode(ctx context.Context, client kubernetes.ClientSet, obj metav1.Object, pod *corev1.Pod, newUser *user.User, logger logr.Logger) (types.SentinelNode, error) {
+func NewValkeySentinelNode(ctx context.Context, client kubernetes.ClientSet, obj metav1.Object, pod *corev1.Pod, newUser *user.User, logger logr.Logger) (types.SentinelNode, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -107,12 +107,12 @@ func NewRedisSentinelNode(ctx context.Context, client kubernetes.ClientSet, obj 
 		return nil, fmt.Errorf("require pod")
 	}
 
-	node := RedisSentinelNode{
+	node := ValkeySentinelNode{
 		Pod:     *pod,
 		parent:  obj,
 		client:  client,
 		newUser: newUser,
-		logger:  logger.WithName("RedisSentinelNode"),
+		logger:  logger.WithName("ValkeySentinelNode"),
 	}
 
 	var err error
@@ -124,22 +124,22 @@ func NewRedisSentinelNode(ctx context.Context, client kubernetes.ClientSet, obj 
 	}
 
 	if node.IsContainerReady() {
-		vkcli, err := node.getRedisConnect(ctx, &node)
+		vkcli, err := node.getConnect(ctx, &node)
 		if err != nil {
 			return nil, err
 		}
 		defer vkcli.Close()
 
-		if node.info, node.config, err = node.loadRedisInfo(ctx, &node, vkcli); err != nil {
+		if node.info, node.config, err = node.loadNodeInfo(ctx, &node, vkcli); err != nil {
 			return nil, err
 		}
 	}
 	return &node, nil
 }
 
-var _ types.SentinelNode = &RedisSentinelNode{}
+var _ types.SentinelNode = &ValkeySentinelNode{}
 
-type RedisSentinelNode struct {
+type ValkeySentinelNode struct {
 	corev1.Pod
 	parent    metav1.Object
 	client    kubernetes.ClientSet
@@ -151,7 +151,7 @@ type RedisSentinelNode struct {
 	logger    logr.Logger
 }
 
-func (n *RedisSentinelNode) Definition() *corev1.Pod {
+func (n *ValkeySentinelNode) Definition() *corev1.Pod {
 	if n == nil {
 		return nil
 	}
@@ -166,7 +166,7 @@ func (n *RedisSentinelNode) Definition() *corev1.Pod {
 //
 // this method is used to fetch pod's operator secret
 // for versions without acl supported, there exists cases that the env secret not consistent with the server
-func (s *RedisSentinelNode) loadLocalUser(ctx context.Context) (*user.User, error) {
+func (s *ValkeySentinelNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -197,7 +197,7 @@ func (s *RedisSentinelNode) loadLocalUser(ctx context.Context) (*user.User, erro
 	return types.NewSentinelUser("", user.RoleDeveloper, nil)
 }
 
-func (n *RedisSentinelNode) loadTLS(ctx context.Context) (*tls.Config, error) {
+func (n *ValkeySentinelNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 	if n == nil {
 		return nil, nil
 	}
@@ -205,7 +205,7 @@ func (n *RedisSentinelNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 
 	var name string
 	for _, vol := range n.Spec.Volumes {
-		if vol.Name == clusterbuilder.RedisTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
+		if vol.Name == clusterbuilder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
 			name = vol.Secret.SecretName
 			break
 		}
@@ -243,14 +243,14 @@ func (n *RedisSentinelNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 	}, nil
 }
 
-func (n *RedisSentinelNode) getRedisConnect(ctx context.Context, node *RedisSentinelNode) (vkcli.ValkeyClient, error) {
+func (n *ValkeySentinelNode) getConnect(ctx context.Context, node *ValkeySentinelNode) (vkcli.ValkeyClient, error) {
 	if n == nil {
 		return nil, fmt.Errorf("nil node")
 	}
-	logger := n.logger.WithName("getRedisConnect")
+	logger := n.logger.WithName("getConnect")
 
 	if !n.IsContainerReady() {
-		logger.Error(fmt.Errorf("get redis info failed"), "pod not ready", "target",
+		logger.Error(fmt.Errorf("get node info failed"), "pod not ready", "target",
 			client.ObjectKey{Namespace: node.Namespace, Name: node.Name})
 		return nil, fmt.Errorf("node not ready")
 	}
@@ -279,30 +279,30 @@ func (n *RedisSentinelNode) getRedisConnect(ctx context.Context, node *RedisSent
 				strings.Contains(err.Error(), "invalid username-password pair") {
 				continue
 			}
-			logger.Error(err, "check connection to redis failed", "address", addr)
+			logger.Error(err, "check connection to node failed", "address", addr)
 			return nil, err
 		}
 		return vkcli, nil
 	}
 	if err == nil {
-		err = fmt.Errorf("no usable account to connect to redis instance")
+		err = fmt.Errorf("no usable account to connect to node")
 	}
 	return nil, err
 }
 
-// loadRedisInfo
-func (n *RedisSentinelNode) loadRedisInfo(ctx context.Context, _ *RedisSentinelNode, vkcli vkcli.ValkeyClient) (info *vkcli.NodeInfo,
+// loadNodeInfo
+func (n *ValkeySentinelNode) loadNodeInfo(ctx context.Context, _ *ValkeySentinelNode, vkcli vkcli.ValkeyClient) (info *vkcli.NodeInfo,
 	config map[string]string, err error) {
-	// fetch redis info
+	// fetch node info
 	if info, err = vkcli.Info(ctx); err != nil {
-		n.logger.Error(err, "load redis info failed")
+		n.logger.Error(err, "load node info failed")
 		return nil, nil, err
 	}
 	return
 }
 
 // Index returns the index of the related pod
-func (n *RedisSentinelNode) Index() int {
+func (n *ValkeySentinelNode) Index() int {
 	if n == nil {
 		return -1
 	}
@@ -316,7 +316,7 @@ func (n *RedisSentinelNode) Index() int {
 }
 
 // Refresh not concurrency safe
-func (n *RedisSentinelNode) Refresh(ctx context.Context) (err error) {
+func (n *ValkeySentinelNode) Refresh(ctx context.Context) (err error) {
 	if n == nil {
 		return nil
 	}
@@ -330,13 +330,13 @@ func (n *RedisSentinelNode) Refresh(ctx context.Context) (err error) {
 	}
 
 	if n.IsContainerReady() {
-		vkcli, err := n.getRedisConnect(ctx, n)
+		vkcli, err := n.getConnect(ctx, n)
 		if err != nil {
 			return err
 		}
 		defer vkcli.Close()
 
-		if n.info, n.config, err = n.loadRedisInfo(ctx, n, vkcli); err != nil {
+		if n.info, n.config, err = n.loadNodeInfo(ctx, n, vkcli); err != nil {
 			n.logger.Error(err, "refresh info failed")
 			return err
 		}
@@ -345,7 +345,7 @@ func (n *RedisSentinelNode) Refresh(ctx context.Context) (err error) {
 }
 
 // IsContainerReady
-func (n *RedisSentinelNode) IsContainerReady() bool {
+func (n *ValkeySentinelNode) IsContainerReady() bool {
 	if n == nil {
 		return false
 	}
@@ -363,7 +363,7 @@ func (n *RedisSentinelNode) IsContainerReady() bool {
 }
 
 // IsReady
-func (n *RedisSentinelNode) IsReady() bool {
+func (n *ValkeySentinelNode) IsReady() bool {
 	if n == nil || n.IsTerminating() {
 		return false
 	}
@@ -377,7 +377,7 @@ func (n *RedisSentinelNode) IsReady() bool {
 }
 
 // IsTerminating
-func (n *RedisSentinelNode) IsTerminating() bool {
+func (n *ValkeySentinelNode) IsTerminating() bool {
 	if n == nil {
 		return false
 	}
@@ -385,7 +385,7 @@ func (n *RedisSentinelNode) IsTerminating() bool {
 	return n.DeletionTimestamp != nil
 }
 
-func (n *RedisSentinelNode) IsACLApplied() bool {
+func (n *ValkeySentinelNode) IsACLApplied() bool {
 	// check if acl have been applied to container
 	container := util.GetContainerByName(&n.Pod.Spec, sentinelbuilder.SentinelContainerName)
 	for _, env := range container.Env {
@@ -396,12 +396,12 @@ func (n *RedisSentinelNode) IsACLApplied() bool {
 	return false
 }
 
-func (n *RedisSentinelNode) CurrentVersion() version.ValkeyVersion {
+func (n *ValkeySentinelNode) CurrentVersion() version.ValkeyVersion {
 	if n == nil {
 		return ""
 	}
 
-	// parse version from redis image
+	// parse version from image
 	container := util.GetContainerByName(&n.Pod.Spec, sentinelbuilder.SentinelContainerName)
 	if ver, _ := version.ParseValkeyVersionFromImage(container.Image); ver != version.ValkeyVersionUnknown {
 		return ver
@@ -410,7 +410,7 @@ func (n *RedisSentinelNode) CurrentVersion() version.ValkeyVersion {
 	return v
 }
 
-func (n *RedisSentinelNode) Config() map[string]string {
+func (n *ValkeySentinelNode) Config() map[string]string {
 	if n == nil || n.config == nil {
 		return nil
 	}
@@ -418,12 +418,12 @@ func (n *RedisSentinelNode) Config() map[string]string {
 }
 
 // Setup only return the last command error
-func (n *RedisSentinelNode) Setup(ctx context.Context, margs ...[]any) (err error) {
+func (n *ValkeySentinelNode) Setup(ctx context.Context, margs ...[]any) (err error) {
 	if n == nil {
 		return nil
 	}
 
-	vkcli, err := n.getRedisConnect(ctx, n)
+	vkcli, err := n.getConnect(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -452,12 +452,12 @@ func (n *RedisSentinelNode) Setup(ctx context.Context, margs ...[]any) (err erro
 	return
 }
 
-func (n *RedisSentinelNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {
+func (n *ValkeySentinelNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {
 	if n == nil {
 		return nil, nil
 	}
 
-	vkcli, err := n.getRedisConnect(ctx, n)
+	vkcli, err := n.getConnect(ctx, n)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +469,7 @@ func (n *RedisSentinelNode) Query(ctx context.Context, cmd string, args ...any) 
 	return vkcli.Do(ctx, cmd, args...)
 }
 
-func (n *RedisSentinelNode) Brothers(ctx context.Context, name string) (ret []*vkcli.SentinelMonitorNode, err error) {
+func (n *ValkeySentinelNode) Brothers(ctx context.Context, name string) (ret []*vkcli.SentinelMonitorNode, err error) {
 	if n == nil {
 		return nil, nil
 	}
@@ -488,7 +488,7 @@ func (n *RedisSentinelNode) Brothers(ctx context.Context, name string) (ret []*v
 	return
 }
 
-func (n *RedisSentinelNode) MonitoringClusters(ctx context.Context) (clusters []string, err error) {
+func (n *ValkeySentinelNode) MonitoringClusters(ctx context.Context) (clusters []string, err error) {
 	if n == nil {
 		return nil, nil
 	}
@@ -506,7 +506,7 @@ func (n *RedisSentinelNode) MonitoringClusters(ctx context.Context) (clusters []
 	return
 }
 
-func (n *RedisSentinelNode) MonitoringNodes(ctx context.Context, name string) (master *vkcli.SentinelMonitorNode,
+func (n *ValkeySentinelNode) MonitoringNodes(ctx context.Context, name string) (master *vkcli.SentinelMonitorNode,
 	replicas []*vkcli.SentinelMonitorNode, err error) {
 
 	if n == nil {
@@ -537,14 +537,14 @@ func (n *RedisSentinelNode) MonitoringNodes(ctx context.Context, name string) (m
 	return
 }
 
-func (n *RedisSentinelNode) Info() vkcli.NodeInfo {
+func (n *ValkeySentinelNode) Info() vkcli.NodeInfo {
 	if n == nil || n.info == nil {
 		return vkcli.NodeInfo{}
 	}
 	return *n.info
 }
 
-func (n *RedisSentinelNode) Port() int {
+func (n *ValkeySentinelNode) Port() int {
 	if port := n.Pod.Labels[builder.PodAnnouncePortLabelKey]; port != "" {
 		if val, _ := strconv.ParseInt(port, 10, 32); val > 0 {
 			return int(val)
@@ -553,7 +553,7 @@ func (n *RedisSentinelNode) Port() int {
 	return n.InternalPort()
 }
 
-func (n *RedisSentinelNode) InternalPort() int {
+func (n *ValkeySentinelNode) InternalPort() int {
 	port := 26379
 	if container := util.GetContainerByName(&n.Pod.Spec, sentinelbuilder.SentinelContainerName); container != nil {
 		for _, p := range container.Ports {
@@ -566,7 +566,7 @@ func (n *RedisSentinelNode) InternalPort() int {
 	return port
 }
 
-func (n *RedisSentinelNode) DefaultIP() net.IP {
+func (n *ValkeySentinelNode) DefaultIP() net.IP {
 	if value := n.Pod.Labels[builder.PodAnnounceIPLabelKey]; value != "" {
 		address := strings.Replace(value, "-", ":", -1)
 		return net.ParseIP(address)
@@ -574,7 +574,7 @@ func (n *RedisSentinelNode) DefaultIP() net.IP {
 	return n.DefaultInternalIP()
 }
 
-func (n *RedisSentinelNode) DefaultInternalIP() net.IP {
+func (n *ValkeySentinelNode) DefaultInternalIP() net.IP {
 	ips := n.IPs()
 	if len(ips) == 0 {
 		return nil
@@ -605,7 +605,7 @@ func (n *RedisSentinelNode) DefaultInternalIP() net.IP {
 	return ips[0]
 }
 
-func (n *RedisSentinelNode) IPs() []net.IP {
+func (n *ValkeySentinelNode) IPs() []net.IP {
 	if n == nil {
 		return nil
 	}
@@ -616,7 +616,7 @@ func (n *RedisSentinelNode) IPs() []net.IP {
 	return ips
 }
 
-func (n *RedisSentinelNode) NodeIP() net.IP {
+func (n *ValkeySentinelNode) NodeIP() net.IP {
 	if n == nil {
 		return nil
 	}
@@ -624,7 +624,7 @@ func (n *RedisSentinelNode) NodeIP() net.IP {
 }
 
 // ContainerStatus
-func (n *RedisSentinelNode) ContainerStatus() *corev1.ContainerStatus {
+func (n *ValkeySentinelNode) ContainerStatus() *corev1.ContainerStatus {
 	if n == nil {
 		return nil
 	}
@@ -637,14 +637,14 @@ func (n *RedisSentinelNode) ContainerStatus() *corev1.ContainerStatus {
 }
 
 // Status
-func (n *RedisSentinelNode) Status() corev1.PodPhase {
+func (n *ValkeySentinelNode) Status() corev1.PodPhase {
 	if n == nil {
 		return corev1.PodUnknown
 	}
 	return n.Pod.Status.Phase
 }
 
-func (n *RedisSentinelNode) SetMonitor(ctx context.Context, name, ip, port, user, password, quorum string) error {
+func (n *ValkeySentinelNode) SetMonitor(ctx context.Context, name, ip, port, user, password, quorum string) error {
 	if err := n.Setup(ctx, []interface{}{"SENTINEL", "REMOVE", name}); err != nil {
 		n.logger.Error(err, "try remove cluster failed", "name", name)
 	}

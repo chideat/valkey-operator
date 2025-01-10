@@ -36,7 +36,7 @@ import (
 
 var (
 	ErrNoMaster        = fmt.Errorf("no master")
-	ErrDoFailover      = fmt.Errorf("redis sentinel doing failover")
+	ErrDoFailover      = fmt.Errorf("sentinel doing failover")
 	ErrMultipleMaster  = fmt.Errorf("multiple master without majority agreement")
 	ErrAddressConflict = fmt.Errorf("master address conflict")
 	ErrNotEnoughNodes  = fmt.Errorf("not enough sentinel nodes")
@@ -161,7 +161,7 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 			s.logger.Error(err, "check monitoring master status of sentinel failed", "addr", node.addr)
 			return nil, err
 		} else if n.IsFailovering() {
-			s.logger.Error(ErrDoFailover, "redis sentinel is doing failover", "node", n.Address())
+			s.logger.Error(ErrDoFailover, "sentinel is doing failover", "node", n.Address())
 			return nil, ErrDoFailover
 		} else if !IsMonitoringNodeOnline(n) {
 			s.logger.Error(fmt.Errorf("master node offline"), "master node offline", "node", n.Address(), "flags", n.Flags)
@@ -403,7 +403,7 @@ func (s *SentinelMonitor) Failover(ctx context.Context) error {
 	return nil
 }
 
-// Monitor monitors the redis master node on the sentinel nodes
+// Monitor monitors the master node on the sentinel nodes
 func (s *SentinelMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNode) error {
 	if s == nil || len(s.nodes) == 0 {
 		return fmt.Errorf("no monitor")

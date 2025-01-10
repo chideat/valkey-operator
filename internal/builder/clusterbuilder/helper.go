@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	PasswordENV = "REDIS_PASSWORD"
+	PasswordENV = "VALKEY_PASSWORD"
 	passwordKey = "password" //NOSONAR
 )
 
@@ -36,10 +36,10 @@ const (
 // NOTE: this labels are const, take care of edit this
 func getPublicLabels(name string) map[string]string {
 	return map[string]string{
-		"redis.kun/name":           name,
-		"middleware.instance/type": "distributed-redis-cluster",
+		"valkey.buf.red/name":      name,
+		"middleware.instance/type": "cluster",
 		builder.InstanceNameLabel:  name,
-		builder.ManagedByLabel:     "redis-cluster-operator",
+		builder.ManagedByLabel:     "valkey-operator",
 	}
 }
 
@@ -90,8 +90,8 @@ func getSecretKeyRefByKey(key string, envSet []corev1.EnvVar) string {
 	return ""
 }
 
-// GetOldRedisClusterPassword return old redis cluster's password.
-func GetOldRedisClusterPassword(client client.Client, sts *appsv1.StatefulSet) (string, error) {
+// GetOldValkeyClusterPassword return old cluster's password.
+func GetOldValkeyClusterPassword(client client.Client, sts *appsv1.StatefulSet) (string, error) {
 	envSet := sts.Spec.Template.Spec.Containers[0].Env
 	secretName := getSecretKeyRefByKey(PasswordENV, envSet)
 	if secretName == "" {
@@ -108,7 +108,7 @@ func GetOldRedisClusterPassword(client client.Client, sts *appsv1.StatefulSet) (
 	return string(secret.Data[passwordKey]), nil
 }
 
-// GetClusterPassword return current redis cluster's password.
+// GetClusterPassword return current cluster's password.
 func GetClusterPassword(client client.Client, cluster *v1alpha1.Cluster) (string, error) {
 	if cluster.Spec.Access.DefaultPasswordSecret == "" {
 		return "", nil

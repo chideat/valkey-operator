@@ -26,7 +26,7 @@ func GenerateCertName(name string) string {
 	return name + "-cert"
 }
 
-func GetRedisSSLSecretName(name string) string {
+func GetValkeySSLSecretName(name string) string {
 	return fmt.Sprintf("%s-tls", name)
 }
 
@@ -36,12 +36,12 @@ func GetServiceDNSName(serviceName, namespace string) string {
 }
 
 const (
-	RedisStorageVolumeName = "redis-data"
+	ValkeyStorageVolumeName = "valkey-data"
 )
 
 func EmptyVolume() *corev1.Volume {
 	return &corev1.Volume{
-		Name: RedisStorageVolumeName,
+		Name: ValkeyStorageVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		},

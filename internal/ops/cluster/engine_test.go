@@ -51,7 +51,7 @@ func Test_buildStatusOfShards(t *testing.T) {
 		{
 			name: "newassign",
 			args: args{
-				cluster: &cluster.RedisCluster{
+				cluster: &cluster.ValkeyCluster{
 					Cluster: v1alpha1.Cluster{
 						Spec: v1alpha1.ClusterSpec{
 							Replicas: v1alpha1.ClusterReplicas{
@@ -98,7 +98,7 @@ func Test_buildStatusOfShards(t *testing.T) {
 		{
 			name: "scale 3=>4",
 			args: args{
-				cluster: &cluster.RedisCluster{
+				cluster: &cluster.ValkeyCluster{
 					Cluster: v1alpha1.Cluster{
 						Spec: v1alpha1.ClusterSpec{
 							Replicas: v1alpha1.ClusterReplicas{
@@ -215,7 +215,7 @@ func Test_buildStatusOfShards(t *testing.T) {
 		{
 			name: "update status",
 			args: args{
-				cluster: &cluster.RedisCluster{
+				cluster: &cluster.ValkeyCluster{
 					Cluster: v1alpha1.Cluster{
 						Spec: v1alpha1.ClusterSpec{
 							Replicas: v1alpha1.ClusterReplicas{

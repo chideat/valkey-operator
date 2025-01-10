@@ -110,7 +110,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 		}
 
 		// create acl with old password
-		// create redis acl file, after restart, the password is updated
+		// create acl file, after restart, the password is updated
 		if err := a.client.CreateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
 			logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
 			return actor.NewResultWithError(ops.CommandRequeue, err)
@@ -290,14 +290,14 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 		updateMasterAuth := []interface{}{"config", "set", "masterauth", password}
 		updateRequirePass := []interface{}{"config", "set", "requirepass", password}
 		// 如果全部节点更新密码,设置sentinel的密码
-		allRedisNodeApplied := true
+		allValkeyNodeApplied := true
 		for _, node := range inst.Nodes() {
 			if node.ContainerStatus() == nil || !node.IsReady() || node.IsTerminating() {
-				allRedisNodeApplied = false
+				allValkeyNodeApplied = false
 				continue
 			}
 			if err := node.Setup(ctx, updateMasterAuth, updateRequirePass); err != nil {
-				allRedisNodeApplied = false
+				allValkeyNodeApplied = false
 				logger.Error(err, "update nodes auth info failed")
 			}
 
@@ -310,7 +310,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				logger.Error(err, "patch new secret to pod failed", "pod", node.GetName())
 			}
 		}
-		if allRedisNodeApplied {
+		if allValkeyNodeApplied {
 			if err := inst.Monitor().UpdateConfig(ctx, map[string]string{"auth-pass": password}); err != nil {
 				logger.Error(err, "update sentinel auth info failed")
 			}

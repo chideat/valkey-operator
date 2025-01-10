@@ -30,21 +30,21 @@ func Test_parsePodShardAndIndex(t *testing.T) {
 	}{
 		{
 			name:      "name ok",
-			args:      args{name: "drc-redis-1-1"},
+			args:      args{name: "drc-valkey-1-1"},
 			wantShard: 1,
 			wantIndex: 1,
 			wantErr:   false,
 		},
 		{
 			name:      "name ok",
-			args:      args{name: "drc----redis-0-0"},
+			args:      args{name: "drc----valkey-0-0"},
 			wantShard: 0,
 			wantIndex: 0,
 			wantErr:   false,
 		},
 		{
 			name:      "name error",
-			args:      args{name: "drc-redis-1"},
+			args:      args{name: "drc-valkey-1"},
 			wantShard: -1,
 			wantIndex: -1,
 			wantErr:   true,

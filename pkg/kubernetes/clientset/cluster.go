@@ -27,10 +27,11 @@ import (
 )
 
 type Cluster interface {
+	// GetCluster
 	GetCluster(ctx context.Context, namespace, name string) (*v1alpha1.Cluster, error)
-	// UpdateRedisFailover update the redisfailover on a cluster.
+	// UpdateCluter
 	UpdateCluster(ctx context.Context, inst *v1alpha1.Cluster) error
-	// UpdateRedisFailoverStatus
+	// UpdateValkeyFailoverStatus
 	UpdateClusterStatus(ctx context.Context, inst *v1alpha1.Cluster) error
 }
 
@@ -59,7 +60,7 @@ func (r *ClusterOption) GetCluster(ctx context.Context, namespace, name string) 
 	return &ret, nil
 }
 
-// UpdateRedisFailover
+// UpdateValkeyFailover
 func (r *ClusterOption) UpdateCluster(ctx context.Context, inst *v1alpha1.Cluster) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var oldInst v1alpha1.Cluster

@@ -84,7 +84,7 @@ func (a *actorHealMonitor) Do(ctx context.Context, val types.Instance) *actor.Ac
 	for _, name := range clusters {
 		reseted := false
 		for _, node := range inst.Nodes() {
-			needReset := ops.NeedResetRedisSentinel(ctx, name, node, logger)
+			needReset := ops.NeedResetValkeySentinel(ctx, name, node, logger)
 			if needReset {
 				args := []any{"SENTINEL", "RESET", name}
 				if err := node.Setup(ctx, args); err != nil {

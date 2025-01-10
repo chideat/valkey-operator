@@ -28,20 +28,20 @@ import (
 )
 
 const (
-	RedisArchRoleRedis = "redis"
-	RedisArchRoleSEN   = "sentinel"
-	RedisRoleMaster    = "master"
-	RedisRoleReplica   = "slave"
-	RedisRoleLabel     = "redis.middleware.alauda.io/role"
-	RedisSVCPort       = 6379
-	RedisSVCPortName   = "redis"
+	ValkeyArchRoleValkey = "valkey"
+	ValkeyArchRoleSEN    = "sentinel"
+	ValkeyRoleMaster     = "master"
+	ValkeyRoleReplica    = "slave"
+	ValkeyRoleLabel      = "valkey.middleware.alauda.io/role"
+	ValkeySVCPort        = 6379
+	ValkeySVCPortName    = "valkey"
 )
 
 func NewRWSvcForCR(rf *v1alpha1.Failover) *corev1.Service {
-	selectorLabels := GenerateSelectorLabels(RedisArchRoleRedis, rf.Name)
-	selectorLabels[RedisRoleLabel] = RedisRoleMaster
+	selectorLabels := GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name)
+	selectorLabels[ValkeyRoleLabel] = ValkeyRoleMaster
 	labels := GetCommonLabels(rf.Name, selectorLabels)
-	svcName := GetRedisRWServiceName(rf.Name)
+	svcName := GetValkeyRWServiceName(rf.Name)
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -63,10 +63,10 @@ func NewRWSvcForCR(rf *v1alpha1.Failover) *corev1.Service {
 			IPFamilyPolicy: &ptype,
 			Ports: []corev1.ServicePort{
 				{
-					Port:       RedisSVCPort,
-					TargetPort: intstr.FromInt(RedisSVCPort),
+					Port:       ValkeySVCPort,
+					TargetPort: intstr.FromInt(ValkeySVCPort),
 					Protocol:   corev1.ProtocolTCP,
-					Name:       RedisSVCPortName,
+					Name:       ValkeySVCPortName,
 				},
 			},
 			Selector: selectorLabels,
@@ -75,10 +75,10 @@ func NewRWSvcForCR(rf *v1alpha1.Failover) *corev1.Service {
 }
 
 func NewReadOnlyForCR(rf *v1alpha1.Failover) *corev1.Service {
-	selectorLabels := GenerateSelectorLabels(RedisArchRoleRedis, rf.Name)
-	selectorLabels[RedisRoleLabel] = RedisRoleReplica
+	selectorLabels := GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name)
+	selectorLabels[ValkeyRoleLabel] = ValkeyRoleReplica
 	labels := GetCommonLabels(rf.Name, selectorLabels)
-	svcName := GetRedisROServiceName(rf.Name)
+	svcName := GetValkeyROServiceName(rf.Name)
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -100,10 +100,10 @@ func NewReadOnlyForCR(rf *v1alpha1.Failover) *corev1.Service {
 			IPFamilyPolicy: &ptype,
 			Ports: []corev1.ServicePort{
 				{
-					Port:       RedisSVCPort,
-					TargetPort: intstr.FromInt(RedisSVCPort),
+					Port:       ValkeySVCPort,
+					TargetPort: intstr.FromInt(ValkeySVCPort),
 					Protocol:   corev1.ProtocolTCP,
-					Name:       RedisSVCPortName,
+					Name:       ValkeySVCPortName,
 				},
 			},
 			Selector: selectorLabels,
@@ -114,9 +114,9 @@ func NewReadOnlyForCR(rf *v1alpha1.Failover) *corev1.Service {
 func NewExporterServiceForCR(rf *v1alpha1.Failover, selectors map[string]string) *corev1.Service {
 	name := GetFailoverStatefulSetName(rf.Name)
 	namespace := rf.Namespace
-	selectorLabels := GenerateSelectorLabels(RedisArchRoleRedis, rf.Name)
+	selectorLabels := GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name)
 	labels := GetCommonLabels(rf.Name, selectors, selectorLabels)
-	labels[builder.LabelRedisArch] = RedisArchRoleSEN
+	labels[builder.LabelValkeyArch] = ValkeyArchRoleSEN
 	defaultAnnotations := map[string]string{
 		"prometheus.io/scrape": "true",
 		"prometheus.io/port":   "http",
@@ -157,7 +157,7 @@ func NewExporterServiceForCR(rf *v1alpha1.Failover, selectors map[string]string)
 	}
 }
 
-// NewPodService returns a new Service for the given RedisFailover and index, with the configed service type
+// NewPodService returns a new Service for the given ValkeyFailover and index, with the configed service type
 func NewPodService(rf *v1alpha1.Failover, index int, selectors map[string]string) *corev1.Service {
 	return NewPodNodePortService(rf, index, selectors, 0)
 }
@@ -171,7 +171,7 @@ func NewPodNodePortService(rf *v1alpha1.Failover, index int, selectors map[strin
 	} else {
 		protocol = append(protocol, corev1.IPv4Protocol)
 	}
-	labels := lo.Assign(GetCommonLabels(rf.Name), selectors, GenerateSelectorLabels(RedisArchRoleRedis, rf.Name))
+	labels := lo.Assign(GetCommonLabels(rf.Name), selectors, GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name))
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: GetFailoverStatefulSetName(rf.Name) + "-" + strconv.Itoa(index),
 	}

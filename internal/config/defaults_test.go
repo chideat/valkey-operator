@@ -20,30 +20,30 @@ import (
 	"testing"
 )
 
-func TestGetRedisVersion(t *testing.T) {
+func TestGetValkeyVersion(t *testing.T) {
 	testCases := []struct {
 		input          string
 		expectedOutput string
 	}{
-		{"redis:3.0-alpine", "3.0"},
-		{"redis:4.0.14", "4.0.14"},
-		{"redis", ""},
+		{"valkey:3.0-alpine", "3.0"},
+		{"valkey:4.0.14", "4.0.14"},
+		{"valkey", ""},
 		{"", ""},
 	}
 
 	for _, tc := range testCases {
-		output := GetRedisVersion(tc.input)
+		output := GetValkeyVersion(tc.input)
 		if output != tc.expectedOutput {
 			t.Errorf("Unexpected output for input '%s'. Expected '%s', but got '%s'", tc.input, tc.expectedOutput, output)
 		}
 	}
 }
 
-func TestGetDefaultRedisImage(t *testing.T) {
-	os.Setenv("DEFAULT_REDIS_IMAGE", "redis:3.2-alpine")
-	expectedOutput := "redis:3.2-alpine"
-	output := GetDefaultRedisImage()
+func TestGetDefaultValkeyImage(t *testing.T) {
+	os.Setenv("DEFAULT_VALKEY_IMAGE", "valkey:3.2-alpine")
+	expectedOutput := "valkey:3.2-alpine"
+	output := GetDefaultValkeyImage()
 	if output != expectedOutput {
-		t.Errorf("Unexpected output for GetDefaultRedisImage(). Expected '%s', but got '%s'", expectedOutput, output)
+		t.Errorf("Unexpected output for GetDefaultValkeyImage(). Expected '%s', but got '%s'", expectedOutput, output)
 	}
 }

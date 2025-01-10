@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	RedisArchRoleSEN     = "sentinel"
-	RedisSentinelSVCPort = 26379
+	ValkeyArchRoleSEN     = "sentinel"
+	ValkeySentinelSVCPort = 26379
 )
 
 func NewSentinelServiceForCR(inst *v1alpha1.Sentinel, selectors map[string]string) *corev1.Service {
@@ -43,14 +43,14 @@ func NewSentinelServiceForCR(inst *v1alpha1.Sentinel, selectors map[string]strin
 		protocol = append(protocol, corev1.IPv4Protocol)
 	}
 
-	selectorLabels := lo.Assign(GenerateSelectorLabels(RedisArchRoleSEN, inst.Name), GetCommonLabels(inst.Name))
+	selectorLabels := lo.Assign(GenerateSelectorLabels(ValkeyArchRoleSEN, inst.Name), GetCommonLabels(inst.Name))
 	if len(selectors) > 0 {
-		selectorLabels = lo.Assign(selectors, GenerateSelectorLabels(RedisArchRoleSEN, inst.Name))
+		selectorLabels = lo.Assign(selectors, GenerateSelectorLabels(ValkeyArchRoleSEN, inst.Name))
 	}
 	// NOTE: remove this label for compatibility for old instances
 	// TODO: remove this in 3.22
-	delete(selectorLabels, "redissentinels.databases.spotahome.com/name")
-	labels := GetCommonLabels(inst.Name, GenerateSelectorLabels(RedisArchRoleSEN, inst.Name), selectorLabels)
+	delete(selectorLabels, "valkeysentinels.databases.spotahome.com/name")
+	labels := GetCommonLabels(inst.Name, GenerateSelectorLabels(ValkeyArchRoleSEN, inst.Name), selectorLabels)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -68,8 +68,8 @@ func NewSentinelServiceForCR(inst *v1alpha1.Sentinel, selectors map[string]strin
 			Ports: []corev1.ServicePort{
 				{
 					Name:       SentinelContainerPortName,
-					Port:       RedisSentinelSVCPort,
-					TargetPort: intstr.FromInt(RedisSentinelSVCPort),
+					Port:       ValkeySentinelSVCPort,
+					TargetPort: intstr.FromInt(ValkeySentinelSVCPort),
 					Protocol:   "TCP",
 				},
 			},
@@ -80,9 +80,9 @@ func NewSentinelServiceForCR(inst *v1alpha1.Sentinel, selectors map[string]strin
 func NewSentinelHeadlessServiceForCR(inst *v1alpha1.Sentinel, selectors map[string]string) *corev1.Service {
 	name := GetSentinelHeadlessServiceName(inst.Name)
 	namespace := inst.Namespace
-	selectorLabels := GenerateSelectorLabels(RedisArchRoleSEN, inst.Name)
+	selectorLabels := GenerateSelectorLabels(ValkeyArchRoleSEN, inst.Name)
 	labels := GetCommonLabels(inst.Name, selectors, selectorLabels)
-	labels[builder.LabelRedisArch] = RedisArchRoleSEN
+	labels[builder.LabelValkeyArch] = ValkeyArchRoleSEN
 	annotations := inst.Spec.Access.Annotations
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
@@ -109,8 +109,8 @@ func NewSentinelHeadlessServiceForCR(inst *v1alpha1.Sentinel, selectors map[stri
 			Ports: []corev1.ServicePort{
 				{
 					Name:       SentinelContainerPortName,
-					Port:       RedisSentinelSVCPort,
-					TargetPort: intstr.FromInt(RedisSentinelSVCPort),
+					Port:       ValkeySentinelSVCPort,
+					TargetPort: intstr.FromInt(ValkeySentinelSVCPort),
 					Protocol:   "TCP",
 				},
 			},
@@ -118,7 +118,7 @@ func NewSentinelHeadlessServiceForCR(inst *v1alpha1.Sentinel, selectors map[stri
 	}
 }
 
-// NewPodService returns a new Service for the given RedisFailover and index, with the configed service type
+// NewPodService returns a new Service for the given ValkeyFailover and index, with the configed service type
 func NewPodService(sen *v1alpha1.Sentinel, index int, selectors map[string]string) *corev1.Service {
 	return NewPodNodePortService(sen, index, selectors, 0)
 }
@@ -135,7 +135,7 @@ func NewPodNodePortService(sen *v1alpha1.Sentinel, index int, selectors map[stri
 	} else {
 		protocol = append(protocol, corev1.IPv4Protocol)
 	}
-	labels := lo.Assign(GetCommonLabels(sen.Name), selectors, GenerateSelectorLabels(RedisArchRoleSEN, sen.Name))
+	labels := lo.Assign(GetCommonLabels(sen.Name), selectors, GenerateSelectorLabels(ValkeyArchRoleSEN, sen.Name))
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: name,
 	}
@@ -154,8 +154,8 @@ func NewPodNodePortService(sen *v1alpha1.Sentinel, index int, selectors map[stri
 			Type:           sen.Spec.Access.ServiceType,
 			Ports: []corev1.ServicePort{
 				{
-					Port:       RedisSentinelSVCPort,
-					TargetPort: intstr.FromInt(RedisSentinelSVCPort),
+					Port:       ValkeySentinelSVCPort,
+					TargetPort: intstr.FromInt(ValkeySentinelSVCPort),
 					Protocol:   corev1.ProtocolTCP,
 					Name:       SentinelContainerPortName,
 					NodePort:   nodePort,

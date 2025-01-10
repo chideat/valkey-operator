@@ -15,7 +15,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.redisName
+    - jsonPath: .spec.instanceName
       name: Instance
       type: string
     - jsonPath: .spec.username
@@ -61,7 +61,7 @@ spec:
                 - default
                 type: string
               aclRules:
-                description: redis  acl rules  string
+                description: AclRules acl rules  string
                 type: string
               arch:
                 description: user account type
@@ -70,21 +70,21 @@ spec:
                 - cluster
                 - standalone
                 type: string
-              passwordSecrets:
-                description: Redis Password secret name, key is password
-                items:
-                  type: string
-                type: array
-              redisName:
-                description: Redis instance  Name (required)
+              instanceName:
+                description: InstanceName instance  Name (required)
                 maxLength: 63
                 minLength: 1
                 type: string
+              passwordSecrets:
+                description: PasswordSecrets Password secret name, key is password
+                items:
+                  type: string
+                type: array
               username:
                 description: Username (required)
                 type: string
             required:
-            - redisName
+            - instanceName
             - username
             type: object
           status:
@@ -94,7 +94,7 @@ spec:
                 description: Phase
                 type: string
               aclRules:
-                description: AclRules acl rules of redis
+                description: AclRules acl rules of valkey
                 type: string
               message:
                 description: Message

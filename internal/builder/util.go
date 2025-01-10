@@ -47,13 +47,13 @@ func GetPullPolicy(policies ...corev1.PullPolicy) corev1.PullPolicy {
 	return corev1.PullIfNotPresent
 }
 
-func GenerateRedisTLSOptions() string {
+func GenerateValkeyTLSOptions() string {
 	return "--tls --cert /tls/tls.crt --key /tls/tls.key --cacert /tls/ca.crt"
 }
 
 func GetPodSecurityContext(secctx *corev1.PodSecurityContext) (podSec *corev1.PodSecurityContext) {
-	// 999 is the default userid for redis offical docker image
-	// 1000 is the default groupid for redis offical docker image
+	// 999 is the default userid for offical docker image
+	// 1000 is the default groupid for offical docker image
 	_, groupId := int64(999), int64(1000)
 	if secctx == nil {
 		podSec = &corev1.PodSecurityContext{FSGroup: &groupId}
@@ -67,8 +67,8 @@ func GetPodSecurityContext(secctx *corev1.PodSecurityContext) (podSec *corev1.Po
 }
 
 func GetSecurityContext(secctx *corev1.PodSecurityContext) (sec *corev1.SecurityContext) {
-	// 999 is the default userid for redis offical docker image
-	// 1000 is the default groupid for redis offical docker image
+	// 999 is the default userid for offical docker image
+	// 1000 is the default groupid for offical docker image
 	userId, groupId := int64(999), int64(1000)
 	if secctx == nil {
 		sec = &corev1.SecurityContext{

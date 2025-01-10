@@ -74,12 +74,12 @@ func (a *actorUpdateAccount) Version() *semver.Version {
 // 对于账户更新，需要尽量保持在一个 reconcile 里完成，否则会出现一个实例多种密码的情况
 // operator 账户为内置账户，不支持修改密码, 如果出现账户不一致的情况，可通过重启来解决
 //
-// 由于 redis 6.0 支持了 ACL，从 5.0 升级到 6.0，会创建ACL账户。
+// 由于 valkey 6.0 支持了 ACL，从 5.0 升级到 6.0，会创建ACL账户。
 // 更新逻辑：
 // 1. 同步 acl configmap
 // 2. 同步实例账户，如果同步实例账户失败，会清理 Pod
 // 前置条件
-// 1. 不支持 Redis 版本回退
+// 1. 不支持 Valkey 版本回退
 // 2. 更新密码不能更新 secret，需要新建 secret
 func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	cluster := val.(types.ClusterInstance)
@@ -124,7 +124,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 		}
 
 		// create acl with old password
-		// create redis acl file, after restart, the password is updated
+		// create valkey acl file, after restart, the password is updated
 		if err := a.client.CreateConfigMap(ctx, cluster.GetNamespace(), oldCm); err != nil {
 			logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
 			return actor.NewResultWithError(cops.CommandRequeue, err)
@@ -271,7 +271,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	if cluster.Version().IsACLSupported() && isAllACLSupported {
 		if newSecretName != currentSecretName {
 			if isAclEnabled {
-				// hotconfig with redis acl/password
+				// hotconfig with valkey acl/password
 				// if some node update failed, then the pod should be deleted to restarted (TODO)
 				for _, node := range cluster.Nodes() {
 					if node.ContainerStatus() == nil || !node.ContainerStatus().Ready ||
@@ -290,11 +290,11 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				if err == nil && !reflect.DeepEqual(oldRu.Spec.PasswordSecrets, ru.Spec.PasswordSecrets) {
 					oldRu.Spec.PasswordSecrets = ru.Spec.PasswordSecrets
 					if err := a.client.UpdateUser(ctx, oldRu); err != nil {
-						logger.Error(err, "update default user redisUser failed")
+						logger.Error(err, "update default user valkeyUser failed")
 					}
 				} else if errors.IsNotFound(err) {
 					if err := a.client.CreateIfNotExistsUser(ctx, ru); err != nil {
-						logger.Error(err, "create default user redisUser failed")
+						logger.Error(err, "create default user valkeyUser failed")
 					}
 					cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created default user when update password")
 				}
@@ -380,7 +380,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 
 			_ = cluster.UpdateStatus(ctx, types.Any, "updating password")
 			// update masterauth and requirepass, and restart (ensure_resource do this)
-			// hotconfig with redis acl/password
+			// hotconfig with valkey acl/password
 			updateMasterAuth := []interface{}{"config", "set", "masterauth", defaultUser.Password.String()}
 			updateRequirePass := []interface{}{"config", "set", "requirepass", defaultUser.Password.String()}
 			cmd := []string{"sh", "-c", fmt.Sprintf(`echo -n '%s' > /tmp/newpass`, defaultUser.Password.String())}
@@ -425,7 +425,7 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 				}
 
 				logger.Info("force replica clients to reconnect to master", "master", master.GetName())
-				// NOTE: require redis 5.0
+				// NOTE: require valkey 5.0
 				if err := master.Setup(ctx, []interface{}{"client", "kill", "type", "replica"}); err != nil {
 					logger.Error(err, "kill replica client failed", "master", master.GetName())
 				}

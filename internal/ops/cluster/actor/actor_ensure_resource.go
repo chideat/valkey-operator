@@ -28,6 +28,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/cert"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops/cluster"
@@ -175,7 +176,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster 
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.RedisInstanceServiceAccountName,
+					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
 					Namespace: cluster.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -213,7 +214,20 @@ func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.Clust
 	if !cluster.Definition().Spec.Access.EnableTLS || !cluster.Version().IsTLSSupported() {
 		return nil
 	}
-	cert := clusterbuilder.NewCertificate(cluster.Definition())
+	dnsNames := []string{
+		cluster.GetName(),
+		fmt.Sprintf("%s.%s", cluster.GetName(), cluster.GetNamespace()),
+	}
+	for i := 0; i < int(cluster.Definition().Spec.Replicas.Shards); i++ {
+		name := clusterbuilder.ClusterHeadlessSvcName(cluster.GetName(), i)
+		dnsNames = append(dnsNames, name)
+		dnsNames = append(dnsNames, fmt.Sprintf("%s.%s", name, cluster.GetNamespace()))
+	}
+	cert, err := cert.NewCertificate(cluster, dnsNames, clusterbuilder.GetClusterLabels(cluster.GetName(), nil))
+	if err != nil {
+		logger.Error(err, "generate certificate failed")
+		return actor.NewResultWithError(cops.CommandAbort, err)
+	}
 
 	oldCert, err := a.client.GetCertificate(ctx, cluster.GetNamespace(), cert.GetName())
 	if err != nil && !errors.IsNotFound(err) {
@@ -227,7 +241,7 @@ func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.Clust
 
 	var (
 		found      = false
-		secretName = builder.GetRedisSSLSecretName(cluster.GetName())
+		secretName = builder.GetValkeySSLSecretName(cluster.GetName())
 	)
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Second * time.Duration(i))
@@ -361,14 +375,14 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 	}
 	switch cr.Spec.Access.ServiceType {
 	case corev1.ServiceTypeNodePort:
-		if err := a.ensureRedisNodePortService(ctx, cluster, logger); err != nil {
+		if err := a.ensureValkeyNodePortService(ctx, cluster, logger); err != nil {
 			return err
 		}
 	case corev1.ServiceTypeLoadBalancer:
-		if ret := a.ensureRedisPodService(ctx, cluster, logger); ret != nil {
+		if ret := a.ensureValkeyPodService(ctx, cluster, logger); ret != nil {
 			return ret
 		}
-		svc := clusterbuilder.NewServiceWithType(cr, corev1.ServiceTypeLoadBalancer, 0)
+		svc := clusterbuilder.NewLbService(cr)
 		if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
 			logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(svc))
 			return actor.RequeueWithError(err)
@@ -377,13 +391,13 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	if cluster.Definition().Spec.Access.ServiceType != corev1.ServiceTypeNodePort {
 		return nil
 	}
 
 	if cluster.Definition().Spec.Access.Ports == "" {
-		return a.ensureRedisPodService(ctx, cluster, logger)
+		return a.ensureValkeyPodService(ctx, cluster, logger)
 	}
 
 	cr := cluster.Definition()
@@ -413,11 +427,6 @@ func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cl
 	}
 
 	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
-	clusterNodePortSvc, err := a.client.GetService(ctx, cr.GetNamespace(), clusterbuilder.RedisNodePortSvcName(cr.Name))
-	if err != nil && !errors.IsNotFound(err) {
-		a.logger.Error(err, "get cluster nodeport service failed", "target", clusterbuilder.RedisNodePortSvcName(cr.Name))
-		return actor.RequeueWithError(err)
-	}
 
 	// the whole process is divided into three steps:
 	// 1. delete service not in nodeport range
@@ -450,13 +459,6 @@ func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cl
 			}
 		}
 	}
-	if clusterNodePortSvc != nil && slices.Contains(configedPorts, clusterNodePortSvc.Spec.Ports[0].NodePort) {
-		// delete cluster nodeport service
-		if err := a.client.DeleteService(ctx, cr.GetNamespace(), clusterNodePortSvc.Name); err != nil {
-			a.logger.Error(err, "delete service failed", "target", client.ObjectKeyFromObject(clusterNodePortSvc))
-			return actor.RequeueWithError(err)
-		}
-	}
 
 	if services, ret = a.fetchAllPodBindedServices(ctx, cr.Namespace, labels); ret != nil {
 		return ret
@@ -472,9 +474,6 @@ func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cl
 	for _, svc := range services {
 		svc := svc.DeepCopy()
 		bindedNodeports = append(bindedNodeports, getClientPort(svc), getGossipPort(svc))
-	}
-	if clusterNodePortSvc != nil && len(clusterNodePortSvc.Spec.Ports) > 0 {
-		bindedNodeports = append(bindedNodeports, clusterNodePortSvc.Spec.Ports[0].NodePort)
 	}
 	// filter used ports
 	for _, port := range configedPorts {
@@ -596,7 +595,7 @@ func (a *actorEnsureResource) ensureRedisNodePortService(ctx context.Context, cl
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
 
@@ -679,7 +678,7 @@ func (a *actorEnsureResource) fetchAllPodBindedServices(ctx context.Context, nam
 }
 
 const (
-	redisRestartAnnotation = "kubectl.kubernetes.io/restartedAt"
+	valkeyRestartAnnotation = "kubectl.kubernetes.io/restartedAt"
 )
 
 func MergeAnnotations(t, s map[string]string) map[string]string {
@@ -691,7 +690,7 @@ func MergeAnnotations(t, s map[string]string) map[string]string {
 	}
 
 	for k, v := range s {
-		if k == redisRestartAnnotation {
+		if k == valkeyRestartAnnotation {
 			tRestartAnn := t[k]
 			if tRestartAnn == "" && v != "" {
 				t[k] = v

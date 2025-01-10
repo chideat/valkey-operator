@@ -27,8 +27,8 @@ import (
 func NewPodDisruptionBudgetForCR(rf *v1alpha1.Failover, selectors map[string]string) *policyv1.PodDisruptionBudget {
 	maxUnavailable := intstr.FromInt(int(rf.Spec.Replicas) - 1)
 	namespace := rf.Namespace
-	selectors = lo.Assign(selectors, GenerateSelectorLabels(RedisArchRoleRedis, rf.Name))
-	labels := lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(RedisArchRoleRedis, rf.Name), selectors)
+	selectors = lo.Assign(selectors, GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name))
+	labels := lo.Assign(GetCommonLabels(rf.Name), GenerateSelectorLabels(ValkeyArchRoleValkey, rf.Name), selectors)
 
 	name := GetFailoverStatefulSetName(rf.Name)
 	return &policyv1.PodDisruptionBudget{

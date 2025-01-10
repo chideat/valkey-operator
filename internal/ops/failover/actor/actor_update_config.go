@@ -63,18 +63,18 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 
 	st := val.(types.FailoverInstance)
 	selectors := st.Selector()
-	newCm, err := failoverbuilder.NewRedisConfigMap(st, selectors)
+	newCm, err := failoverbuilder.NewValkeyConfigMap(st, selectors)
 	if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
 	oldCm, err := a.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.RedisConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
 		return actor.NewResultWithError(ops.CommandEnsureResource, fmt.Errorf("configmap %s not found", newCm.GetName()))
 	} else if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
-	newConf, _ := clusterbuilder.LoadRedisConfig(newCm.Data[clusterbuilder.RedisConfKey])
-	oldConf, _ := clusterbuilder.LoadRedisConfig(oldCm.Data[clusterbuilder.RedisConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
 		// NOTE: update configmap first may cause the hot config fail for it will not retry again
@@ -88,7 +88,7 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	}
 	foundRestartApplyConfig := false
 	for key := range changed {
-		if policy := clusterbuilder.RedisConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
+		if policy := clusterbuilder.ValkeyConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
 			foundRestartApplyConfig = true
 			break
 		}
@@ -96,7 +96,7 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	if foundRestartApplyConfig {
 		err := st.Restart(ctx)
 		if err != nil {
-			logger.Error(err, "restart redis failed")
+			logger.Error(err, "restart instance failed")
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 	} else {

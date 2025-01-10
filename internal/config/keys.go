@@ -16,8 +16,8 @@ limitations under the License.
 package config
 
 const (
-	RedisSecretUsernameKey = "username"
-	RedisSecretPasswordKey = "password" // #nosec
+	ValkeySecretUsernameKey = "username"
+	ValkeySecretPasswordKey = "password" // #nosec
 
 	S3_ACCESS_KEY_ID     = "AWS_ACCESS_KEY_ID"     // #nosec
 	S3_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY" // #nosec
@@ -35,14 +35,9 @@ const (
 
 // Version Controller related keys
 const (
-	InstanceTypeKey               = "middleware.instance/type"
-	CRUpgradeableVersion          = "middleware.upgrade.crVersion"
-	CRUpgradeableComponentVersion = "middleware.upgrade.component.version"
-	CRAutoUpgradeKey              = "middleware.instance/autoUpgrade"
-	LatestKey                     = "middleware.instance/latest"
-	CRVersionKey                  = "middleware.instance/crVersion"
-	CRVersionSHAKey               = "middleware.instance/crVersion-sha"
-	CoreComponentName             = "redis"
+	InstanceTypeKey   = "middleware.instance/type"
+	CRVersionKey      = "middleware.instance/crVersion"
+	CoreComponentName = "valkey"
 
 	OperatorVersionAnnotation = "operatorVersion"
 

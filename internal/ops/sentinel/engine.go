@@ -149,7 +149,7 @@ func (g *RuleEngine) isResetSentinelNeeded(ctx context.Context, inst types.Senti
 
 	for _, name := range clusters {
 		for _, node := range inst.Nodes() {
-			needReset := NeedResetRedisSentinel(ctx, name, node, logger)
+			needReset := NeedResetValkeySentinel(ctx, name, node, logger)
 			if needReset {
 				return actor.NewResult(CommandHealMonitor)
 			}
@@ -158,7 +158,7 @@ func (g *RuleEngine) isResetSentinelNeeded(ctx context.Context, inst types.Senti
 	return nil
 }
 
-func NeedResetRedisSentinel(ctx context.Context, name string, node types.SentinelNode, logger logr.Logger) bool {
+func NeedResetValkeySentinel(ctx context.Context, name string, node types.SentinelNode, logger logr.Logger) bool {
 	master, replicas, err := node.MonitoringNodes(ctx, name)
 	if err != nil {
 		logger.Error(err, "failed to get monitoring nodes", "name", name)

@@ -27,8 +27,8 @@ import (
 func NewPodDisruptionBudget(sen *v1alpha1.Sentinel, selectors map[string]string) *policyv1.PodDisruptionBudget {
 	maxUnavailable := intstr.FromInt(int(sen.Spec.Replicas) / 2)
 	namespace := sen.GetNamespace()
-	selectors = lo.Assign(selectors, GenerateSelectorLabels(RedisArchRoleSEN, sen.Name))
-	labels := lo.Assign(GetCommonLabels(sen.Name), GenerateSelectorLabels(RedisArchRoleSEN, sen.Name), selectors)
+	selectors = lo.Assign(selectors, GenerateSelectorLabels(ValkeyArchRoleSEN, sen.Name))
+	labels := lo.Assign(GetCommonLabels(sen.Name), GenerateSelectorLabels(ValkeyArchRoleSEN, sen.Name), selectors)
 
 	name := GetSentinelStatefulSetName(sen.Name)
 	return &policyv1.PodDisruptionBudget{

@@ -34,16 +34,16 @@ import (
 )
 
 const (
-	RedisConfig_MaxMemory               = "maxmemory"
-	RedisConfig_MaxMemoryPolicy         = "maxmemory-policy"
-	RedisConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
-	RedisConfig_Save                    = "save"
-	RedisConfig_RenameCommand           = "rename-command"
-	RedisConfig_Appendonly              = "appendonly"
-	RedisConfig_ReplDisklessSync        = "repl-diskless-sync"
+	ValkeyConfig_MaxMemory               = "maxmemory"
+	ValkeyConfig_MaxMemoryPolicy         = "maxmemory-policy"
+	ValkeyConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
+	ValkeyConfig_Save                    = "save"
+	ValkeyConfig_RenameCommand           = "rename-command"
+	ValkeyConfig_Appendonly              = "appendonly"
+	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
 )
 
-func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (*corev1.ConfigMap, error) {
+func NewValkeyConfigMap(st types.FailoverInstance, selectors map[string]string) (*corev1.ConfigMap, error) {
 	rf := st.Definition()
 	customConfig := rf.Spec.CustomConfigs
 
@@ -63,8 +63,8 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 	default_config["protected-mode"] = "no"
 
 	version, _ := version.ParseValkeyVersionFromImage(rf.Spec.Image)
-	innerRedisConfig := version.CustomConfigs(core.ValkeyFailover)
-	default_config = lo.Assign(default_config, innerRedisConfig)
+	innerValkeyConfig := version.CustomConfigs(core.ValkeyFailover)
+	default_config = lo.Assign(default_config, innerValkeyConfig)
 
 	for k, v := range customConfig {
 		k = strings.ToLower(k)
@@ -72,7 +72,7 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 		if k == "save" && v == "60 100" {
 			continue
 		}
-		if k == RedisConfig_RenameCommand {
+		if k == ValkeyConfig_RenameCommand {
 			continue
 		}
 		default_config[k] = v
@@ -80,30 +80,30 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 
 	// check if it's need to set default save
 	// check if aof enabled
-	if customConfig[RedisConfig_Appendonly] != "yes" &&
-		customConfig[RedisConfig_ReplDisklessSync] != "yes" &&
-		(customConfig[RedisConfig_Save] == "" || customConfig[RedisConfig_Save] == `""`) {
+	if customConfig[ValkeyConfig_Appendonly] != "yes" &&
+		customConfig[ValkeyConfig_ReplDisklessSync] != "yes" &&
+		(customConfig[ValkeyConfig_Save] == "" || customConfig[ValkeyConfig_Save] == `""`) {
 
 		default_config["save"] = "60 10000 300 100 600 1"
 	}
 
 	if limits := rf.Spec.Resources.Limits; limits != nil {
-		if configedMem := customConfig[RedisConfig_MaxMemory]; configedMem == "" {
+		if configedMem := customConfig[ValkeyConfig_MaxMemory]; configedMem == "" {
 			memLimit, _ := limits.Memory().AsInt64()
-			if policy := customConfig[RedisConfig_MaxMemoryPolicy]; policy == "noeviction" {
+			if policy := customConfig[ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
 				memLimit = int64(float64(memLimit) * 0.8)
 			} else {
 				memLimit = int64(float64(memLimit) * 0.7)
 			}
 			if memLimit > 0 {
-				default_config[RedisConfig_MaxMemory] = fmt.Sprintf("%d", memLimit)
+				default_config[ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", memLimit)
 			}
 		}
 	}
 
 	if !st.Version().IsACLSupported() {
 		var renameVal []string
-		if renameConfig, err := clusterbuilder.ParseRenameConfigs(customConfig[RedisConfig_RenameCommand]); err != nil {
+		if renameConfig, err := clusterbuilder.ParseRenameConfigs(customConfig[ValkeyConfig_RenameCommand]); err != nil {
 			return nil, err
 		} else {
 			for k, v := range renameConfig {
@@ -113,7 +113,7 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 				renameVal = append(renameVal, k, v)
 			}
 			if len(renameVal) > 0 {
-				default_config[RedisConfig_RenameCommand] = strings.Join(renameVal, " ")
+				default_config[ValkeyConfig_RenameCommand] = strings.Join(renameVal, " ")
 			}
 		}
 	}
@@ -132,7 +132,7 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 			continue
 		}
 		switch k {
-		case RedisConfig_ClientOutputBufferLimit:
+		case ValkeyConfig_ClientOutputBufferLimit:
 			fields := strings.Fields(v)
 			if len(fields)%4 != 0 {
 				continue
@@ -140,7 +140,7 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 			for i := 0; i < len(fields); i += 4 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s %s %s\n", k, fields[i], fields[i+1], fields[i+2], fields[i+3]))
 			}
-		case RedisConfig_Save, RedisConfig_RenameCommand:
+		case ValkeyConfig_Save, ValkeyConfig_RenameCommand:
 			fields := strings.Fields(v)
 			if len(fields)%2 != 0 {
 				continue
@@ -149,10 +149,10 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
 			}
 		default:
-			if _, ok := builder.MustQuoteRedisConfig[k]; ok && !strings.HasPrefix(v, `"`) {
+			if _, ok := builder.MustQuoteValkeyConfig[k]; ok && !strings.HasPrefix(v, `"`) {
 				v = fmt.Sprintf(`"%s"`, v)
 			}
-			if _, ok := builder.MustUpperRedisConfig[k]; ok {
+			if _, ok := builder.MustUpperValkeyConfig[k]; ok {
 				v = strings.ToUpper(v)
 			}
 			buffer.WriteString(fmt.Sprintf("%s %s\n", k, v))
@@ -161,21 +161,21 @@ func NewRedisConfigMap(st types.FailoverInstance, selectors map[string]string) (
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            GetRedisConfigMapName(rf),
+			Name:            GetValkeyConfigMapName(rf),
 			Namespace:       rf.Namespace,
 			Labels:          GetCommonLabels(rf.Name, selectors),
 			OwnerReferences: util.BuildOwnerReferences(rf),
 		},
 		Data: map[string]string{
-			RedisConfigFileName: buffer.String(),
+			ValkeyConfigFileName: buffer.String(),
 		},
 	}, nil
 }
 
-func GetRedisConfigMapName(rf *v1alpha1.Failover) string {
+func GetValkeyConfigMapName(rf *v1alpha1.Failover) string {
 	return GetFailoverStatefulSetName(rf.Name)
 }
 
-func GetRedisScriptConfigMapName(name string) string {
+func GetValkeyScriptConfigMapName(name string) string {
 	return fmt.Sprintf("rfr-s-%s", name)
 }

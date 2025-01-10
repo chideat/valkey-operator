@@ -38,14 +38,14 @@ type UserSpec struct {
 	Arch core.Arch `json:"arch,omitempty"`
 	// Username (required)
 	Username string `json:"username"`
-	// Redis Password secret name, key is password
+	// PasswordSecrets Password secret name, key is password
 	PasswordSecrets []string `json:"passwordSecrets,omitempty"`
-	// redis  acl rules  string
+	// AclRules acl rules  string
 	AclRules string `json:"aclRules,omitempty"`
-	// Redis instance  Name (required)
+	// InstanceName instance  Name (required)
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:MinLength=1
-	RedisName string `json:"redisName"` //redisname
+	InstanceName string `json:"instanceName"`
 }
 
 type UserPhase string
@@ -64,13 +64,13 @@ type UserStatus struct {
 	// Message
 	Message string `json:"message,omitempty"`
 
-	// AclRules acl rules of redis
+	// AclRules acl rules of valkey
 	AclRules string `json:"aclRules,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.spec.redisName`
+// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.spec.instanceName`
 // +kubebuilder:printcolumn:name="username",type=string,JSONPath=`.spec.username`
 // +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.Phase`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"

@@ -35,9 +35,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ types.Replication = (*RedisReplication)(nil)
+var _ types.Replication = (*ValkeyReplication)(nil)
 
-type RedisReplication struct {
+type ValkeyReplication struct {
 	appv1.StatefulSet
 	client   clientset.ClientSet
 	failover types.FailoverInstance
@@ -46,7 +46,7 @@ type RedisReplication struct {
 	logger logr.Logger
 }
 
-func LoadRedisReplication(ctx context.Context, client clientset.ClientSet, inst types.FailoverInstance, logger logr.Logger) (types.Replication, error) {
+func LoadValkeyReplication(ctx context.Context, client clientset.ClientSet, inst types.FailoverInstance, logger logr.Logger) (types.Replication, error) {
 	name := failoverbuilder.GetFailoverStatefulSetName(inst.GetName())
 	sts, err := client.GetStatefulSet(ctx, inst.GetNamespace(), name)
 	if err != nil {
@@ -56,14 +56,14 @@ func LoadRedisReplication(ctx context.Context, client clientset.ClientSet, inst 
 		logger.Error(err, "load statefulset failed", "name", name)
 		return nil, err
 	}
-	repl, err := NewRedisReplication(ctx, client, inst, sts, logger)
+	repl, err := NewValkeyReplication(ctx, client, inst, sts, logger)
 	if err != nil {
 		logger.Error(err, "parse shard failed")
 	}
 	return repl, nil
 }
 
-func NewRedisReplication(ctx context.Context, client clientset.ClientSet, inst types.FailoverInstance, sts *appv1.StatefulSet, logger logr.Logger) (types.Replication, error) {
+func NewValkeyReplication(ctx context.Context, client clientset.ClientSet, inst types.FailoverInstance, sts *appv1.StatefulSet, logger logr.Logger) (types.Replication, error) {
 	if client == nil {
 		return nil, fmt.Errorf("require clientset")
 	}
@@ -74,7 +74,7 @@ func NewRedisReplication(ctx context.Context, client clientset.ClientSet, inst t
 		return nil, fmt.Errorf("require statefulset")
 	}
 
-	repl := &RedisReplication{
+	repl := &ValkeyReplication{
 		StatefulSet: *sts,
 		client:      client,
 		failover:    inst,
@@ -90,7 +90,7 @@ func NewRedisReplication(ctx context.Context, client clientset.ClientSet, inst t
 	return repl, nil
 }
 
-func (s *RedisReplication) NamespacedName() client.ObjectKey {
+func (s *ValkeyReplication) NamespacedName() client.ObjectKey {
 	if s == nil {
 		return k8stypes.NamespacedName{}
 	}
@@ -100,7 +100,7 @@ func (s *RedisReplication) NamespacedName() client.ObjectKey {
 	}
 }
 
-func (s *RedisReplication) Version() version.ValkeyVersion {
+func (s *ValkeyReplication) Version() version.ValkeyVersion {
 	if s == nil {
 		return version.ValkeyVersionUnknown
 	}
@@ -110,14 +110,14 @@ func (s *RedisReplication) Version() version.ValkeyVersion {
 	return ver
 }
 
-func (s *RedisReplication) Nodes() []types.ValkeyNode {
+func (s *ValkeyReplication) Nodes() []types.ValkeyNode {
 	if s == nil {
 		return nil
 	}
 	return s.nodes
 }
 
-func (s *RedisReplication) Replicas() []types.ValkeyNode {
+func (s *ValkeyReplication) Replicas() []types.ValkeyNode {
 	if s == nil || len(s.nodes) == 0 {
 		return nil
 	}
@@ -130,7 +130,7 @@ func (s *RedisReplication) Replicas() []types.ValkeyNode {
 	return replicas
 }
 
-func (s *RedisReplication) Master() types.ValkeyNode {
+func (s *ValkeyReplication) Master() types.ValkeyNode {
 	if s == nil || len(s.nodes) == 0 {
 		return nil
 	}
@@ -146,14 +146,14 @@ func (s *RedisReplication) Master() types.ValkeyNode {
 	return master
 }
 
-func (s *RedisReplication) IsReady() bool {
+func (s *ValkeyReplication) IsReady() bool {
 	if s == nil {
 		return false
 	}
 	return s.Status().ReadyReplicas == *s.Spec.Replicas && s.Status().UpdateRevision == s.Status().CurrentRevision
 }
 
-func (s *RedisReplication) Restart(ctx context.Context, annotationKeyVal ...string) error {
+func (s *ValkeyReplication) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	if s == nil {
 		return nil
 	}
@@ -184,7 +184,7 @@ func (s *RedisReplication) Restart(ctx context.Context, annotationKeyVal ...stri
 	return nil
 }
 
-func (s *RedisReplication) Refresh(ctx context.Context) error {
+func (s *ValkeyReplication) Refresh(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
@@ -198,14 +198,14 @@ func (s *RedisReplication) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (s *RedisReplication) Status() *appv1.StatefulSetStatus {
+func (s *ValkeyReplication) Status() *appv1.StatefulSetStatus {
 	if s == nil {
 		return nil
 	}
 	return &s.StatefulSet.Status
 }
 
-func (s *RedisReplication) Definition() *appv1.StatefulSet {
+func (s *ValkeyReplication) Definition() *appv1.StatefulSet {
 	if s == nil {
 		return nil
 	}

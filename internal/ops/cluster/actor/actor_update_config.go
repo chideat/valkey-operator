@@ -71,7 +71,7 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 	if err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "get configmap failed", "target", client.ObjectKeyFromObject(newCm))
 		return actor.NewResultWithError(cops.CommandRequeue, err)
-	} else if oldCm == nil || oldCm.Data[clusterbuilder.RedisConfKey] == "" {
+	} else if oldCm == nil || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
 		if err = a.client.CreateConfigMap(ctx, cluster.GetNamespace(), newCm); err != nil {
 			logger.Error(err, "create configmap failed", "target", client.ObjectKeyFromObject(newCm))
 			return actor.NewResultWithError(cops.CommandRequeue, err)
@@ -80,8 +80,8 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadRedisConfig(newCm.Data[clusterbuilder.RedisConfKey])
-	oldConf, _ := clusterbuilder.LoadRedisConfig(oldCm.Data[clusterbuilder.RedisConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
@@ -101,7 +101,7 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 
 	foundRestartApplyConfig := false
 	for key := range changed {
-		if policy := clusterbuilder.RedisConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
+		if policy := clusterbuilder.ValkeyConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
 			foundRestartApplyConfig = true
 			break
 		}

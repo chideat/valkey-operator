@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 
+	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
@@ -53,6 +54,8 @@ type Instance interface {
 	Object
 
 	Arch() core.Arch
+	// Issuer custom cert issuer
+	Issuer() *certmetav1.ObjectReference
 	Users() Users
 	TLSConfig() *tls.Config
 	IsInService() bool

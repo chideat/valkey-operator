@@ -94,7 +94,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	if ret := a.ensureConfigMap(ctx, sentinel, logger); ret != nil {
 		return ret
 	}
-	if ret := a.ensureRedisSSL(ctx, sentinel, logger); ret != nil {
+	if ret := a.ensureValkeySSL(ctx, sentinel, logger); ret != nil {
 		return ret
 	}
 	if ret := a.ensureStatefulSet(ctx, sentinel, logger); ret != nil {
@@ -232,7 +232,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Se
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	def := inst.Definition()
 	if !def.Spec.Access.EnableTLS {
 		return nil
@@ -269,7 +269,7 @@ func (a *actorEnsureResource) ensureRedisSSL(ctx context.Context, inst types.Sen
 	}
 
 	var (
-		secretName = builder.GetRedisSSLSecretName(def.Name)
+		secretName = builder.GetValkeySSLSecretName(def.Name)
 		secret     *corev1.Secret
 	)
 	for i := 0; i < 5; i++ {
@@ -347,7 +347,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.RedisInstanceServiceAccountName,
+					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
 					Namespace: sentinel.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -393,11 +393,11 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 
 	switch sen.Spec.Access.ServiceType {
 	case corev1.ServiceTypeNodePort:
-		if ret := a.ensureRedisSpecifiedNodePortService(ctx, inst, logger); ret != nil {
+		if ret := a.ensureValkeySpecifiedNodePortService(ctx, inst, logger); ret != nil {
 			return ret
 		}
 	case corev1.ServiceTypeLoadBalancer:
-		if ret := a.ensureRedisPodService(ctx, inst, logger); ret != nil {
+		if ret := a.ensureValkeyPodService(ctx, inst, logger); ret != nil {
 			return ret
 		}
 	}
@@ -408,11 +408,11 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 
 	if cr.Spec.Access.Ports == "" {
-		return a.ensureRedisPodService(ctx, inst, logger)
+		return a.ensureValkeyPodService(ctx, inst, logger)
 	}
 
 	logger.V(3).Info("ensure sentinel nodeports", "namepspace", cr.Namespace, "name", cr.Name)
@@ -566,7 +566,7 @@ func (a *actorEnsureResource) ensureRedisSpecifiedNodePortService(ctx context.Co
 	return nil
 }
 
-func (a *actorEnsureResource) ensureRedisPodService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
+func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 	for replica := 0; replica < int(sen.Spec.Replicas); replica++ {
 		newSvc := sentinelbuilder.NewPodService(sen, replica, inst.Selector())

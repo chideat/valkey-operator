@@ -57,11 +57,11 @@ func LoadCertConfigFromSecret(secret *corev1.Secret) (*tls.Config, error) {
 }
 
 var (
-	redisACLCategoryReg = regexp.MustCompile(`\s[+\-]@(\S+)`)
+	aclCategoryReg = regexp.MustCompile(`\s[+\-]@(\S+)`)
 )
 
 func CheckRule(aclRules string) error {
-	matches := redisACLCategoryReg.FindAllStringSubmatch(aclRules, -1)
+	matches := aclCategoryReg.FindAllStringSubmatch(aclRules, -1)
 	allowedGroups := []string{
 		"keyspace", "read", "write", "set", "sortedset", "list", "hash", "string",
 		"bitmap", "hyperloglog", "geo", "stream", "pubsub", "admin", "fast", "slow",

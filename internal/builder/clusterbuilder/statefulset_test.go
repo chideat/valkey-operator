@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func TestRedisExporterContainer(t *testing.T) {
+func TestValkeyExporterContainer(t *testing.T) {
 	tests := []struct {
 		name     string
 		cluster  *v1alpha1.Cluster
@@ -40,7 +40,7 @@ func TestRedisExporterContainer(t *testing.T) {
 			cluster: &v1alpha1.Cluster{
 				Spec: v1alpha1.ClusterSpec{
 					Exporter: &core.Exporter{
-						Image: "redis-exporter:latest",
+						Image: "valkey-exporter:latest",
 						Resources: &corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -68,7 +68,7 @@ func TestRedisExporterContainer(t *testing.T) {
 					fmt.Sprintf(":%d", PrometheusExporterPortNumber),
 					"--web.telemetry-path",
 					PrometheusExporterTelemetryPath},
-				Image:           "redis-exporter:latest",
+				Image:           "valkey-exporter:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Ports: []corev1.ContainerPort{
 					{
@@ -79,7 +79,7 @@ func TestRedisExporterContainer(t *testing.T) {
 				},
 				Env: []corev1.EnvVar{
 					{Name: "ENV_VAR", Value: "value"},
-					{Name: "REDIS_USER", Value: ""},
+					{Name: "VALKEY_USER", Value: ""},
 					{Name: PasswordENV, ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							Key: "password",
@@ -89,7 +89,7 @@ func TestRedisExporterContainer(t *testing.T) {
 						},
 					}},
 
-					{Name: "REDIS_ADDR", Value: "redis://local.inject:6379"},
+					{Name: "VALKEY_ADDR", Value: "valkey://local.inject:6379"},
 				},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
@@ -111,7 +111,7 @@ func TestRedisExporterContainer(t *testing.T) {
 						EnableTLS: true,
 					},
 					Exporter: &core.Exporter{
-						Image: "redis-exporter:latest",
+						Image: "valkey-exporter:latest",
 						Resources: &corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -139,7 +139,7 @@ func TestRedisExporterContainer(t *testing.T) {
 					fmt.Sprintf(":%d", PrometheusExporterPortNumber),
 					"--web.telemetry-path",
 					PrometheusExporterTelemetryPath},
-				Image:           "redis-exporter:latest",
+				Image:           "valkey-exporter:latest",
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Ports: []corev1.ContainerPort{
 					{
@@ -150,7 +150,7 @@ func TestRedisExporterContainer(t *testing.T) {
 				},
 				Env: []corev1.EnvVar{
 					{Name: "ENV_VAR", Value: "value"},
-					{Name: "REDIS_USER", Value: ""},
+					{Name: "VALKEY_USER", Value: ""},
 					{Name: PasswordENV, ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							Key: "password",
@@ -159,11 +159,11 @@ func TestRedisExporterContainer(t *testing.T) {
 							},
 						},
 					}},
-					{Name: "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
-					{Name: "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
-					{Name: "REDIS_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
-					{Name: "REDIS_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
-					{Name: "REDIS_ADDR", Value: "rediss://local.inject:6379"},
+					{Name: "VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
+					{Name: "VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
+					{Name: "VALKEY_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
+					{Name: "VALKEY_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
+					{Name: "VALKEY_ADDR", Value: "valkeys://local.inject:6379"},
 				},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
@@ -176,7 +176,7 @@ func TestRedisExporterContainer(t *testing.T) {
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{
-					{Name: RedisTLSVolumeName, MountPath: TLSVolumeMountPath},
+					{Name: ValkeyTLSVolumeName, MountPath: TLSVolumeMountPath},
 				},
 			},
 		},
@@ -184,7 +184,7 @@ func TestRedisExporterContainer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			container := redisExporterContainer(tt.cluster, tt.user)
+			container := valkeyExporterContainer(tt.cluster, tt.user)
 			assert.Equal(t, tt.expected.Name, container.Name)
 			assert.Equal(t, tt.expected.Command, container.Command)
 			assert.Equal(t, tt.expected.Args, container.Args)
@@ -215,9 +215,9 @@ func TestVolumeMounts(t *testing.T) {
 			},
 			expected: []corev1.VolumeMount{
 				{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-				{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-				{Name: RedisOptVolumeName, MountPath: RedisOptVolumeMountPath},
-				{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
+				{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+				{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
+				{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
 			},
 		},
 		{
@@ -232,10 +232,10 @@ func TestVolumeMounts(t *testing.T) {
 			},
 			expected: []corev1.VolumeMount{
 				{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-				{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-				{Name: RedisOptVolumeName, MountPath: RedisOptVolumeMountPath},
-				{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
-				{Name: RedisOperatorPasswordVolumeName, MountPath: OperatorPasswordVolumeMountPath},
+				{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+				{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
+				{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
+				{Name: ValkeyOperatorPasswordVolumeName, MountPath: OperatorPasswordVolumeMountPath},
 			},
 		},
 		{
@@ -252,10 +252,10 @@ func TestVolumeMounts(t *testing.T) {
 			},
 			expected: []corev1.VolumeMount{
 				{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-				{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-				{Name: RedisOptVolumeName, MountPath: RedisOptVolumeMountPath},
-				{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
-				{Name: RedisTLSVolumeName, MountPath: TLSVolumeMountPath},
+				{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+				{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
+				{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
+				{Name: ValkeyTLSVolumeName, MountPath: TLSVolumeMountPath},
 			},
 		},
 		{
@@ -274,11 +274,11 @@ func TestVolumeMounts(t *testing.T) {
 			},
 			expected: []corev1.VolumeMount{
 				{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-				{Name: RedisStorageVolumeName, MountPath: StorageVolumeMountPath},
-				{Name: RedisOptVolumeName, MountPath: RedisOptVolumeMountPath},
-				{Name: RedisTempVolumeName, MountPath: RedisTmpVolumeMountPath},
-				{Name: RedisOperatorPasswordVolumeName, MountPath: OperatorPasswordVolumeMountPath},
-				{Name: RedisTLSVolumeName, MountPath: TLSVolumeMountPath},
+				{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+				{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
+				{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
+				{Name: ValkeyOperatorPasswordVolumeName, MountPath: OperatorPasswordVolumeMountPath},
+				{Name: ValkeyTLSVolumeName, MountPath: TLSVolumeMountPath},
 			},
 		},
 	}

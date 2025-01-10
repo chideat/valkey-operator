@@ -966,12 +966,12 @@ func (_m *ClientSet) DeletePodDisruptionBudget(ctx context.Context, namespace st
 	return r0
 }
 
-// DeleteRedisBackup provides a mock function with given fields: ctx, namespace, name
-func (_m *ClientSet) DeleteRedisBackup(ctx context.Context, namespace string, name string) error {
+// DeleteValkeyBackup provides a mock function with given fields: ctx, namespace, name
+func (_m *ClientSet) DeleteValkeyBackup(ctx context.Context, namespace string, name string) error {
 	ret := _m.Called(ctx, namespace, name)
 
 	if len(ret) == 0 {
-		panic("no return value specified for DeleteRedisBackup")
+		panic("no return value specified for DeleteValkeyBackup")
 	}
 
 	var r0 error
@@ -984,12 +984,12 @@ func (_m *ClientSet) DeleteRedisBackup(ctx context.Context, namespace string, na
 	return r0
 }
 
-// DeleteRedisClusterBackup provides a mock function with given fields: ctx, namespace, name
-func (_m *ClientSet) DeleteRedisClusterBackup(ctx context.Context, namespace string, name string) error {
+// DeleteValkeyClusterBackup provides a mock function with given fields: ctx, namespace, name
+func (_m *ClientSet) DeleteValkeyClusterBackup(ctx context.Context, namespace string, name string) error {
 	ret := _m.Called(ctx, namespace, name)
 
 	if len(ret) == 0 {
-		panic("no return value specified for DeleteRedisClusterBackup")
+		panic("no return value specified for DeleteValkeyClusterBackup")
 	}
 
 	var r0 error

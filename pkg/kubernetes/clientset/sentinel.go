@@ -29,11 +29,11 @@ import (
 
 // Sentinel the sen service that knows how to interact with k8s to get them
 type Sentinel interface {
-	// ListSentinels lists the redisfailovers on a cluster.
+	// ListSentinels
 	ListSentinels(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.SentinelList, error)
-	// GetSentinel get the redisfailover on a cluster.
+	// GetSentinel
 	GetSentinel(ctx context.Context, namespace, name string) (*v1alpha1.Sentinel, error)
-	// UpdateSentinel update the redisfailover on a cluster.
+	// UpdateSentinel
 	UpdateSentinel(ctx context.Context, sen *v1alpha1.Sentinel) error
 	// UpdateSentinelStatus
 	UpdateSentinelStatus(ctx context.Context, inst *v1alpha1.Sentinel) error
@@ -47,7 +47,7 @@ type SentinelService struct {
 
 // NewSentinelService returns a new Workspace KubeService.
 func NewSentinelService(client client.Client, logger logr.Logger) *SentinelService {
-	logger = logger.WithName("k8s.redisfailover")
+	logger = logger.WithName("k8s.sentinel")
 
 	return &SentinelService{
 		client: client,
@@ -55,7 +55,7 @@ func NewSentinelService(client client.Client, logger logr.Logger) *SentinelServi
 	}
 }
 
-// ListSentinels satisfies redisfailover.Service interface.
+// ListSentinels
 func (r *SentinelService) ListSentinels(ctx context.Context, namespace string, opts client.ListOptions) (*v1alpha1.SentinelList, error) {
 	ret := v1alpha1.SentinelList{}
 	if err := r.client.List(ctx, &ret, &opts); err != nil {
@@ -64,7 +64,7 @@ func (r *SentinelService) ListSentinels(ctx context.Context, namespace string, o
 	return &ret, nil
 }
 
-// GetSentinel satisfies redisfailover.Service interface.
+// GetSentinel
 func (r *SentinelService) GetSentinel(ctx context.Context, namespace, name string) (*v1alpha1.Sentinel, error) {
 	ret := v1alpha1.Sentinel{}
 	err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &ret)
