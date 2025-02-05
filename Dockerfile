@@ -23,6 +23,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o valke
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM alpine:latest
+
+LABEL org.opencontainers.image.source https://github.com/chideat/valkey-operator
+
 RUN apk --no-cache add gcompat
 WORKDIR /
 COPY --from=builder /workspace/manager /opt/manager
