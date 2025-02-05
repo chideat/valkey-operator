@@ -10,7 +10,7 @@ import re
 with open('./hack/boilerplate.go.txt') as f:
     AUTH_COMMENT = f.read()
 
-PATTERN = r"/\*.*?Licensed under the Apache License.*?\*/\s"
+PATTERN = r"/\*.*?Licensed under the Apache License.*?\*/"
 EXTENSION = ".go"
 
 for root, dirs, files in os.walk('.'):
