@@ -60,7 +60,7 @@ const (
 // UserStatus defines the observed state of User
 type UserStatus struct {
 	// Phase
-	Phase Phase `json:"Phase,omitempty"`
+	Phase UserPhase `json:"Phase,omitempty"`
 
 	// Message
 	Message string `json:"message,omitempty"`

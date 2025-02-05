@@ -17,25 +17,12 @@ limitations under the License.
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-var (
-	ErrImageNotFound = errors.New("image not found")
-	ErrInvalidImage  = errors.New("invalid source image")
-)
-
-const DefaultValkeyVersion = "8.0"
-
-var valkeyVersionEnvs = []string{
-	"VALKEY_VERSION_7_2_IMAGE",
-	"VALKEY_VERSION_8_0_IMAGE",
-}
 
 func GetOperatorVersion() string {
 	return os.Getenv("VALKEY_OPERATOR_VERSION")

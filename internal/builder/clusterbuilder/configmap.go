@@ -77,7 +77,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	)
 
 	// check memory-policy
-	if cluster != nil && cr.Spec.Resources != nil && cr.Spec.Resources.Limits != nil {
+	if cluster != nil && cr.Spec.Resources.Limits != nil {
 		osMem, _ := cr.Spec.Resources.Limits.Memory().AsInt64()
 		if configedMem := configMap[ValkeyConfig_MaxMemory]; configedMem == "" {
 			var recommendMem int64

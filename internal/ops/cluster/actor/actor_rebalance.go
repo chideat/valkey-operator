@@ -52,7 +52,7 @@ type actorRebalance struct {
 }
 
 func (a *actorRebalance) Version() *semver.Version {
-	return semver.MustParse("3.14.0")
+	return semver.MustParse("0.1.0")
 }
 
 // SupportedCommands

@@ -312,7 +312,7 @@ func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []
 				},
 			},
 		},
-		Resources: *cluster.Spec.Resources,
+		Resources: cluster.Spec.Resources,
 		Lifecycle: &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{

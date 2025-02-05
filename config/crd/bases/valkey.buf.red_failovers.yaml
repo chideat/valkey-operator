@@ -2621,9 +2621,6 @@ spec:
                     description: Exporter defines the specification for the sentinel
                       exporter
                     properties:
-                      enabled:
-                        description: Enabled
-                        type: boolean
                       image:
                         description: Image the exporter image
                         type: string

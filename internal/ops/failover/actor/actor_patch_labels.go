@@ -51,7 +51,7 @@ type actorPatchLabels struct {
 }
 
 func (a *actorPatchLabels) Version() *semver.Version {
-	return semver.MustParse("3.18.0")
+	return semver.MustParse("0.1.0")
 }
 
 func (a *actorPatchLabels) SupportedCommands() []actor.Command {

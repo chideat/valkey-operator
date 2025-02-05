@@ -58,7 +58,7 @@ func (a *actorEnsureSlots) SupportedCommands() []actor.Command {
 }
 
 func (a *actorEnsureSlots) Version() *semver.Version {
-	return semver.MustParse("3.14.0")
+	return semver.MustParse("0.1.0")
 }
 
 // Do

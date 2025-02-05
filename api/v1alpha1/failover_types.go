@@ -23,14 +23,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ValkeyExporter defines the specification for the valkey exporter
-type ValkeyExporter struct {
-	core.Exporter `json:",inline"`
-
-	// Enabled whether the exporter is enabled
-	Enabled bool `json:"enabled,omitempty"`
-}
-
 // Authorization defines the authorization settings for valkey
 type Authorization struct {
 	// Username the username for valkey

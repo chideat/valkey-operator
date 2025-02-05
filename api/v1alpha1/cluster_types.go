@@ -66,7 +66,7 @@ type ClusterSpec struct {
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Resources
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Access defines the access for valkey
 	Access core.InstanceAccess `json:"access,omitempty"`

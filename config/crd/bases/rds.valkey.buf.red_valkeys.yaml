@@ -1020,6 +1020,9 @@ spec:
               exporter:
                 description: Exporter defines Valkey exporter settings
                 properties:
+                  disable:
+                    description: Disable disable exporter
+                    type: boolean
                   image:
                     description: Image the exporter image
                     type: string
@@ -2663,9 +2666,6 @@ spec:
                     description: Exporter defines the specification for the sentinel
                       exporter
                     properties:
-                      enabled:
-                        description: Enabled
-                        type: boolean
                       image:
                         description: Image the exporter image
                         type: string

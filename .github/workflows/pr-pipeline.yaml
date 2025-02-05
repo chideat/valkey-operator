@@ -1,0 +1,92 @@
+name: pr-pipeline
+
+on:
+  pull_request:
+    branches-ignore:
+      - dependabot/*
+
+jobs:
+  test:
+    name: Test with Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.23'
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        go mod download
+
+    - name: Run Unit tests
+      run: |
+        make test
+
+    - name: Install goveralls
+      run: go install github.com/mattn/goveralls@latest
+
+    - name: Send coverage
+      env:
+        COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+      run: goveralls -coverprofile=coverage.txt -service=github
+
+  build:
+    name: Build and push Docker image
+    if: "!startsWith(github.head_ref, 'dependabot/')"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Read version from file
+      id: get_version
+      run: |
+        ls -la
+        echo "VERSION=$(cat version)" >> $GITHUB_ENV
+
+    - name: Get branch name
+      id: get_branch
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          BRANCH_NAME=${{ github.head_ref }}
+        else
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+        fi
+        # Replace special characters with hyphens, remove trailing hyphens, and convert to lowercase
+        SANITIZED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr -cs '[:alnum:]' '-' | sed 's/-*$//' | tr '[:upper:]' '[:lower:]')
+        echo "BRANCH_NAME=$SANITIZED_BRANCH_NAME" >> $GITHUB_ENV
+
+    - name: Get short commit SHA
+      id: get_commit
+      run: echo "COMMIT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Docker Setup Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
+
+    - name: Github Package Login
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GH_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        file: ./Dockerfile
+        context: .
+        push: true
+        tags: ghcr.io/${{ github.repository }}:${{ env.VERSION }}-${{ env.BRANCH_NAME }}-${{ env.COMMIT_SHA }}
+        platforms: linux/amd64,linux/arm64
+

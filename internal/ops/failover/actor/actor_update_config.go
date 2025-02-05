@@ -57,7 +57,7 @@ func (a *actorUpdateConfigMap) SupportedCommands() []actor.Command {
 }
 
 func (a *actorUpdateConfigMap) Version() *semver.Version {
-	return semver.MustParse("3.18.0")
+	return semver.MustParse("0.1.0")
 }
 
 func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *actor.ActorResult {

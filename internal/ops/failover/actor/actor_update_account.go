@@ -57,7 +57,7 @@ type actorUpdateAccount struct {
 }
 
 func (a *actorUpdateAccount) Version() *semver.Version {
-	return semver.MustParse("3.18.0")
+	return semver.MustParse("0.1.0")
 }
 
 // SupportedCommands

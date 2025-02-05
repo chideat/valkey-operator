@@ -67,7 +67,7 @@ func (a *actorEnsureResource) SupportedCommands() []actor.Command {
 }
 
 func (a *actorEnsureResource) Version() *semver.Version {
-	return semver.MustParse("3.16.0")
+	return semver.MustParse("0.1.0")
 }
 
 // Do
@@ -75,7 +75,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	logger := val.Logger().WithValues("actor", cops.CommandEnsureResource.String())
 	cluster := val.(types.ClusterInstance)
 
-	if cluster.Definition().Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
+	if cluster.Definition().Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
 		if ret := a.pauseStatefulSet(ctx, cluster, logger); ret != nil {
 			return ret
 		}

@@ -79,7 +79,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	}
 	cr := inst.Definition()
 
-	if (cr.Spec.PodAnnotations != nil) && cr.Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
+	if (cr.Spec.PodAnnotations != nil) && cr.Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 

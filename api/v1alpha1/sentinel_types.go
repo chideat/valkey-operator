@@ -23,17 +23,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// SentinelExporter defines the specification for the sentinel exporter
-type SentinelExporter struct {
-	core.Exporter `json:",inline"`
-
-	// Enabled
-	Enabled bool `json:"enabled,omitempty"`
-
-	// Image
-	Image string `json:"image,omitempty"`
-}
-
 // SentinelInstanceAccess
 type SentinelInstanceAccess struct {
 	core.InstanceAccess `json:",inline"`
@@ -65,7 +54,7 @@ type SentinelSpec struct {
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Exporter defines the specification for the sentinel exporter
-	Exporter *SentinelExporter `json:"exporter,omitempty"`
+	Exporter *core.Exporter `json:"exporter,omitempty"`
 
 	// Access the access for sentinel
 	Access SentinelInstanceAccess `json:"access,omitempty"`

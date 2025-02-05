@@ -66,7 +66,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	logger.V(3).Info("Inspecting Sentinel")
 
 	cr := sentinel.Definition()
-	if val := cr.Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY]; val != "" {
+	if val := cr.Spec.PodAnnotations[config.PauseAnnotationKey]; val != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 
