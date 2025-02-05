@@ -4,16 +4,13 @@ ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
-ENV GOPROXY='https://goproxy.cn,direct'
-RUN go mod download
 
 # Copy the go source
 COPY . .
+
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
