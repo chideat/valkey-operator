@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package sentinel
+*/package sentinel
 
 import (
 	"context"
@@ -27,7 +26,6 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -178,7 +176,7 @@ func (s *ValkeySentinelNode) loadLocalUser(ctx context.Context) (*user.User, err
 		return nil, fmt.Errorf("server container not found")
 	}
 	for _, env := range container.Env {
-		if env.Name == sentinelbuilder.OperatorSecretName && env.Value != "" {
+		if env.Name == builder.OperatorSecretName && env.Value != "" {
 			secretName = env.Value
 			break
 		}
@@ -205,7 +203,7 @@ func (n *ValkeySentinelNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 
 	var name string
 	for _, vol := range n.Spec.Volumes {
-		if vol.Name == clusterbuilder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
+		if vol.Name == builder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
 			name = vol.Secret.SecretName
 			break
 		}
@@ -545,7 +543,7 @@ func (n *ValkeySentinelNode) Info() vkcli.NodeInfo {
 }
 
 func (n *ValkeySentinelNode) Port() int {
-	if port := n.Pod.Labels[builder.PodAnnouncePortLabelKey]; port != "" {
+	if port := n.Pod.Labels[builder.AnnouncePortLabelKey]; port != "" {
 		if val, _ := strconv.ParseInt(port, 10, 32); val > 0 {
 			return int(val)
 		}
@@ -567,7 +565,7 @@ func (n *ValkeySentinelNode) InternalPort() int {
 }
 
 func (n *ValkeySentinelNode) DefaultIP() net.IP {
-	if value := n.Pod.Labels[builder.PodAnnounceIPLabelKey]; value != "" {
+	if value := n.Pod.Labels[builder.AnnounceIPLabelKey]; value != "" {
 		address := strings.Replace(value, "-", ":", -1)
 		return net.ParseIP(address)
 	}
@@ -654,11 +652,9 @@ func (n *ValkeySentinelNode) SetMonitor(ctx context.Context, name, ip, port, use
 		return err
 	}
 	if password != "" {
-		if n.CurrentVersion().IsACLSupported() {
-			if user != "" {
-				if err := n.Setup(ctx, []interface{}{"SENTINEL", "SET", name, "auth-user", user}); err != nil {
-					return err
-				}
+		if user != "" {
+			if err := n.Setup(ctx, []interface{}{"SENTINEL", "SET", name, "auth-user", user}); err != nil {
+				return err
 			}
 		}
 		if err := n.Setup(ctx, []interface{}{"SENTINEL", "SET", name, "auth-pass", password}); err != nil {

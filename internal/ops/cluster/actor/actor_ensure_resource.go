@@ -5,31 +5,29 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
 	"fmt"
 	"reflect"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/cert"
+	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops/cluster"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
@@ -106,7 +104,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 
 func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
-	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
+	labels := clusterbuilder.GenerateClusterLabels(cr.Name, nil)
 	stss, err := a.client.ListStatefulSetByLabels(ctx, cr.Namespace, labels)
 	if err != nil {
 		logger.Error(err, "load statefulsets failed")
@@ -139,11 +137,11 @@ func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, cluster type
 func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
 
-	sa := clusterbuilder.NewServiceAccount(cr)
-	role := clusterbuilder.NewRole(cr)
-	binding := clusterbuilder.NewRoleBinding(cr)
-	clusterRole := clusterbuilder.NewClusterRole(cr)
-	clusterBinding := clusterbuilder.NewClusterRoleBinding(cr)
+	sa := sabuilder.GenerateServiceAccount(cr)
+	role := sabuilder.GenerateRole(cr)
+	binding := sabuilder.GenerateRoleBinding(cr)
+	clusterRole := sabuilder.GenerateClusterRole(cr)
+	clusterBinding := sabuilder.GenerateClusterRoleBinding(cr)
 
 	if err := a.client.CreateOrUpdateServiceAccount(ctx, cluster.GetNamespace(), sa); err != nil {
 		logger.Error(err, "create serviceaccount failed", "target", client.ObjectKeyFromObject(sa))
@@ -176,7 +174,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, cluster 
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
+					Name:      sabuilder.ValkeyInstanceServiceAccountName,
 					Namespace: cluster.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -211,7 +209,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, cluster types
 
 // ensureTLS
 func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
-	if !cluster.Definition().Spec.Access.EnableTLS || !cluster.Version().IsTLSSupported() {
+	if !cluster.Definition().Spec.Access.EnableTLS {
 		return nil
 	}
 	dnsNames := []string{
@@ -223,25 +221,25 @@ func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.Clust
 		dnsNames = append(dnsNames, name)
 		dnsNames = append(dnsNames, fmt.Sprintf("%s.%s", name, cluster.GetNamespace()))
 	}
-	cert, err := cert.NewCertificate(cluster, dnsNames, clusterbuilder.GetClusterLabels(cluster.GetName(), nil))
+	cc, err := certbuilder.NewCertificate(cluster, dnsNames, clusterbuilder.GenerateClusterLabels(cluster.GetName(), nil))
 	if err != nil {
 		logger.Error(err, "generate certificate failed")
 		return actor.NewResultWithError(cops.CommandAbort, err)
 	}
 
-	oldCert, err := a.client.GetCertificate(ctx, cluster.GetNamespace(), cert.GetName())
+	oldCc, err := a.client.GetCertificate(ctx, cluster.GetNamespace(), cc.GetName())
 	if err != nil && !errors.IsNotFound(err) {
 		return actor.RequeueWithError(err)
 	}
 
-	if err := a.client.CreateIfNotExistsCertificate(ctx, cluster.GetNamespace(), cert); err != nil {
+	if err := a.client.CreateIfNotExistsCertificate(ctx, cluster.GetNamespace(), cc); err != nil {
 		logger.Error(err, "request for certificate failed")
 		return actor.RequeueWithError(err)
 	}
 
 	var (
 		found      = false
-		secretName = builder.GetValkeySSLSecretName(cluster.GetName())
+		secretName = certbuilder.GenerateSSLSecretName(cluster.GetName())
 	)
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Second * time.Duration(i))
@@ -252,7 +250,7 @@ func (a *actorEnsureResource) ensureTLS(ctx context.Context, cluster types.Clust
 		}
 
 		// check when the certificate created
-		if oldCert != nil && time.Since(oldCert.GetCreationTimestamp().Time) > time.Minute*5 {
+		if oldCc != nil && time.Since(oldCc.GetCreationTimestamp().Time) > time.Minute*5 {
 			return actor.NewResultWithError(cops.CommandAbort, fmt.Errorf("issue for tls certificate failed, please check the cert-manager"))
 		}
 	}
@@ -267,26 +265,14 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 	cr := cluster.Definition()
 
 	var (
-		// isAllACLSupported is used to make sure 5=>6 upgrade can to failover succeed
-		isAllACLSupported = cluster.Version().IsACLSupported()
-		updated           = false
+		updated = false
 	)
-
-__end__:
-	for _, shard := range cluster.Shards() {
-		for _, node := range shard.Nodes() {
-			if !node.CurrentVersion().IsACLSupported() || !node.IsACLApplied() {
-				isAllACLSupported = false
-				break __end__
-			}
-		}
-	}
 
 	for i := 0; i < int(cr.Spec.Replicas.Shards); i++ {
 		// statefulset
 		name := clusterbuilder.ClusterStatefulSetName(cr.GetName(), i)
 
-		pdb := clusterbuilder.NewPodDisruptionBudgetForCR(cr, i)
+		pdb := clusterbuilder.GeneratePodDisruptionBudget(cluster, i)
 		if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, cr.GetNamespace(), pdb.Name); errors.IsNotFound(err) {
 			if err = a.client.CreatePodDisruptionBudget(ctx, cr.GetNamespace(), pdb); err != nil {
 				logger.Error(err, "create poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
@@ -303,7 +289,7 @@ __end__:
 			}
 		}
 
-		newSts, err := clusterbuilder.NewStatefulSet(cluster, isAllACLSupported, i)
+		newSts, err := clusterbuilder.GenerateStatefulSet(cluster, i)
 		if err != nil {
 			logger.Error(err, "generate statefulset failed")
 			return actor.NewResultWithError(cops.CommandAbort, err)
@@ -334,7 +320,7 @@ __end__:
 			// merge restart annotations, if statefulset is more new, not restart statefulset
 			newSts.Spec.Template.Annotations = MergeAnnotations(newSts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
 
-			if builder.IsStatefulsetChanged(newSts, oldSts, logger) {
+			if util.IsStatefulsetChanged(newSts, oldSts, logger) {
 				if err := a.client.UpdateStatefulSet(ctx, cr.GetNamespace(), newSts); err != nil {
 					logger.Error(err, "update statefulset failed", "target", client.ObjectKeyFromObject(newSts))
 					return actor.RequeueWithError(err)
@@ -343,7 +329,6 @@ __end__:
 			}
 		}
 	}
-
 	if updated {
 		return actor.NewResult(cops.CommandRequeue)
 	}
@@ -357,14 +342,14 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 	for i := 0; i < int(cr.Spec.Replicas.Shards); i++ {
 		// init headless service
 		// use serviceName and selectors from statefulset
-		svc := clusterbuilder.NewHeadlessSvcForCR(cr, i)
+		svc := clusterbuilder.GenerateHeadlessService(cr, i)
 		// TODO: check if service changed
 		if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
 			logger.Error(err, "create headless service failed", "target", client.ObjectKeyFromObject(svc))
 		}
 	}
 
-	svc := clusterbuilder.NewServiceForCR(cr)
+	svc := clusterbuilder.GenerateInstanceService(cr)
 	if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
 		logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(svc))
 		return actor.RequeueWithError(err)
@@ -381,11 +366,6 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 	case corev1.ServiceTypeLoadBalancer:
 		if ret := a.ensureValkeyPodService(ctx, cluster, logger); ret != nil {
 			return ret
-		}
-		svc := clusterbuilder.NewLbService(cr)
-		if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
-			logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(svc))
-			return actor.RequeueWithError(err)
 		}
 	}
 	return nil
@@ -421,12 +401,12 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 	serviceNameRange := map[string]struct{}{}
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
 		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
-			serviceName := clusterbuilder.ClusterNodeSvcName(cr.Name, shard, replica)
+			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			serviceNameRange[serviceName] = struct{}{}
 		}
 	}
 
-	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
+	labels := clusterbuilder.GenerateClusterLabels(cr.Name, nil)
 
 	// the whole process is divided into three steps:
 	// 1. delete service not in nodeport range
@@ -483,14 +463,14 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 	}
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
 		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
-			serviceName := clusterbuilder.ClusterNodeSvcName(cr.Name, shard, replica)
+			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
 			if errors.IsNotFound(err) {
 				if len(newPorts) == 0 {
 					continue
 				}
 				port := newPorts[0]
-				svc := clusterbuilder.NewNodeportSvc(cr, serviceName, labels, port)
+				svc := clusterbuilder.GenerateNodePortSerivce(cr, serviceName, labels, port)
 				if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 					a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 					return actor.NewResultWithValue(cops.CommandRequeue, err)
@@ -570,7 +550,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 	// 4. check again if all gossip port is added
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
 		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
-			serviceName := clusterbuilder.ClusterNodeSvcName(cr.Name, shard, replica)
+			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			if svc, err := a.client.GetService(ctx, cr.Namespace, serviceName); errors.IsNotFound(err) {
 				continue
 			} else if err != nil {
@@ -597,12 +577,11 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 
 func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
-	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
 
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
 		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
-			serviceName := clusterbuilder.ClusterNodeSvcName(cr.Name, shard, replica)
-			newSvc := clusterbuilder.NewPodService(cr, serviceName, cr.Spec.Access.ServiceType, labels, cr.Spec.Access.Annotations)
+			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
+			newSvc := clusterbuilder.GeneratePodService(cr, serviceName, cr.Spec.Access.ServiceType, cr.Spec.Access.Annotations)
 			if svc, err := a.client.GetService(ctx, cr.Namespace, serviceName); errors.IsNotFound(err) {
 				if err = a.client.CreateService(ctx, cr.Namespace, newSvc); err != nil {
 					a.logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -631,7 +610,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster t
 		return nil
 	}
 
-	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
+	labels := clusterbuilder.GenerateClusterLabels(cr.Name, nil)
 	services, ret := a.fetchAllPodBindedServices(ctx, cr.Namespace, labels)
 	if ret != nil {
 		return ret
@@ -639,7 +618,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster t
 
 	for _, item := range services {
 		svc := item.DeepCopy()
-		shard, index, err := clusterbuilder.ParsePodShardAndIndex(svc.Name)
+		shard, index, err := builder.ParsePodShardAndIndex(svc.Name)
 		if err != nil {
 			logger.Error(err, "parse svc name failed", "target", client.ObjectKeyFromObject(svc))
 			continue
@@ -708,18 +687,4 @@ func MergeAnnotations(t, s map[string]string) map[string]string {
 		}
 	}
 	return t
-}
-
-func parsePodShardAndIndex(name string) (shard int, index int, err error) {
-	fields := strings.Split(name, "-")
-	if len(fields) < 3 {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	if index, err = strconv.Atoi(fields[len(fields)-1]); err != nil {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	if shard, err = strconv.Atoi(fields[len(fields)-2]); err != nil {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	return shard, index, nil
 }

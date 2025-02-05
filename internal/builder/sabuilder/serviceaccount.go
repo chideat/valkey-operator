@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package clusterbuilder
+*/package sabuilder
 
 import (
 	"fmt"
@@ -31,8 +30,8 @@ const (
 	ValkeyInstanceRoleBindingName    = "valkey-instance-rolebinding"
 )
 
-// NewServiceAccount
-func NewServiceAccount(obj client.Object) *corev1.ServiceAccount {
+// GenerateServiceAccount
+func GenerateServiceAccount(obj client.Object) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ValkeyInstanceServiceAccountName,
@@ -41,8 +40,8 @@ func NewServiceAccount(obj client.Object) *corev1.ServiceAccount {
 	}
 }
 
-// NewRole
-func NewRole(obj client.Object) *rbacv1.Role {
+// GenerateRole
+func GenerateRole(obj client.Object) *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ValkeyInstanceRoleName,
@@ -69,8 +68,8 @@ func NewRole(obj client.Object) *rbacv1.Role {
 
 }
 
-// NewRoleBinding
-func NewRoleBinding(obj client.Object) *rbacv1.RoleBinding {
+// GenerateRoleBinding
+func GenerateRoleBinding(obj client.Object) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ValkeyInstanceRoleBindingName,
@@ -91,7 +90,7 @@ func NewRoleBinding(obj client.Object) *rbacv1.RoleBinding {
 	}
 }
 
-func NewClusterRole(obj client.Object) *rbacv1.ClusterRole {
+func GenerateClusterRole(obj client.Object) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ValkeyInstanceRoleName,
@@ -106,7 +105,7 @@ func NewClusterRole(obj client.Object) *rbacv1.ClusterRole {
 	}
 }
 
-func NewClusterRoleBinding(obj client.Object) *rbacv1.ClusterRoleBinding {
+func GenerateClusterRoleBinding(obj client.Object) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf("%s-%s", obj.GetNamespace(), ValkeyInstanceRoleBindingName),

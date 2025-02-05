@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package monitor
+*/package monitor
 
 import (
 	"context"
@@ -424,23 +423,9 @@ func (s *SentinelMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNo
 		configs[k] = v
 	}
 
-	isAllAclSupported := func() bool {
-		for _, node := range s.nodes {
-			if !node.Version().IsACLSupported() {
-				return false
-			}
-		}
-		return true
-	}()
-
-	if s.failover.Version().IsACLSupported() && s.failover.IsACLAppliedToAll() && isAllAclSupported {
-		opUser := s.failover.Users().GetOpUser()
-		configs["auth-pass"] = opUser.Password.String()
-		configs["auth-user"] = opUser.Name
-	} else {
-		user := s.failover.Users().GetDefaultUser()
-		configs["auth-pass"] = user.Password.String()
-	}
+	opUser := s.failover.Users().GetOpUser()
+	configs["auth-pass"] = opUser.Password.String()
+	configs["auth-user"] = opUser.Name
 
 	masterIP, masterPort := masterNode.DefaultIP().String(), strconv.Itoa(masterNode.Port())
 	for _, node := range s.nodes {

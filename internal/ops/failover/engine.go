@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package failover
+*/package failover
 
 import (
 	"context"
@@ -27,6 +26,8 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	v1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
@@ -36,8 +37,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/user"
-	"github.com/chideat/valkey-operator/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
@@ -147,7 +146,7 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 		})
 
 		labels := pod.GetLabels()
-		labelVal := labels[failoverbuilder.ValkeyRoleLabel]
+		labelVal := labels[builder.RoleLabelKey]
 		if node == nil {
 			if labelVal != "" {
 				logger.V(3).Info("node not accessable", "name", pod.GetName(), "labels", labels)
@@ -158,11 +157,11 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 
 		nodeAddr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		switch {
-		case nodeAddr == masterAddr && labelVal != failoverbuilder.ValkeyRoleMaster:
+		case nodeAddr == masterAddr && labelVal != string(core.NodeRoleMaster):
 			fallthrough
-		case labelVal == failoverbuilder.ValkeyRoleMaster && nodeAddr != masterAddr:
+		case labelVal == string(core.NodeRoleMaster) && nodeAddr != masterAddr:
 			fallthrough
-		case node.Role() == core.NodeRoleReplica && labelVal != failoverbuilder.ValkeyRoleReplica:
+		case node.Role() == core.NodeRoleReplica && labelVal != string(core.NodeRoleReplica):
 			logger.V(3).Info("master labels not match", "node", node.GetName(), "labels", labels)
 			return actor.NewResult(CommandPatchLabels)
 		}
@@ -173,84 +172,36 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	logger.V(3).Info("checkPassword")
 
-	var (
-		cr                = inst.Definition()
-		currentSecretName = cr.Spec.Access.DefaultPasswordSecret
-		users             = inst.Users()
-	)
-
-	defaultUser := users.GetDefaultUser()
-	// UPGRADE: use User controller to manage the user update
-	if defaultUser.GetPassword().GetSecretName() != currentSecretName && !inst.Version().IsACLSupported() {
-		return actor.NewResult(CommandUpdateAccount)
-	}
-
-	name := failoverbuilder.GenerateFailoverACLConfigMapName(inst.GetName())
-	if _, err := g.client.GetConfigMap(ctx, inst.GetNamespace(), name); err != nil && !errors.IsNotFound(err) {
-		return actor.RequeueWithError(err)
-	} else if errors.IsNotFound(err) {
-		return actor.NewResult(CommandUpdateAccount)
-	}
-
-	isAclEnabled := (users.GetOpUser().Role == user.RoleOperator)
-	if inst.Version().IsACLSupported() && !isAclEnabled {
-		return actor.NewResult(CommandUpdateAccount)
-	}
-	if inst.Version().IsACLSupported() && !inst.IsACLUserExists() {
-		logger.Info("acl user not exists")
-		return actor.NewResult(CommandUpdateAccount)
-	}
-
-	cmName := failoverbuilder.GenerateFailoverACLConfigMapName(inst.GetName())
-	if cm, err := g.client.GetConfigMap(ctx, inst.GetNamespace(), cmName); errors.IsNotFound(err) {
+	name := aclbuilder.GenerateACLConfigMapName(inst.Arch(), inst.GetName())
+	if cm, err := g.client.GetConfigMap(ctx, inst.GetNamespace(), name); errors.IsNotFound(err) {
 		return actor.NewResult(CommandUpdateAccount)
 	} else if err != nil {
-		logger.Error(err, "failed to get configmap", "configmap", cmName)
+		logger.Error(err, "failed to get configmap", "configmap", name)
 		return actor.NewResult(CommandRequeue)
 	} else if users, err := acl.LoadACLUsers(ctx, g.client, cm); err != nil {
 		return actor.NewResult(CommandUpdateAccount)
-	} else {
-		if inst.Version().IsACLSupported() {
-			opUser := users.GetOpUser()
-			logger.V(3).Info("check acl2 support", "role", opUser.Role, "rules", opUser.Rules)
-			if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
-				logger.Info("operator user has no channel rules")
-				return actor.NewResult(CommandUpdateAccount)
-			}
-
-			defaultRUName := failoverbuilder.GenerateFailoverUserName(inst.GetName(), defaultUser.Name)
-			if defaultRU, err := g.client.GetUser(ctx, inst.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
-				return actor.NewResult(CommandUpdateAccount)
-			} else if err != nil {
-				return actor.RequeueWithError(err)
-			} else {
-				oldVersion := version.ValkeyVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
-				if !oldVersion.IsACLSupported() {
-					return actor.NewResult(CommandUpdateAccount)
-				}
-			}
-		}
-		if !reflect.DeepEqual(users.Encode(true), users.Encode(false)) {
-			return actor.NewResult(CommandUpdateAccount)
-		}
+	} else if users.GetOpUser() == nil {
+		return actor.NewResult(CommandUpdateAccount)
+	} else if !reflect.DeepEqual(users.Encode(true), users.Encode(false)) {
+		return actor.NewResult(CommandUpdateAccount)
 	}
 	return nil
 }
 
 func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
-	newCm, err := failoverbuilder.NewValkeyConfigMap(inst, inst.Selector())
+	newCm, err := failoverbuilder.GenerateConfigMap(inst)
 	if err != nil {
 		return actor.RequeueWithError(err)
 	}
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		err := fmt.Errorf("configmap %s not found", newCm.GetName())
 		return actor.NewResultWithError(CommandEnsureResource, err)
 	} else if err != nil {
 		return actor.RequeueWithError(err)
 	}
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return actor.NewResult(CommandUpdateConfig)
@@ -362,27 +313,8 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 	return nil
 }
 
-// 最后比对数量是否相同
 func (g *RuleEngine) isResourceCleanNeeded(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if inst.IsReady() {
-		// delete old deployment
-		// TODO: remove in 3.22
-		name := failoverbuilder.GetFailoverDeploymentName(inst.GetName())
-		sts, err := g.client.GetStatefulSet(ctx, inst.GetNamespace(), name)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "failed to get sentinel statefulset")
-				return actor.RequeueWithError(err)
-			}
-		} else if sts != nil && sts.Status.ReadyReplicas == *sts.Spec.Replicas {
-			if _, err := g.client.GetDeployment(ctx, inst.GetNamespace(), name); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to get deployment", "deployment", name)
-				return actor.RequeueWithError(err)
-			} else if err == nil {
-				return actor.NewResult(CommandCleanResource)
-			}
-		}
-
 		// delete sentinel after standalone is ready for old pod to gracefully shutdown
 		if !inst.IsBindedSentinel() {
 			var sen v1alpha1.Sentinel

@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package clusterbuilder
+*/package clusterbuilder
 
 import (
 	"bytes"
@@ -32,10 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const (
-	ValkeyConfKey = "valkey.conf"
-)
-
 // NewConfigMapForCR creates a new ConfigMap for the given Cluster
 func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error) {
 	valkeyConfContent, err := buildValkeyConfigs(cluster)
@@ -47,11 +42,11 @@ func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error)
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            ValkeyConfigMapName(cluster.GetName()),
 			Namespace:       cluster.GetNamespace(),
-			Labels:          GetClusterLabels(cluster.GetName(), nil),
+			Labels:          GenerateClusterLabels(cluster.GetName(), nil),
 			OwnerReferences: util.BuildOwnerReferences(cluster.Definition()),
 		},
 		Data: map[string]string{
-			ValkeyConfKey: valkeyConfContent,
+			builder.ValkeyConfigKey: valkeyConfContent,
 		},
 	}, nil
 }
@@ -65,11 +60,6 @@ const (
 	ValkeyConfig_Appendonly              = "appendonly"
 	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
 )
-
-var ForbidToRenameCommands = map[string]struct{}{
-	"config":  {},
-	"cluster": {},
-}
 
 // buildValkeyConfigs
 //
@@ -107,28 +97,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 
 		configMap["save"] = "60 10000 300 100 600 1"
 	}
-
-	// for valkey >=6.0, disable rename-command
-	if !cluster.Version().IsACLSupported() {
-		var (
-			renameVal []string
-		)
-		renameConfig, err := ParseRenameConfigs(configMap[ValkeyConfig_RenameCommand])
-		if err != nil {
-			return "", err
-		}
-		for k, v := range renameConfig {
-			if _, ok := ForbidToRenameCommands[k]; ok || k == v {
-				continue
-			}
-			renameVal = append(renameVal, k, v)
-		}
-		if len(renameVal) > 0 {
-			configMap[ValkeyConfig_RenameCommand] = strings.Join(renameVal, " ")
-		}
-	} else {
-		delete(configMap, ValkeyConfig_RenameCommand)
-	}
+	delete(configMap, ValkeyConfig_RenameCommand)
 
 	for k, v := range configMap {
 		if policy := ValkeyConfigRestartPolicy[k]; policy == Forbid {
@@ -316,42 +285,6 @@ func (o ValkeyConfig) Diff(n ValkeyConfig) (added, changed, deleted map[string]V
 	for key, vals := range o {
 		if _, ok := n[key]; !ok {
 			deleted[key] = vals
-		}
-	}
-	return
-}
-
-func ParseRenameConfigs(val string) (ret map[string]string, err error) {
-	ret = map[string]string{}
-	if val == "" {
-		return
-	}
-	val = strings.ToLower(strings.TrimSpace(val))
-
-	fields := strings.Fields(val)
-	if len(fields)%2 == 0 {
-		for i := 0; i < len(fields); i += 2 {
-			k, v := fields[i], fields[i+1]
-			for _, c := range []string{"\"", "'"} {
-				if strings.HasPrefix(k, c) && strings.HasSuffix(k, c) {
-					k = strings.TrimPrefix(strings.TrimSuffix(k, c), c)
-				}
-				if strings.HasPrefix(v, c) && strings.HasSuffix(v, c) {
-					v = strings.TrimPrefix(strings.TrimSuffix(v, c), c)
-				}
-			}
-			if v == "" {
-				v = `""`
-			}
-			ret[k] = v
-		}
-	} else {
-		err = fmt.Errorf("invalid rename value %s", val)
-	}
-
-	for k, v := range ret {
-		if k == v {
-			delete(ret, k)
 		}
 	}
 	return

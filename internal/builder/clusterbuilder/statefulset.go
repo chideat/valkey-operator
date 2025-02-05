@@ -5,22 +5,29 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package clusterbuilder
+*/package clusterbuilder
 
 import (
 	"crypto/sha1" // #nosec
 	"fmt"
-	"net"
-	"strconv"
-	"strings"
+
+	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
+	"github.com/chideat/valkey-operator/internal/config"
+	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/chideat/valkey-operator/pkg/types/user"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,86 +35,45 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
-
-	"github.com/chideat/valkey-operator/api/core"
-	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
-	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/config"
-	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/user"
 )
 
 const (
-	DefaultValkeyServerPort    = 6379
-	DefaultValkeyServerBusPort = 16379
+	TLSVolumeName      = builder.ValkeyTLSVolumeName
+	TLSVolumeMountPath = builder.ValkeyTLSVolumeDefaultMountPath
 
-	GenericKey       = "valkey.kun"
-	LabelClusterName = GenericKey + "/name"
-	StatefulSetLabel = "statefulSet"
+	StorageVolumeName      = builder.ValkeyDataVolumeName
+	StorageVolumeMountPath = builder.ValkeyDataVolumeDefaultMountPath
 
-	hostnameTopologyKey = "kubernetes.io/hostname"
+	ValkeyTempVolumeName      = "temp"
+	ValkeyTempVolumeMountPath = "/tmp"
 
-	// Container
-	CheckContainerName          = "init"
-	ServerContainerName         = "valkey"
-	ExporterContainerName       = "exporter"
-	ConfigSyncContainerName     = "sidecar"
-	ValkeyDataContainerPortName = "client"
+	ValkeyPasswordVolumeName = "valkey-auth" //#nosec
+	PasswordVolumeMountPath  = "/account"
 
-	// Volume
-	ValkeyStorageVolumeName          = "valkey-data"
-	ValkeyTempVolumeName             = "temp"
-	ValkeyOperatorPasswordVolumeName = "operator-password"
-	ConfigVolumeName                 = "conf"
-	ValkeyTLSVolumeName              = "valkey-tls"
-	ValkeyOptVolumeName              = "valkey-opt"
-	// Mount path
-	StorageVolumeMountPath          = "/data"
-	OperatorPasswordVolumeMountPath = "/account"
-	ConfigVolumeMountPath           = "/conf"
-	TLSVolumeMountPath              = "/tls"
-	ValkeyOptVolumeMountPath        = "/opt"
-	ValkeyTmpVolumeMountPath        = "/tmp"
+	ConfigVolumeName      = "conf"
+	ConfigVolumeMountPath = "/valkey"
 
-	// Env
-	OperatorUsername   = "OPERATOR_USERNAME"
-	OperatorSecretName = "OPERATOR_SECRET_NAME"
-
-	PrometheusExporterPortNumber    = 9100
-	PrometheusExporterTelemetryPath = "/metrics"
+	ValkeyOptVolumeName      = "valkey-opt"
+	ValkeyOptVolumeMountPath = "/opt"
 )
 
 const (
-	ProbeDelaySeconds                          = 30
-	DefaultTerminationGracePeriodSeconds int64 = 300
+	probeDelaySeconds                          = 30
+	defaultTerminationGracePeriodSeconds int64 = 300
 )
 
-// NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
-func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) (*appsv1.StatefulSet, error) {
-	cluster := c.Definition()
+func ClusterStatefulSetName(name string, i int) string {
+	return fmt.Sprintf("%s-%s-%d", builder.ResourcePrefix(core.ValkeyCluster), name, i)
+}
 
+func buildEnvs(inst types.ClusterInstance, headlessSvcName string) []corev1.EnvVar {
 	var (
-		spec             = cluster.Spec
-		users            = c.Users()
+		cluster          = inst.Definition()
+		users            = inst.Users()
 		opUser           = users.GetOpUser()
-		aclConfigMapName = GenerateClusterACLConfigMapName(cluster.GetName())
+		aclConfigMapName = aclbuilder.GenerateACLConfigMapName(inst.Arch(), cluster.GetName())
 	)
-	if opUser.Role == user.RoleOperator && !isAllACLSupported {
-		opUser = users.GetDefaultUser()
-	}
-	if !c.Version().IsACLSupported() {
-		aclConfigMapName = ""
-	}
 
-	var (
-		volumes         = valkeyVolumes(cluster, opUser)
-		stsName         = ClusterStatefulSetName(cluster.Name, index)
-		labels          = GetClusterStatefulsetSelectorLabels(cluster.Name, index)
-		headlessSvcName = ClusterHeadlessSvcName(cluster.Name, index)
-
-		size = spec.Replicas.ReplicasOfShard + 1
-	)
 	envs := []corev1.EnvVar{
 		{
 			Name: "NAMESPACE",
@@ -150,86 +116,71 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 			},
 		},
 		{
-			Name:  "SERVICE_NAME",
-			Value: headlessSvcName,
-		},
-		{
-			Name:  "TERMINATION_GRACE_PERIOD",
-			Value: fmt.Sprintf("%d", DefaultTerminationGracePeriodSeconds),
-		},
-		{
-			Name: "ACL_ENABLED",
-			// isAllACLSupported used to make sure the account is consistent with eachother
-			Value: fmt.Sprintf("%t", opUser.Role == user.RoleOperator),
-		},
-		{
 			Name:  "ACL_CONFIGMAP_NAME",
 			Value: aclConfigMapName,
 		},
 		{
-			Name:  OperatorUsername,
+			Name:  builder.OperatorUsername,
 			Value: opUser.Name,
 		},
 		{
-			Name:  OperatorSecretName,
+			Name:  builder.OperatorSecretName,
 			Value: opUser.GetPassword().GetSecretName(),
-		},
-		{
-			Name:  "TLS_ENABLED",
-			Value: fmt.Sprintf("%t", cluster.Spec.Access.EnableTLS),
-		},
-		{
-			Name:  "NODEPORT_ENABLED",
-			Value: fmt.Sprintf("%t", cluster.Spec.Access.ServiceType == corev1.ServiceTypeNodePort),
 		},
 		{
 			Name:  "IP_FAMILY_PREFER",
 			Value: string(cluster.Spec.Access.IPFamilyPrefer),
 		},
 		{
-			Name:  "VALKEY_ADDRESS",
-			Value: net.JoinHostPort(config.LocalInjectName, strconv.FormatInt(DefaultValkeyServerPort, 10)),
-		},
-		{
 			Name:  "SERVICE_TYPE",
 			Value: string(cluster.Spec.Access.ServiceType),
 		},
 	}
-	if cluster.Spec.Access.ServiceType == corev1.ServiceTypeNodePort && len(cluster.Spec.Access.Ports) > 0 {
-		envs = append(envs, corev1.EnvVar{
-			Name:  "CUSTOM_PORT_ENABLED",
-			Value: "true",
-		})
-	}
-	if c.Version().IsClusterShardSupported() {
-		// TODO: use real shard id in valkey7
-		data := sha1.Sum([]byte(fmt.Sprintf("%s/%s", cluster.Namespace, stsName))) // #nosec
-		shardId := fmt.Sprintf("%x", data)
-		envs = append(envs, corev1.EnvVar{
-			Name:  "SHARD_ID",
-			Value: shardId,
-		})
-	}
 
 	if cluster.Spec.Access.EnableTLS {
-		envs = append(envs,
-			corev1.EnvVar{
-				Name:  "TLS_CA_CERT_FILE",
-				Value: "/tls/ca.crt",
-			},
-			corev1.EnvVar{
-				Name:  "TLS_CLIENT_KEY_FILE",
-				Value: "/tls/tls.key",
-			},
-			corev1.EnvVar{
-				Name:  "TLS_CLIENT_CERT_FILE",
-				Value: "/tls/tls.crt",
-			})
+		envs = append(envs, certbuilder.GenerateTLSEnvs()...)
 	}
+	return envs
+}
 
-	localhost := "127.0.0.1"
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		localhost = "::1"
+// GenerateStatefulSet creates a new StatefulSet for the given Cluster.
+func GenerateStatefulSet(inst types.ClusterInstance, index int) (*appsv1.StatefulSet, error) {
+	var (
+		cluster = inst.Definition()
+		spec    = cluster.Spec
+		users   = inst.Users()
+		opUser  = users.GetOpUser()
+	)
+
+	var (
+		stsName         = ClusterStatefulSetName(cluster.Name, index)
+		selectors       = GenerateClusterStatefulSetSelectors(cluster.Name, index)
+		labels          = GenerateClusterStatefulSetLabels(cluster.Name, index)
+		headlessSvcName = ClusterHeadlessSvcName(cluster.Name, index)
+		initContainers  []corev1.Container
+		containers      []corev1.Container
+	)
+
+	envs := buildEnvs(inst, headlessSvcName)
+
+	// persistent shard id
+	data := sha1.Sum([]byte(fmt.Sprintf("%s/%s", cluster.Namespace, stsName))) // #nosec
+	shardId := fmt.Sprintf("%x", data)
+	envs = append(envs, corev1.EnvVar{
+		Name:  "SHARD_ID",
+		Value: shardId,
+	})
+	if container := buildValkeyDataInitContainer(cluster, opUser, envs); container != nil {
+		initContainers = append(initContainers, *container)
+	}
+	containers = append(containers, buildValkeyServerContainer(cluster, opUser, envs, index))
+
+	if exporter := builder.BuildExporterContainer(inst,
+		cluster.Spec.Exporter, opUser, cluster.Spec.Access.EnableTLS); exporter != nil {
+		containers = append(containers, *exporter)
+	}
+	if container := buildValkeyAgentContainer(cluster, opUser, envs); container != nil {
+		containers = append(containers, *container)
 	}
 
 	ss := &appsv1.StatefulSet{
@@ -241,70 +192,49 @@ func NewStatefulSet(c types.ClusterInstance, isAllACLSupported bool, index int) 
 		},
 		Spec: appsv1.StatefulSetSpec{
 			ServiceName: headlessSvcName,
-			Replicas:    &size,
+			Replicas:    ptr.To(spec.Replicas.ReplicasOfShard + 1),
+			// TODO: added suuport for PodManagementPolicy in parallel
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Selector: &metav1.LabelSelector{MatchLabels: selectors},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
 					Annotations: cluster.Spec.PodAnnotations,
 				},
 				Spec: corev1.PodSpec{
+					InitContainers: initContainers,
+					Containers:     containers,
 					HostAliases: []corev1.HostAlias{
-						{
-							IP:        localhost,
-							Hostnames: []string{config.LocalInjectName},
-						},
+						builder.LocalhostAlias(cluster.Spec.Access.IPFamilyPrefer),
 					},
-					TerminationGracePeriodSeconds: ptr.To(DefaultTerminationGracePeriodSeconds),
-					ServiceAccountName:            ValkeyInstanceServiceAccountName,
 					ImagePullSecrets:              spec.ImagePullSecrets,
+					SecurityContext:               builder.GetPodSecurityContext(spec.SecurityContext),
+					ServiceAccountName:            sabuilder.ValkeyInstanceServiceAccountName,
 					Tolerations:                   spec.Tolerations,
 					NodeSelector:                  spec.NodeSelector,
-					Affinity:                      getAffinity(cluster, labels, stsName),
-					Containers: []corev1.Container{
-						valkeyServerContainer(cluster, opUser, envs, index),
-					},
-					SecurityContext: getSecurityContext(spec.SecurityContext),
-					Volumes:         volumes,
+					Affinity:                      buildAffinity(cluster, selectors, stsName),
+					TerminationGracePeriodSeconds: ptr.To(defaultTerminationGracePeriodSeconds),
+					Volumes:                       buildValkeyVolumes(cluster, opUser),
 				},
 			},
+			VolumeClaimTemplates: buildPersistentClaims(cluster, selectors),
 		},
-	}
-
-	if spec.Storage != nil {
-		ss.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
-			persistentClaim(cluster, labels),
-		}
-		if !spec.Storage.RetainAfterDeleted {
-			// set an owner reference so the persistent volumes are deleted when the cluster be deleted.
-			ss.Spec.VolumeClaimTemplates[0].OwnerReferences = util.BuildOwnerReferences(cluster)
-		}
-	}
-
-	initContainer, container := buildContainers(cluster, opUser, envs)
-	if initContainer != nil && container != nil {
-		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, *initContainer)
-		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, *container)
-	}
-
-	if spec.Exporter != nil {
-		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, valkeyExporterContainer(cluster, opUser))
 	}
 	return ss, nil
 }
 
-func persistentClaim(cluster *v1alpha1.Cluster, labels map[string]string) corev1.PersistentVolumeClaim {
-	var sc *string
-	if cluster.Spec.Storage.StorageClassName != nil {
-		sc = cluster.Spec.Storage.StorageClassName
+func buildPersistentClaims(cluster *v1alpha1.Cluster, labels map[string]string) (ret []corev1.PersistentVolumeClaim) {
+	if cluster.Spec.Storage == nil {
+		return nil
 	}
+
+	sc := cluster.Spec.Storage.StorageClassName
 	mode := corev1.PersistentVolumeFilesystem
-	return corev1.PersistentVolumeClaim{
+	ret = append(ret, corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   ValkeyStorageVolumeName,
+			Name:   StorageVolumeName,
 			Labels: labels,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -317,40 +247,43 @@ func persistentClaim(cluster *v1alpha1.Cluster, labels map[string]string) corev1
 			StorageClassName: sc,
 			VolumeMode:       &mode,
 		},
+	})
+	if cluster.Spec.Storage.RetainAfterDeleted {
+		for _, vc := range ret {
+			vc.OwnerReferences = util.BuildOwnerReferences(cluster)
+		}
 	}
+	return
 }
 
-func valkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1.EnvVar, index int) corev1.Container {
-	shutdownArgs := []string{"sh", "-c", "/opt/valkey-tools cluster shutdown  &> /proc/1/fd/1"}
+func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1.EnvVar, index int) corev1.Container {
 	startArgs := []string{"sh", "/opt/run.sh"}
 
 	container := corev1.Container{
+		Name:            builder.ServerContainerName,
 		Env:             envs,
-		Name:            ServerContainerName,
 		Image:           cluster.Spec.Image,
 		ImagePullPolicy: builder.GetPullPolicy(cluster.Spec.ImagePullPolicy),
 		Command:         startArgs,
-		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
 		Ports: []corev1.ContainerPort{
 			{
-				Name:          "valkey",
-				ContainerPort: DefaultValkeyServerPort,
+				Name:          "server",
+				ContainerPort: builder.DefaultValkeyServerPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 			{
 				Name:          "gossip",
-				ContainerPort: DefaultValkeyServerBusPort,
+				ContainerPort: builder.DefaultValkeyServerBusPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 		},
-		VolumeMounts: volumeMounts(cluster, u),
 		StartupProbe: &corev1.Probe{
-			InitialDelaySeconds: ProbeDelaySeconds,
+			InitialDelaySeconds: probeDelaySeconds,
 			TimeoutSeconds:      5,
 			FailureThreshold:    5,
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(DefaultValkeyServerPort),
+					Port: intstr.FromInt(builder.DefaultValkeyServerPort),
 				},
 			},
 		},
@@ -361,8 +294,8 @@ func valkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev
 			SuccessThreshold:    1,
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"/opt/valkey-tools", "helper", "healthcheck", "ping"},
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(builder.DefaultValkeyServerPort),
 				},
 			},
 		},
@@ -373,7 +306,7 @@ func valkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(DefaultValkeyServerPort),
+					Port: intstr.FromInt(builder.DefaultValkeyServerPort),
 				},
 			},
 		},
@@ -381,26 +314,28 @@ func valkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev
 		Lifecycle: &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{
-					Command: shutdownArgs,
+					Command: []string{"sh", "-inst", "/opt/valkey-helper cluster shutdown  &> /proc/1/fd/1"},
 				},
 			},
 		},
+		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
+		VolumeMounts:    buildVolumeMounts(cluster, u),
 	}
 	return container
 }
 
-func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.EnvVar) (*corev1.Container, *corev1.Container) {
-	image := config.GetValkeyToolsImage(cluster)
+func buildValkeyDataInitContainer(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.EnvVar) *corev1.Container {
+	image := config.GetValkeyHelperImage(cluster)
 	if image == "" {
-		return nil, nil
+		return nil
 	}
 
 	initContainer := corev1.Container{
-		Name:            CheckContainerName,
+		Name:            "init",
 		Image:           image,
 		ImagePullPolicy: builder.GetPullPolicy(cluster.Spec.ImagePullPolicy),
 		Env:             envs,
-		Command:         []string{"sh", "-c", "/opt/init.sh"},
+		Command:         []string{"sh", "-c", "/opt/init_cluster.sh"},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -412,18 +347,42 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+			{Name: StorageVolumeName, MountPath: StorageVolumeMountPath},
 			{Name: ValkeyOptVolumeName, MountPath: "/mnt/opt"},
-			{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
+			{Name: ValkeyTempVolumeName, MountPath: ValkeyTempVolumeMountPath},
 		},
 	}
 
+	if user.Password.GetSecretName() != "" {
+		mount := corev1.VolumeMount{
+			Name:      ValkeyPasswordVolumeName,
+			MountPath: PasswordVolumeMountPath,
+		}
+		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
+	}
+
+	if cluster.Spec.Access.EnableTLS {
+		mount := corev1.VolumeMount{
+			Name:      TLSVolumeName,
+			MountPath: TLSVolumeMountPath,
+		}
+		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
+	}
+	return &initContainer
+}
+
+func buildValkeyAgentContainer(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.EnvVar) *corev1.Container {
+	image := config.GetValkeyHelperImage(cluster)
+	if image == "" {
+		return nil
+	}
+
 	container := corev1.Container{
-		Name:            ConfigSyncContainerName,
+		Name:            "agent",
 		Image:           image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env:             envs,
-		Command:         []string{"/opt/valkey-tools", "runner", "cluster", "--sync-l2c"},
+		Command:         []string{"/opt/valkey-helper", "runner", "cluster", "--sync-l2c"},
 		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -436,169 +395,51 @@ func buildContainers(cluster *v1alpha1.Cluster, user *user.User, envs []corev1.E
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath, ReadOnly: true},
+			{Name: StorageVolumeName, MountPath: StorageVolumeMountPath, ReadOnly: true},
 		},
 	}
 
 	if user.Password.GetSecretName() != "" {
 		mount := corev1.VolumeMount{
-			Name:      ValkeyOperatorPasswordVolumeName,
-			MountPath: OperatorPasswordVolumeMountPath,
+			Name:      ValkeyPasswordVolumeName,
+			MountPath: PasswordVolumeMountPath,
 		}
-		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
 		container.VolumeMounts = append(container.VolumeMounts, mount)
 	}
 
 	if cluster.Spec.Access.EnableTLS {
 		mount := corev1.VolumeMount{
-			Name:      ValkeyTLSVolumeName,
+			Name:      TLSVolumeName,
 			MountPath: TLSVolumeMountPath,
 		}
-		initContainer.VolumeMounts = append(initContainer.VolumeMounts, mount)
 		container.VolumeMounts = append(container.VolumeMounts, mount)
 	}
-	return &initContainer, &container
+	return &container
 }
 
-func valkeyExporterContainer(cluster *v1alpha1.Cluster, user *user.User) corev1.Container {
-	cmd := []string{
-		"/redis_exporter",
-		"--web.listen-address",
-		fmt.Sprintf(":%d", PrometheusExporterPortNumber),
-		"--web.telemetry-path",
-		PrometheusExporterTelemetryPath}
-	resources := cluster.Spec.Exporter.Resources
-	if resources == nil {
-		resources = &corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("200m"),
-				corev1.ResourceMemory: resource.MustParse("512Mi"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("200m"),
-				corev1.ResourceMemory: resource.MustParse("512Mi"),
-			},
-		}
-	}
-	container := corev1.Container{
-		Name:            ExporterContainerName,
-		Command:         cmd,
-		Image:           cluster.Spec.Exporter.Image,
-		ImagePullPolicy: builder.GetPullPolicy(cluster.Spec.Exporter.ImagePullPolicy, cluster.Spec.ImagePullPolicy),
-		Ports: []corev1.ContainerPort{
-			{
-				Name:          "exporter",
-				Protocol:      corev1.ProtocolTCP,
-				ContainerPort: PrometheusExporterPortNumber,
-			},
-		},
-		Resources:       *resources,
-		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
-	}
-
-	name := user.Name
-	if user.Name == "default" {
-		name = ""
-	}
-	container.Env = append(container.Env,
-		corev1.EnvVar{Name: "VALKEY_USER", Value: name},
-	)
-	if secretName := user.Password.GetSecretName(); secretName != "" {
-		container.Env = append(container.Env,
-			corev1.EnvVar{Name: PasswordENV, ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					Key: "password",
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: secretName,
-					},
-				},
-			}},
-		)
-	}
-
-	if cluster.Spec.Access.EnableTLS {
-		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      ValkeyTLSVolumeName,
-			MountPath: TLSVolumeMountPath,
-		})
-
-		container.Env = append(container.Env, []corev1.EnvVar{
-			{
-				Name:  "VALKEY_EXPORTER_TLS_CLIENT_KEY_FILE",
-				Value: "/tls/tls.key",
-			},
-			{
-				Name:  "VALKEY_EXPORTER_TLS_CLIENT_CERT_FILE",
-				Value: "/tls/tls.crt",
-			},
-			{
-				Name:  "VALKEY_EXPORTER_TLS_CA_CERT_FILE",
-				Value: "/tls/ca.crt",
-			},
-			{
-				Name:  "VALKEY_EXPORTER_SKIP_TLS_VERIFICATION",
-				Value: "true",
-			},
-			{
-				Name: "VALKEY_ADDR",
-				// NOTE: use dns to escape ipv4/ipv6 check
-				Value: fmt.Sprintf("valkeys://%s:%d", config.LocalInjectName, DefaultValkeyServerPort),
-			},
-		}...)
-	} else {
-		container.Env = append(container.Env, []corev1.EnvVar{
-			{Name: "VALKEY_ADDR",
-				Value: fmt.Sprintf("valkey://%s:%d", config.LocalInjectName, DefaultValkeyServerPort)},
-		}...)
-	}
-	return container
-}
-
-func volumeMounts(cluster *v1alpha1.Cluster, user *user.User) []corev1.VolumeMount {
+func buildVolumeMounts(cluster *v1alpha1.Cluster, user *user.User) []corev1.VolumeMount {
 	volumeMounts := []corev1.VolumeMount{
 		{Name: ConfigVolumeName, MountPath: ConfigVolumeMountPath},
-		{Name: ValkeyStorageVolumeName, MountPath: StorageVolumeMountPath},
+		{Name: StorageVolumeName, MountPath: StorageVolumeMountPath},
 		{Name: ValkeyOptVolumeName, MountPath: ValkeyOptVolumeMountPath},
-		{Name: ValkeyTempVolumeName, MountPath: ValkeyTmpVolumeMountPath},
+		{Name: ValkeyTempVolumeName, MountPath: ValkeyTempVolumeMountPath},
 	}
 	if user.Password.GetSecretName() != "" {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      ValkeyOperatorPasswordVolumeName,
-			MountPath: OperatorPasswordVolumeMountPath,
+			Name:      ValkeyPasswordVolumeName,
+			MountPath: PasswordVolumeMountPath,
 		})
 	}
 	if cluster.Spec.Access.EnableTLS {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      ValkeyTLSVolumeName,
+			Name:      TLSVolumeName,
 			MountPath: TLSVolumeMountPath,
 		})
 	}
 	return volumeMounts
 }
 
-func getSecurityContext(secctx *corev1.PodSecurityContext) *corev1.PodSecurityContext {
-	// 999 is the default userid for valkey official docker image
-	// 1000 is the default groupid for valkey official docker image
-	groupID := int64(1000)
-	if secctx == nil {
-		secctx = &corev1.PodSecurityContext{
-			FSGroup: &groupID,
-			// RunAsNonRoot: ptr.To(true),
-		}
-	} else {
-		if secctx.FSGroup == nil {
-			secctx.FSGroup = &groupID
-		}
-	}
-	return secctx
-}
-
-func valkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
-	// NOTE: when upgrade from 3.8.1 to 3.8.2,3.10.1
-	// the SecurityContext not updated, which specified the runAsUser, runAsGroup, fsGroup
-	// if use 0400, without fsGroup specified, the mounted file will not readable to non root uses.
-	//
-	// DefaultMode >= 0444
+func buildValkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 	volumes := []corev1.Volume{
 		{
 			Name: ConfigVolumeName,
@@ -607,6 +448,7 @@ func valkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: ValkeyConfigMapName(cluster.Name),
 					},
+					DefaultMode: ptr.To(int32(0400)),
 				},
 			},
 		},
@@ -627,9 +469,9 @@ func valkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 		},
 	}
 
-	if user.Password.GetSecretName() != "" {
+	if user != nil && user.Password.GetSecretName() != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: ValkeyOperatorPasswordVolumeName,
+			Name: ValkeyPasswordVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: user.Password.GetSecretName(),
@@ -640,53 +482,81 @@ func valkeyVolumes(cluster *v1alpha1.Cluster, user *user.User) []corev1.Volume {
 
 	if cluster.Spec.Access.EnableTLS {
 		volumes = append(volumes, corev1.Volume{
-			Name: ValkeyTLSVolumeName,
+			Name: TLSVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: builder.GetValkeySSLSecretName(cluster.Name),
+					SecretName: certbuilder.GenerateSSLSecretName(cluster.Name),
 				},
 			},
 		})
 	}
 
-	dataVolume := valkeyDataVolume(cluster)
-	if dataVolume != nil {
-		volumes = append(volumes, *dataVolume)
+	if cluster.Spec.Storage == nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: StorageVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
 	}
 	return volumes
 }
 
-func valkeyDataVolume(cluster *v1alpha1.Cluster) *corev1.Volume {
-	// This will find the volumed desired by the user. If no volume defined
-	// an EmptyDir will be used by default
-	if cluster.Spec.Storage == nil {
-		return builder.EmptyVolume()
-	}
-	return nil
-}
-
-func getAffinity(cluster *v1alpha1.Cluster, labels map[string]string, ssName string) *corev1.Affinity {
+func buildAffinity(cluster *v1alpha1.Cluster, selectors map[string]string, ssName string) *corev1.Affinity {
 	if cluster.Spec.AffinityPolicy == nil {
 		cluster.Spec.AffinityPolicy = ptr.To(core.AntiAffinityInShard)
 	}
-	policy := *cluster.Spec.AffinityPolicy
-	affinity := cluster.Spec.CustomAffinity
-	if affinity != nil {
-		return affinity
-	}
 
-	switch policy {
-	case core.AntiAffinityInShard:
+	switch *cluster.Spec.AffinityPolicy {
+	case core.CustomAffinity:
+		return cluster.Spec.CustomAffinity
+	case core.AntiAffinity:
 		return &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 					{
-						TopologyKey: hostnameTopologyKey,
+						TopologyKey: builder.HostnameTopologyKey,
 						LabelSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{
-								LabelClusterName: cluster.Name,
-								StatefulSetLabel: ssName,
+							MatchLabels: selectors,
+						},
+					},
+				},
+			},
+		}
+	case core.SoftAntiAffinity:
+		// return a SOFT anti-affinity by default
+		return &corev1.Affinity{
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+					{
+						Weight: 80,
+						PodAffinityTerm: corev1.PodAffinityTerm{
+							TopologyKey: builder.HostnameTopologyKey,
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: selectors,
 							},
+						},
+					},
+					{
+						Weight: 20,
+						PodAffinityTerm: corev1.PodAffinityTerm{
+							TopologyKey: builder.HostnameTopologyKey,
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: selectors,
+							},
+						},
+					},
+				},
+			},
+		}
+	default:
+		return &corev1.Affinity{
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+					{
+						TopologyKey: builder.HostnameTopologyKey,
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: selectors,
 						},
 					},
 				},
@@ -694,80 +564,14 @@ func getAffinity(cluster *v1alpha1.Cluster, labels map[string]string, ssName str
 					{
 						Weight: 100,
 						PodAffinityTerm: corev1.PodAffinityTerm{
-							TopologyKey: hostnameTopologyKey,
+							TopologyKey: builder.HostnameTopologyKey,
 							LabelSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{LabelClusterName: cluster.Name},
+								MatchLabels: selectors,
 							},
 						},
 					},
 				},
 			},
 		}
-	case core.AntiAffinity:
-		return &corev1.Affinity{
-			PodAntiAffinity: &corev1.PodAntiAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
-					{
-						TopologyKey: hostnameTopologyKey,
-						LabelSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{LabelClusterName: cluster.Name},
-						},
-					},
-				},
-			},
-		}
-	case core.CustomAffinity:
-		return cluster.Spec.CustomAffinity
 	}
-
-	// return a SOFT anti-affinity by default
-	return &corev1.Affinity{
-		PodAntiAffinity: &corev1.PodAntiAffinity{
-			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-				{
-					Weight: 80,
-					PodAffinityTerm: corev1.PodAffinityTerm{
-						TopologyKey: hostnameTopologyKey,
-						LabelSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{
-								LabelClusterName: cluster.Name,
-								StatefulSetLabel: ssName,
-							},
-						},
-					},
-				},
-				{
-					Weight: 20,
-					PodAffinityTerm: corev1.PodAffinityTerm{
-						TopologyKey: hostnameTopologyKey,
-						LabelSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{LabelClusterName: cluster.Name},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func ClusterStatefulSetName(clusterName string, i int) string {
-	return fmt.Sprintf("drc-%s-%d", clusterName, i)
-}
-
-func ClusterHeadlessSvcName(name string, i int) string {
-	return fmt.Sprintf("%s-%d", name, i)
-}
-
-func ParsePodShardAndIndex(name string) (shard int, index int, err error) {
-	fields := strings.Split(name, "-")
-	if len(fields) < 3 {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	if index, err = strconv.Atoi(fields[len(fields)-1]); err != nil {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	if shard, err = strconv.Atoi(fields[len(fields)-2]); err != nil {
-		return -1, -1, fmt.Errorf("invalid pod name %s", name)
-	}
-	return shard, index, nil
 }

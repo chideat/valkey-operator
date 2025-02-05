@@ -1,2 +1,13 @@
 resources:
 - manager.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: controller
+  newName: chideat/valkey-operator
+  newTag: v0.1.0-alpha
+commonAnnotations:
+  operatorVersion: v0.1.0-alpha
+  redisExporterImage: oliver006/redis_exporter:v1.67.0-alpine
+  valkeyHelperImage: chideat/valkey-operator:v0.1.0-alpha
+  valkeyImageName: ""

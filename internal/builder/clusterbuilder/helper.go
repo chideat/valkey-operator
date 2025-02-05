@@ -5,125 +5,54 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package clusterbuilder
+*/package clusterbuilder
 
 import (
-	"context"
-	"fmt"
-
-	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/builder"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/chideat/valkey-operator/internal/config"
+	"github.com/samber/lo"
 )
 
-const (
-	PasswordENV = "VALKEY_PASSWORD"
-	passwordKey = "password" //NOSONAR
-)
-
-// getPublicLabels
+// generateSelectors
 // NOTE: this labels are const, take care of edit this
-func getPublicLabels(name string) map[string]string {
+func generateSelectors(name string) map[string]string {
 	return map[string]string{
-		"valkey.buf.red/name":      name,
-		"middleware.instance/type": "cluster",
-		builder.InstanceNameLabel:  name,
-		builder.ManagedByLabel:     "valkey-operator",
+		builder.InstanceTypeLabelKey: string(core.ValkeyCluster),
+		builder.InstanceNameLabelKey: name,
+		builder.ManagedByLabelKey:    config.AppName,
+		builder.AppComponentLabelKey: string(core.ValkeyCluster),
+		builder.AppNameLabelKey:      name,
 	}
 }
 
-// GetClusterStatefulsetSelectorLabels
-// this labels are const, take care of update this
-func GetClusterStatefulsetSelectorLabels(name string, index int) map[string]string {
-	labels := getPublicLabels(name)
+// GenerateClusterStatefulSetSelectors
+func GenerateClusterStatefulSetSelectors(name string, index int) map[string]string {
+	labels := generateSelectors(name)
 	if index >= 0 {
-		labels["statefulSet"] = ClusterStatefulSetName(name, index)
+		labels["statefulset"] = ClusterStatefulSetName(name, index)
 	}
 	return labels
 }
 
-// GetClusterStatefulsetLabels
-// this labels are const, take care of update this
-func GetClusterStatefulsetLabels(name string, index int) map[string]string {
-	labels := getPublicLabels(name)
-	labels["statefulSet"] = ClusterStatefulSetName(name, index)
-	return labels
-}
-
-// GetClusterStaticLabels
-// this labels are const, take care of modify this.
-func GetClusterLabels(name string, extra map[string]string) map[string]string {
-	labels := getPublicLabels(name)
-	for k, v := range extra {
-		labels[k] = v
+// GenerateClusterStatefulSetLabels
+func GenerateClusterStatefulSetLabels(name string, index int, extra ...map[string]string) map[string]string {
+	labels := generateSelectors(name)
+	if index >= 0 {
+		labels["statefulset"] = ClusterStatefulSetName(name, index)
 	}
 	return labels
 }
 
-// IsPasswordChanged determine whether the password is changed.
-func IsPasswordChanged(cluster *v1alpha1.Cluster, sts *appsv1.StatefulSet) bool {
-	envSet := sts.Spec.Template.Spec.Containers[0].Env
-	secretName := getSecretKeyRefByKey(PasswordENV, envSet)
-
-	return cluster.Spec.Access.DefaultPasswordSecret != secretName
-}
-
-func getSecretKeyRefByKey(key string, envSet []corev1.EnvVar) string {
-	for _, value := range envSet {
-		if key == value.Name {
-			if value.ValueFrom != nil && value.ValueFrom.SecretKeyRef != nil {
-				return value.ValueFrom.SecretKeyRef.Name
-			}
-		}
-	}
-	return ""
-}
-
-// GetOldValkeyClusterPassword return old cluster's password.
-func GetOldValkeyClusterPassword(client client.Client, sts *appsv1.StatefulSet) (string, error) {
-	envSet := sts.Spec.Template.Spec.Containers[0].Env
-	secretName := getSecretKeyRefByKey(PasswordENV, envSet)
-	if secretName == "" {
-		return "", nil
-	}
-	secret := &corev1.Secret{}
-	err := client.Get(context.TODO(), types.NamespacedName{
-		Name:      secretName,
-		Namespace: sts.Namespace,
-	}, secret)
-	if err != nil {
-		return "", err
-	}
-	return string(secret.Data[passwordKey]), nil
-}
-
-// GetClusterPassword return current cluster's password.
-func GetClusterPassword(client client.Client, cluster *v1alpha1.Cluster) (string, error) {
-	if cluster.Spec.Access.DefaultPasswordSecret == "" {
-		return "", nil
-	}
-	secret := &corev1.Secret{}
-	err := client.Get(context.TODO(), types.NamespacedName{
-		Name:      cluster.Spec.Access.DefaultPasswordSecret,
-		Namespace: cluster.Namespace,
-	}, secret)
-	if err != nil {
-		return "", err
-	}
-	return string(secret.Data[passwordKey]), nil
-}
-
-func GenerateClusterTLSSecretName(name string) string {
-	return fmt.Sprintf("%s-tls", name)
+// GenerateClusterStaticLabels
+// extra labels will override by the static labels
+func GenerateClusterLabels(name string, extra map[string]string) map[string]string {
+	return lo.Assign(extra, generateSelectors(name))
 }

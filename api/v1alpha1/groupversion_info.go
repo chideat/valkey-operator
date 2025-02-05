@@ -12,8 +12,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-// Package v1alpha1 contains API Schema definitions for the  v1alpha1 API group
+*/ // Package v1alpha1 contains API Schema definitions for the  v1alpha1 API group
 // +kubebuilder:object:generate=true
 // +groupName=valkey.buf.red
 package v1alpha1

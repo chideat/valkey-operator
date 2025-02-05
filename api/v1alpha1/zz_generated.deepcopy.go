@@ -363,7 +363,11 @@ func (in *FailoverSpec) DeepCopyInto(out *FailoverSpec) {
 		*out = new(core.Storage)
 		(*in).DeepCopyInto(*out)
 	}
-	in.Exporter.DeepCopyInto(&out.Exporter)
+	if in.Exporter != nil {
+		in, out := &in.Exporter, &out.Exporter
+		*out = new(core.Exporter)
+		(*in).DeepCopyInto(*out)
+	}
 	in.Access.DeepCopyInto(&out.Access)
 	if in.PodAnnotations != nil {
 		in, out := &in.PodAnnotations, &out.PodAnnotations

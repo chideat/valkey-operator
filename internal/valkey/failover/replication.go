@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package failover
+*/package failover
 
 import (
 	"context"
@@ -22,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	model "github.com/chideat/valkey-operator/internal/valkey"
@@ -47,7 +47,7 @@ type ValkeyReplication struct {
 }
 
 func LoadValkeyReplication(ctx context.Context, client clientset.ClientSet, inst types.FailoverInstance, logger logr.Logger) (types.Replication, error) {
-	name := failoverbuilder.GetFailoverStatefulSetName(inst.GetName())
+	name := failoverbuilder.FailoverStatefulSetName(inst.GetName())
 	sts, err := client.GetStatefulSet(ctx, inst.GetNamespace(), name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -105,7 +105,7 @@ func (s *ValkeyReplication) Version() version.ValkeyVersion {
 		return version.ValkeyVersionUnknown
 	}
 
-	container := util.GetContainerByName(&s.Spec.Template.Spec, failoverbuilder.ServerContainerName)
+	container := util.GetContainerByName(&s.Spec.Template.Spec, builder.ServerContainerName)
 	ver, _ := version.ParseValkeyVersionFromImage(container.Image)
 	return ver
 }

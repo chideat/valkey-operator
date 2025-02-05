@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package types
+*/package types
 
 import (
 	"reflect"
@@ -294,8 +293,7 @@ var (
 
 func TestNewOperatorUser(t *testing.T) {
 	type args struct {
-		secret      *v1.Secret
-		acl2Support bool
+		secret *v1.Secret
 	}
 	tests := []struct {
 		name    string
@@ -304,25 +302,9 @@ func TestNewOperatorUser(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "without secret, disable acl2",
+			name: "without secret",
 			args: args{
-				secret:      nil,
-				acl2Support: false,
-			},
-			want: &user.User{
-				Name: user.DefaultOperatorUserName,
-				Role: user.RoleOperator,
-				Rules: []*user.Rule{
-					{Categories: []string{"all"}, DisallowedCommands: []string{"keys"}, KeyPatterns: []string{"*"}},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "without secret, enable acl2",
-			args: args{
-				secret:      nil,
-				acl2Support: true,
+				secret: nil,
 			},
 			want: &user.User{
 				Name: user.DefaultOperatorUserName,
@@ -334,10 +316,9 @@ func TestNewOperatorUser(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "with secret, enable acl2",
+			name: "with secret",
 			args: args{
-				secret:      validSecret,
-				acl2Support: true,
+				secret: validSecret,
 			},
 			want: &user.User{
 				Name: user.DefaultOperatorUserName,
@@ -350,10 +331,9 @@ func TestNewOperatorUser(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "with invalid secret, enable acl2",
+			name: "with invalid secret",
 			args: args{
-				secret:      invalidSecret,
-				acl2Support: true,
+				secret: invalidSecret,
 			},
 			want:    nil,
 			wantErr: true,
@@ -361,7 +341,7 @@ func TestNewOperatorUser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewOperatorUser(tt.args.secret, tt.args.acl2Support)
+			got, err := NewOperatorUser(tt.args.secret)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewOperatorUser() error = %v, wantErr %v", err, tt.wantErr)
 				return

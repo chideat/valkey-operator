@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
@@ -27,8 +26,10 @@ import (
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
@@ -110,19 +111,19 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 
 func (a *actorEnsureResource) ensureValkeyStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	var (
-		err      error
-		cr       = inst.Definition()
-		selector = inst.Selector()
-		// isAllACLSupported is used to make sure 5=>6 upgrade can to failover succeed
-		isAllACLSupported = inst.IsACLAppliedToAll()
+		err error
+		cr  = inst.Definition()
 	)
 
 	// ensure inst statefulSet
-	if ret := a.ensurePodDisruptionBudget(ctx, cr, logger, selector); ret != nil {
+	if ret := a.ensurePodDisruptionBudget(ctx, cr, logger); ret != nil {
 		return ret
 	}
 
-	sts := failoverbuilder.GenerateValkeyStatefulSet(inst, selector, isAllACLSupported)
+	sts, err := failoverbuilder.GenerateStatefulSet(inst)
+	if err != nil {
+		return actor.RequeueWithError(err)
+	}
 	oldSts, err := a.client.GetStatefulSet(ctx, cr.Namespace, sts.Name)
 	if errors.IsNotFound(err) {
 		if err := a.client.CreateStatefulSet(ctx, cr.Namespace, sts); err != nil {
@@ -134,11 +135,7 @@ func (a *actorEnsureResource) ensureValkeyStatefulSet(ctx context.Context, inst 
 		return actor.RequeueWithError(err)
 	}
 
-	// TODO: remove this and reset rds pvc resize logic
-	// keep old volumeClaimTemplates
-	sts.Spec.VolumeClaimTemplates = oldSts.Spec.VolumeClaimTemplates
-
-	if builder.IsStatefulsetChanged(sts, oldSts, logger) {
+	if util.IsStatefulsetChanged(sts, oldSts, logger) {
 		if *oldSts.Spec.Replicas > *sts.Spec.Replicas {
 			// scale down
 			oldSts.Spec.Replicas = sts.Spec.Replicas
@@ -179,10 +176,10 @@ func (a *actorEnsureResource) ensureValkeyStatefulSet(ctx context.Context, inst 
 	return nil
 }
 
-func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
-	pdb := failoverbuilder.NewPodDisruptionBudgetForCR(rf, selectors)
+func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger) *actor.ActorResult {
+	pdb := failoverbuilder.NewPodDisruptionBudgetForCR(rf)
 
-	if oldPdb, err := a.client.GetPodDisruptionBudget(context.TODO(), rf.Namespace, pdb.Name); errors.IsNotFound(err) {
+	if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, rf.Namespace, pdb.Name); errors.IsNotFound(err) {
 		if err := a.client.CreatePodDisruptionBudget(ctx, rf.Namespace, pdb); err != nil {
 			return actor.RequeueWithError(err)
 		}
@@ -206,11 +203,9 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Fa
 		return ret
 	}
 
-	if inst.Version().IsACLSupported() {
-		if ret := failoverbuilder.NewFailoverAclConfigMap(cr, inst.Users().Encode(true)); ret != nil {
-			if err := a.client.CreateIfNotExistsConfigMap(ctx, cr.Namespace, ret); err != nil {
-				return actor.RequeueWithError(err)
-			}
+	if ret := aclbuilder.GenerateACLConfigMap(inst, inst.Users().Encode(true)); ret != nil {
+		if err := a.client.CreateIfNotExistsConfigMap(ctx, cr.Namespace, ret); err != nil {
+			return actor.RequeueWithError(err)
 		}
 	}
 	return nil
@@ -218,7 +213,7 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.Fa
 
 func (a *actorEnsureResource) ensureValkeyConfigMap(ctx context.Context, st types.FailoverInstance, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	rf := st.Definition()
-	configMap, err := failoverbuilder.NewValkeyConfigMap(st, selectors)
+	configMap, err := failoverbuilder.GenerateConfigMap(st)
 	if err != nil {
 		return actor.RequeueWithError(err)
 	}
@@ -234,17 +229,34 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Fa
 		return nil
 	}
 
-	cert := failoverbuilder.NewCertificate(rf, inst.Selector())
-	if err := a.client.CreateIfNotExistsCertificate(ctx, rf.Namespace, cert); err != nil {
+	dnsNames := []string{
+		certbuilder.GenerateServiceDNSName(failoverbuilder.ROServiceName(rf.Name), rf.Namespace),
+		certbuilder.GenerateServiceDNSName(failoverbuilder.RWServiceName(rf.Name), rf.Namespace),
+		certbuilder.GenerateServiceDNSName(sentinelbuilder.SentinelStatefulSetName(rf.Name), rf.Namespace),
+	}
+	for i := 0; i < int(rf.Spec.Replicas); i++ {
+		name := fmt.Sprintf("%s.%s.%s",
+			sentinelbuilder.SentinelPodServiceName(rf.Name, i),
+			sentinelbuilder.SentinelHeadlessServiceName(rf.Name),
+			rf.Namespace)
+		dnsNames = append(dnsNames, name)
+	}
+
+	cc, err := certbuilder.NewCertificate(inst, dnsNames, inst.Selector())
+	if err != nil {
+		logger.Error(err, "create certificate failed")
 		return actor.RequeueWithError(err)
 	}
-	oldCert, err := a.client.GetCertificate(ctx, rf.Namespace, cert.GetName())
+	if err := a.client.CreateIfNotExistsCertificate(ctx, rf.Namespace, cc); err != nil {
+		return actor.RequeueWithError(err)
+	}
+	oldCc, err := a.client.GetCertificate(ctx, rf.Namespace, cc.GetName())
 	if err != nil && !errors.IsNotFound(err) {
 		return actor.RequeueWithError(err)
 	}
 
 	var (
-		secretName = builder.GetValkeySSLSecretName(rf.Name)
+		secretName = certbuilder.GenerateSSLSecretName(rf.Name)
 		secret     *corev1.Secret
 	)
 	for i := 0; i < 5; i++ {
@@ -252,7 +264,7 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Fa
 			break
 		}
 		// check when the certificate created
-		if oldCert != nil && time.Since(oldCert.GetCreationTimestamp().Time) > time.Minute*5 {
+		if oldCc != nil && time.Since(oldCc.GetCreationTimestamp().Time) > time.Minute*5 {
 			return actor.NewResultWithError(ops.CommandAbort, fmt.Errorf("issue for tls certificate failed, please check the cert-manager"))
 		}
 		time.Sleep(time.Second * time.Duration(i+1))
@@ -265,11 +277,11 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Fa
 
 func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
-	sa := clusterbuilder.NewServiceAccount(cr)
-	role := clusterbuilder.NewRole(cr)
-	binding := clusterbuilder.NewRoleBinding(cr)
-	clusterRole := clusterbuilder.NewClusterRole(cr)
-	clusterRoleBinding := clusterbuilder.NewClusterRoleBinding(cr)
+	sa := sabuilder.GenerateServiceAccount(cr)
+	role := sabuilder.GenerateRole(cr)
+	binding := sabuilder.GenerateRoleBinding(cr)
+	clusterRole := sabuilder.GenerateClusterRole(cr)
+	clusterRoleBinding := sabuilder.GenerateClusterRoleBinding(cr)
 
 	if err := a.client.CreateOrUpdateServiceAccount(ctx, inst.GetNamespace(), sa); err != nil {
 		logger.Error(err, "create service account failed", "target", client.ObjectKeyFromObject(sa))
@@ -302,7 +314,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst typ
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
+					Name:      sabuilder.ValkeyInstanceServiceAccountName,
 					Namespace: inst.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -317,30 +329,6 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, inst typ
 func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	if !inst.IsBindedSentinel() {
 		return nil
-	}
-
-	{
-		// COMP: patch labels for old deployment pods
-		// TODO: remove in 3.22
-		selectors := sentinelbuilder.GenerateSelectorLabels(sentinelbuilder.ValkeyArchRoleSEN, inst.GetName())
-		name := sentinelbuilder.GetSentinelStatefulSetName(inst.GetName())
-		if ret, err := a.client.GetDeploymentPods(ctx, inst.GetNamespace(), name); err != nil && !errors.IsNotFound(err) {
-			logger.Error(err, "get sentinel deployment pods failed", "target", util.ObjectKey(inst.GetNamespace(), name))
-			return actor.RequeueWithError(err)
-		} else if ret != nil {
-			for _, item := range ret.Items {
-				pod := item.DeepCopy()
-				pod.Labels = lo.Assign(pod.Labels, selectors)
-				// not patch sentinel labels
-				delete(pod.Labels, "sentinels.databases.spotahome.com/name")
-				if !reflect.DeepEqual(pod.Labels, item.Labels) {
-					if err := a.client.UpdatePod(ctx, pod.GetNamespace(), pod); err != nil {
-						logger.Error(err, "patch sentinel pod label failed", "target", client.ObjectKeyFromObject(pod))
-						return actor.RequeueWithError(err)
-					}
-				}
-			}
-		}
 	}
 
 	newSen := failoverbuilder.NewFailoverSentinel(inst)
@@ -372,8 +360,8 @@ func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.Fai
 func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
 	// read write svc
-	rwSvc := failoverbuilder.NewRWSvcForCR(cr)
-	roSvc := failoverbuilder.NewReadOnlyForCR(cr)
+	rwSvc := failoverbuilder.GenerateReadWriteService(cr)
+	roSvc := failoverbuilder.GenerateReadonlyService(cr)
 	if err := a.client.CreateOrUpdateIfServiceChanged(ctx, inst.GetNamespace(), rwSvc); err != nil {
 		return actor.RequeueWithError(err)
 	}
@@ -382,7 +370,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Fail
 	}
 
 	selector := inst.Selector()
-	exporterService := failoverbuilder.NewExporterServiceForCR(cr, selector)
+	exporterService := failoverbuilder.GenerateExporterService(cr)
 	if err := a.client.CreateOrUpdateIfServiceChanged(ctx, inst.GetNamespace(), exporterService); err != nil {
 		return actor.RequeueWithError(err)
 	}
@@ -429,7 +417,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 
 	serviceNameRange := map[string]struct{}{}
 	for i := 0; i < int(cr.Spec.Replicas); i++ {
-		serviceName := failoverbuilder.GetFailoverNodePortServiceName(cr, i)
+		serviceName := failoverbuilder.NodePortServiceName(cr, i)
 		serviceNameRange[serviceName] = struct{}{}
 	}
 
@@ -443,7 +431,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 	// when pod not exists and service not in nodeport range, delete service
 	// NOTE: only delete service whose pod is not found
 	//       let statefulset auto scale up/down for pods
-	labels := failoverbuilder.GenerateSelectorLabels("valkey", cr.Name)
+	labels := failoverbuilder.GenerateSelectorLabels(cr.Name)
 	services, ret := a.fetchAllPodBindedServices(ctx, cr.Namespace, labels)
 	if ret != nil {
 		return ret
@@ -485,14 +473,14 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 		}
 	}
 	for i := 0; i < int(cr.Spec.Replicas); i++ {
-		serviceName := failoverbuilder.GetFailoverNodePortServiceName(cr, i)
+		serviceName := failoverbuilder.NodePortServiceName(cr, i)
 		oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
 		if errors.IsNotFound(err) {
 			if len(newPorts) == 0 {
 				continue
 			}
 			port := newPorts[0]
-			svc := failoverbuilder.NewPodNodePortService(cr, i, labels, port)
+			svc := failoverbuilder.GeneratePodNodePortService(cr, i, port)
 			if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 				a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -503,7 +491,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			return actor.RequeueWithError(err)
 		}
 
-		svc := failoverbuilder.NewPodNodePortService(cr, i, labels, getClientPort(oldService))
+		svc := failoverbuilder.GeneratePodNodePortService(cr, i, getClientPort(oldService))
 		// check old service for compability
 		if len(oldService.OwnerReferences) == 0 ||
 			oldService.OwnerReferences[0].Kind == "Pod" ||
@@ -552,7 +540,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 
 func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger, selectors map[string]string) *actor.ActorResult {
 	for i := 0; i < int(rf.Spec.Replicas); i++ {
-		newSvc := failoverbuilder.NewPodService(rf, i, selectors)
+		newSvc := failoverbuilder.GeneratePodService(rf, i)
 		if svc, err := a.client.GetService(ctx, rf.Namespace, newSvc.Name); errors.IsNotFound(err) {
 			if err = a.client.CreateService(ctx, rf.Namespace, newSvc); err != nil {
 				logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -584,7 +572,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, rf *v1alp
 	}
 	for _, item := range services {
 		svc := item.DeepCopy()
-		index, err := util.ParsePodIndex(svc.Name)
+		index, err := builder.ParsePodIndex(svc.Name)
 		if err != nil {
 			logger.Error(err, "parse svc name failed", "target", client.ObjectKeyFromObject(svc))
 			continue
@@ -606,7 +594,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, rf *v1alp
 
 func (a *actorEnsureResource) pauseStatefulSet(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
 	cr := inst.Definition()
-	name := failoverbuilder.GetFailoverStatefulSetName(cr.Name)
+	name := failoverbuilder.FailoverStatefulSetName(cr.Name)
 	if sts, err := a.client.GetStatefulSet(ctx, cr.Namespace, name); err != nil {
 		if errors.IsNotFound(err) {
 			return nil

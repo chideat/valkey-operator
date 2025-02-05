@@ -5,21 +5,21 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/pkg/actor"
@@ -71,7 +71,7 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 	if err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "get configmap failed", "target", client.ObjectKeyFromObject(newCm))
 		return actor.NewResultWithError(cops.CommandRequeue, err)
-	} else if oldCm == nil || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
+	} else if oldCm == nil || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		if err = a.client.CreateConfigMap(ctx, cluster.GetNamespace(), newCm); err != nil {
 			logger.Error(err, "create configmap failed", "target", client.ObjectKeyFromObject(newCm))
 			return actor.NewResultWithError(cops.CommandRequeue, err)
@@ -80,8 +80,8 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {

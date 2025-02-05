@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package failoverbuilder
+*/package failoverbuilder
 
 import (
 	"bytes"
@@ -22,16 +21,19 @@ import (
 	"strings"
 
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/version"
+
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func ConfigMapName(name string) string {
+	return FailoverStatefulSetName(name)
+}
 
 const (
 	ValkeyConfig_MaxMemory               = "maxmemory"
@@ -43,10 +45,10 @@ const (
 	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
 )
 
-func NewValkeyConfigMap(st types.FailoverInstance, selectors map[string]string) (*corev1.ConfigMap, error) {
-	rf := st.Definition()
-	customConfig := rf.Spec.CustomConfigs
+func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
+	rf := inst.Definition()
 
+	customConfig := rf.Spec.CustomConfigs
 	default_config := make(map[string]string)
 	default_config["loglevel"] = "notice"
 	default_config["stop-writes-on-bgsave-error"] = "yes"
@@ -101,23 +103,6 @@ func NewValkeyConfigMap(st types.FailoverInstance, selectors map[string]string) 
 		}
 	}
 
-	if !st.Version().IsACLSupported() {
-		var renameVal []string
-		if renameConfig, err := clusterbuilder.ParseRenameConfigs(customConfig[ValkeyConfig_RenameCommand]); err != nil {
-			return nil, err
-		} else {
-			for k, v := range renameConfig {
-				if k == "config" {
-					continue
-				}
-				renameVal = append(renameVal, k, v)
-			}
-			if len(renameVal) > 0 {
-				default_config[ValkeyConfig_RenameCommand] = strings.Join(renameVal, " ")
-			}
-		}
-	}
-
 	keys := make([]string, 0, len(default_config))
 	for k := range default_config {
 		keys = append(keys, k)
@@ -161,21 +146,13 @@ func NewValkeyConfigMap(st types.FailoverInstance, selectors map[string]string) 
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            GetValkeyConfigMapName(rf),
+			Name:            ConfigMapName(rf.Name),
 			Namespace:       rf.Namespace,
-			Labels:          GetCommonLabels(rf.Name, selectors),
+			Labels:          GenerateCommonLabels(rf.Name),
 			OwnerReferences: util.BuildOwnerReferences(rf),
 		},
 		Data: map[string]string{
-			ValkeyConfigFileName: buffer.String(),
+			builder.ValkeyConfigKey: buffer.String(),
 		},
 	}, nil
-}
-
-func GetValkeyConfigMapName(rf *v1alpha1.Failover) string {
-	return GetFailoverStatefulSetName(rf.Name)
-}
-
-func GetValkeyScriptConfigMapName(name string) string {
-	return fmt.Sprintf("rfr-s-%s", name)
 }

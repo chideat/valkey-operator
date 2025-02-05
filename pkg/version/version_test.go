@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package version
+*/package version
 
 import (
 	"reflect"
@@ -106,84 +105,6 @@ func TestParseValkeyVersionFromImage(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("ParseValkeyVersionFromImage() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsTLSSupported(t *testing.T) {
-	tests := []struct {
-		name string
-		v    ValkeyVersion
-		want bool
-	}{
-		{
-			name: "TLS supported 7.4",
-			v:    ValkeyVersion("7.4"),
-			want: true,
-		},
-		{
-			name: "TLS supported 8.0",
-			v:    ValkeyVersion("8.0"),
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.IsTLSSupported(); got != tt.want {
-				t.Errorf("IsTLSSupported() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsACLSupported(t *testing.T) {
-	tests := []struct {
-		name string
-		v    ValkeyVersion
-		want bool
-	}{
-		{
-			name: "ACL supported 7.4",
-			v:    ValkeyVersion("7.4"),
-			want: true,
-		},
-		{
-			name: "ACL supported 8.0",
-			v:    ValkeyVersion("8.0"),
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.IsACLSupported(); got != tt.want {
-				t.Errorf("IsACLSupported() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsClusterShardSupported(t *testing.T) {
-	tests := []struct {
-		name string
-		v    ValkeyVersion
-		want bool
-	}{
-		{
-			name: "Cluster shard supported 7.4",
-			v:    ValkeyVersion("7.4"),
-			want: true,
-		},
-		{
-			name: "Cluster shard supported 8.0",
-			v:    ValkeyVersion("8.0"),
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.IsClusterShardSupported(); got != tt.want {
-				t.Errorf("IsClusterShardSupported() = %v, want %v", got, tt.want)
 			}
 		})
 	}

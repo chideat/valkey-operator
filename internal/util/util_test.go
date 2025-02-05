@@ -5,48 +5,19 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package util
+*/package util
 
 import (
 	"fmt"
 	"testing"
-
-	"github.com/chideat/valkey-operator/pkg/slot"
 )
-
-func TestSlot(t *testing.T) {
-	// for update validator, only check slots fullfilled
-	var (
-		fullSlots *slot.Slots
-		total     int
-	)
-	for _, shard := range []struct{ Slots string }{
-		{"0-6000"},
-		{"5001-10000"},
-		{"10001-16383"},
-	} {
-		if shardSlots, err := slot.LoadSlots(shard.Slots); err != nil {
-			t.Errorf("failed to load shard slots: %v", err)
-		} else {
-			fullSlots = fullSlots.Union(shardSlots)
-			total += shardSlots.Count(slot.SlotAssigned)
-		}
-	}
-	if !fullSlots.IsFullfilled() {
-		t.Errorf("specified shard slots not fullfilled all slots")
-	}
-	if total <= 16384 {
-		t.Errorf("specified shard slots should be duplicated")
-	}
-}
 
 func TestCheckRule(t *testing.T) {
 	tests := []struct {

@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package node
+*/package node
 
 import (
 	"context"
@@ -29,7 +28,6 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
@@ -175,16 +173,16 @@ func (s *ValkeyNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 		secretName string
 		username   string
 	)
-	container := util.GetContainerByName(&s.Spec, clusterbuilder.ServerContainerName)
+	container := util.GetContainerByName(&s.Spec, builder.ServerContainerName)
 	if container == nil {
 		return nil, fmt.Errorf("server container not found")
 	}
 	for _, env := range container.Env {
-		if env.Name == clusterbuilder.PasswordENV && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+		if env.Name == builder.PasswordEnvName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 			secretName = env.ValueFrom.SecretKeyRef.LocalObjectReference.Name
-		} else if env.Name == clusterbuilder.OperatorSecretName && env.Value != "" {
+		} else if env.Name == builder.OperatorSecretName && env.Value != "" {
 			secretName = env.Value
-		} else if env.Name == clusterbuilder.OperatorUsername {
+		} else if env.Name == builder.OperatorUsername {
 			username = env.Value
 		}
 	}
@@ -202,14 +200,14 @@ func (s *ValkeyNode) loadLocalUser(ctx context.Context) (*user.User, error) {
 		if secret, err := s.client.GetSecret(ctx, s.GetNamespace(), secretName); err != nil {
 			logger.Error(err, "get user secret failed", "target", util.ObjectKey(s.GetNamespace(), secretName))
 			return nil, err
-		} else if user, err := user.NewUser(username, user.RoleDeveloper, secret, s.CurrentVersion().IsACLSupported()); err != nil {
+		} else if user, err := user.NewUser(username, user.RoleDeveloper, secret); err != nil {
 			return nil, err
 		} else {
 			return user, nil
 		}
 	}
 	// return default user with out password
-	return user.NewUser("", user.RoleDeveloper, nil, s.CurrentVersion().IsACLSupported())
+	return user.NewUser("", user.RoleDeveloper, nil)
 }
 
 func (n *ValkeyNode) loadTLS(ctx context.Context) (*tls.Config, error) {
@@ -220,7 +218,7 @@ func (n *ValkeyNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 
 	var name string
 	for _, vol := range n.Spec.Volumes {
-		if vol.Name == clusterbuilder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
+		if vol.Name == builder.ValkeyTLSVolumeName && vol.Secret != nil && vol.Secret.SecretName != "" {
 			name = vol.Secret.SecretName
 			break
 		}
@@ -277,9 +275,6 @@ func (n *ValkeyNode) getValkeyConnect(ctx context.Context, node *ValkeyNode) (vk
 			continue
 		}
 		name := user.Name
-		if !node.CurrentVersion().IsACLSupported() {
-			name = ""
-		}
 		password := user.Password.String()
 		vkcli := vkcli.NewValkeyClient(addr, vkcli.AuthConfig{
 			Username:  name,
@@ -446,7 +441,7 @@ func (n *ValkeyNode) IsContainerReady() bool {
 	}
 
 	for _, cond := range n.Pod.Status.ContainerStatuses {
-		if cond.Name == clusterbuilder.ServerContainerName {
+		if cond.Name == builder.ServerContainerName {
 			// assume the main process is ready in 10s
 			if cond.Started != nil && *cond.Started && cond.State.Running != nil &&
 				time.Since(cond.State.Running.StartedAt.Time) > time.Second*10 {
@@ -464,7 +459,7 @@ func (n *ValkeyNode) IsReady() bool {
 	}
 
 	for _, cond := range n.Pod.Status.ContainerStatuses {
-		if cond.Name == clusterbuilder.ServerContainerName {
+		if cond.Name == builder.ServerContainerName {
 			return cond.Ready
 		}
 	}
@@ -535,7 +530,7 @@ func (n *ValkeyNode) Index() int {
 
 func (n *ValkeyNode) IsACLApplied() bool {
 	// check if acl have been applied to container
-	container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName)
+	container := util.GetContainerByName(&n.Pod.Spec, builder.ServerContainerName)
 	for _, env := range container.Env {
 		if env.Name == "ACL_CONFIGMAP_NAME" {
 			return true
@@ -550,7 +545,7 @@ func (n *ValkeyNode) CurrentVersion() version.ValkeyVersion {
 	}
 
 	// parse version from image
-	container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName)
+	container := util.GetContainerByName(&n.Pod.Spec, builder.ServerContainerName)
 	if ver, _ := version.ParseValkeyVersionFromImage(container.Image); ver != version.ValkeyVersionUnknown {
 		return ver
 	}
@@ -722,7 +717,7 @@ func (n *ValkeyNode) ClusterInfo() vkcli.ClusterNodeInfo {
 }
 
 func (n *ValkeyNode) Port() int {
-	if value := n.Pod.Labels[builder.PodAnnouncePortLabelKey]; value != "" {
+	if value := n.Pod.Labels[builder.AnnouncePortLabelKey]; value != "" {
 		if port, _ := strconv.Atoi(value); port > 0 {
 			return port
 		}
@@ -732,9 +727,9 @@ func (n *ValkeyNode) Port() int {
 
 func (n *ValkeyNode) InternalPort() int {
 	port := 6379
-	if container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName); container != nil {
+	if container := util.GetContainerByName(&n.Pod.Spec, builder.ServerContainerName); container != nil {
 		for _, p := range container.Ports {
-			if p.Name == clusterbuilder.ValkeyDataContainerPortName {
+			if p.Name == builder.ServerContainerName {
 				port = int(p.ContainerPort)
 				break
 			}
@@ -744,7 +739,7 @@ func (n *ValkeyNode) InternalPort() int {
 }
 
 func (n *ValkeyNode) DefaultIP() net.IP {
-	if value := n.Pod.Labels[builder.PodAnnounceIPLabelKey]; value != "" {
+	if value := n.Pod.Labels[builder.AnnounceIPLabelKey]; value != "" {
 		address := strings.Replace(value, "-", ":", -1)
 		return net.ParseIP(address)
 	}
@@ -758,7 +753,7 @@ func (n *ValkeyNode) DefaultInternalIP() net.IP {
 	}
 
 	var ipFamilyPrefer string
-	if container := util.GetContainerByName(&n.Pod.Spec, clusterbuilder.ServerContainerName); container != nil {
+	if container := util.GetContainerByName(&n.Pod.Spec, builder.ServerContainerName); container != nil {
 		for _, env := range container.Env {
 			if env.Name == "IP_FAMILY_PREFER" {
 				ipFamilyPrefer = env.Value
@@ -783,7 +778,7 @@ func (n *ValkeyNode) DefaultInternalIP() net.IP {
 }
 
 func (n *ValkeyNode) IPort() int {
-	if value := n.Pod.Labels[builder.PodAnnounceIPortLabelKey]; value != "" {
+	if value := n.Pod.Labels[builder.AnnounceIPortLabelKey]; value != "" {
 		port, err := strconv.Atoi(value)
 		if err == nil {
 			return port
@@ -824,7 +819,7 @@ func (n *ValkeyNode) ContainerStatus() *corev1.ContainerStatus {
 		return nil
 	}
 	for _, status := range n.Pod.Status.ContainerStatuses {
-		if status.Name == clusterbuilder.ServerContainerName {
+		if status.Name == builder.ServerContainerName {
 			return &status
 		}
 	}

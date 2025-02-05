@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package sentinelbuilder
+*/package sentinelbuilder
 
 import (
 	"bytes"
@@ -22,9 +21,9 @@ import (
 	"strings"
 
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -37,7 +36,14 @@ var (
 	}
 )
 
-func NewSentinelConfigMap(sen *v1alpha1.Sentinel, selectors map[string]string) (*corev1.ConfigMap, error) {
+func SentinelConfigMapName(name string) string {
+	// NOTE: use rfs--xxx for compatibility for old name "rfs-xxx" maybe needed
+	return fmt.Sprintf("%s-%s", builder.ResourcePrefix(core.ValkeySentinel), name)
+}
+
+func GenerateSentinelConfigMap(inst types.SentinelInstance) (*corev1.ConfigMap, error) {
+	sen := inst.Definition()
+
 	defaultConfig := make(map[string]string)
 	defaultConfig["loglevel"] = "notice"
 	defaultConfig["maxclients"] = "10000"
@@ -80,9 +86,9 @@ func NewSentinelConfigMap(sen *v1alpha1.Sentinel, selectors map[string]string) (
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            GetSentinelConfigMapName(sen.GetName()),
+			Name:            SentinelConfigMapName(sen.GetName()),
 			Namespace:       sen.Namespace,
-			Labels:          GetCommonLabels(sen.Name, selectors),
+			Labels:          GenerateCommonLabels(sen.Name),
 			OwnerReferences: util.BuildOwnerReferences(sen),
 		},
 		Data: map[string]string{

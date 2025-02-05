@@ -5,22 +5,20 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package cluster
+*/package cluster
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -29,6 +27,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -94,11 +93,8 @@ func NewCluster(ctx context.Context, k8sClient clientset.ClientSet, eventRecorde
 		cluster.logger.Error(err, "loads cluster shards failed", "cluster", def.Name)
 		return nil, err
 	}
+	cluster.LoadUsers(ctx)
 
-	if cluster.Version().IsACLSupported() {
-		cluster.LoadUsers(ctx)
-
-	}
 	return &cluster, nil
 }
 
@@ -121,8 +117,8 @@ func (c *ValkeyCluster) NamespacedName() client.ObjectKey {
 }
 
 func (c *ValkeyCluster) LoadUsers(ctx context.Context) {
-	oldOpUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterOperatorsUserName(c.GetName()))
-	oldDefultUser, _ := c.client.GetUser(ctx, c.GetNamespace(), clusterbuilder.GenerateClusterDefaultUserName(c.GetName()))
+	oldOpUser, _ := c.client.GetUser(ctx, c.GetNamespace(), aclbuilder.GenerateOperatorUserResourceName(c.Arch(), c.GetName()))
+	oldDefultUser, _ := c.client.GetUser(ctx, c.GetNamespace(), aclbuilder.GenerateDefaultUserResourceName(c.Arch(), c.GetName()))
 	c.userInsts = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
@@ -332,7 +328,7 @@ __end_slot_migrating__:
 
 		nodeports := map[int32]struct{}{}
 		for _, node := range c.Nodes() {
-			if port := node.Definition().Labels[builder.PodAnnouncePortLabelKey]; port != "" {
+			if port := node.Definition().Labels[builder.AnnouncePortLabelKey]; port != "" {
 				val, _ := strconv.ParseInt(port, 10, 32)
 				nodeports[int32(val)] = struct{}{}
 			}
@@ -437,7 +433,7 @@ func (c *ValkeyCluster) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 		return nil, nil
 	}
 
-	selector := clusterbuilder.GetClusterStatefulsetSelectorLabels(c.GetName(), -1)
+	selector := clusterbuilder.GenerateClusterStatefulSetSelectors(c.GetName(), -1)
 	// load pods by statefulset selector
 	ret, err := c.client.GetStatefulSetPodsByLabels(ctx, c.GetNamespace(), selector)
 	if err != nil {
@@ -517,7 +513,7 @@ func (c *ValkeyCluster) TLS() *tls.Config {
 // loadUsers
 func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 	var (
-		name  = clusterbuilder.GenerateClusterACLConfigMapName(c.GetName())
+		name  = aclbuilder.GenerateACLConfigMapName(c.Arch(), c.GetName())
 		users types.Users
 	)
 	// NOTE: load acl config first. if acl config not exists, then this may be
@@ -545,13 +541,13 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 			}
 			exists = true
 			spec := sts.Spec.Template.Spec
-			if container := util.GetContainerByName(&spec, clusterbuilder.ServerContainerName); container != nil {
+			if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
 				for _, env := range container.Env {
-					if env.Name == clusterbuilder.PasswordENV && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+					if env.Name == builder.PasswordEnvName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 						passwordSecret = env.ValueFrom.SecretKeyRef.LocalObjectReference.Name
-					} else if env.Name == clusterbuilder.OperatorSecretName && env.Value != "" {
+					} else if env.Name == builder.OperatorSecretName && env.Value != "" {
 						passwordSecret = env.Value
-					} else if env.Name == clusterbuilder.OperatorUsername {
+					} else if env.Name == builder.OperatorUsername {
 						username = env.Value
 					}
 				}
@@ -561,12 +557,8 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 			}
 		}
 		if !exists {
-			username = user.DefaultUserName
-			passwordSecret = currentSecret
-			if c.Version().IsACLSupported() {
-				username = user.DefaultOperatorUserName
-				passwordSecret = clusterbuilder.GenerateClusterACLOperatorSecretName(c.GetName())
-			}
+			username = user.DefaultOperatorUserName
+			passwordSecret = aclbuilder.GenerateACLOperatorSecretName(c.Arch(), c.GetName())
 		}
 		if passwordSecret != "" {
 			objKey := client.ObjectKey{Namespace: c.GetNamespace(), Name: passwordSecret}
@@ -582,16 +574,16 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 			username = user.DefaultUserName
 		}
 		if role == user.RoleOperator {
-			if u, err := types.NewOperatorUser(secret, c.Version().IsACLSupported()); err != nil {
+			if u, err := types.NewOperatorUser(secret); err != nil {
 				c.logger.Error(err, "init users failed")
 				return nil, err
 			} else {
 				users = append(users, u)
 			}
-			u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil, c.Version().IsACLSupported())
+			u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil)
 			users = append(users, u)
 		} else {
-			if u, err := user.NewUser(username, role, secret, c.Version().IsACLSupported()); err != nil {
+			if u, err := user.NewUser(username, role, secret); err != nil {
 				c.logger.Error(err, "init users failed")
 				return nil, err
 			} else {
@@ -605,32 +597,6 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 		c.logger.Error(err, "load acl failed")
 		return nil, err
 	}
-
-	var (
-		defaultUser = users.GetDefaultUser()
-		rule        *user.Rule
-	)
-	if len(defaultUser.Rules) > 0 {
-		rule = defaultUser.Rules[0]
-	} else {
-		rule = &user.Rule{}
-	}
-	if c.Version().IsACLSupported() {
-		rule.Channels = []string{"*"}
-	}
-
-	renameVal := c.Definition().Spec.CustomConfigs[clusterbuilder.ValkeyConfig_RenameCommand]
-	renames, _ := clusterbuilder.ParseRenameConfigs(renameVal)
-	if len(renames) > 0 {
-		rule.DisallowedCommands = []string{}
-		for key, val := range renames {
-			if key != val && !slices.Contains(rule.DisallowedCommands, key) {
-				rule.DisallowedCommands = append(rule.DisallowedCommands, key)
-			}
-		}
-	}
-	defaultUser.Rules = append(defaultUser.Rules[0:0], rule)
-
 	return users, nil
 }
 
@@ -641,8 +607,8 @@ func (c *ValkeyCluster) loadUserSecret(ctx context.Context, objKey client.Object
 		c.logger.Error(err, "load default users's password secret failed", "target", objKey.String())
 		return nil, err
 	} else if errors.IsNotFound(err) {
-		if objKey.Name == clusterbuilder.GenerateClusterACLOperatorSecretName(c.GetName()) {
-			secret = clusterbuilder.NewClusterOpSecret(c.Definition())
+		if objKey.Name == aclbuilder.GenerateACLOperatorSecretName(c.Arch(), c.GetName()) {
+			secret = aclbuilder.GenerateOperatorSecret(c)
 			err := c.client.CreateSecret(ctx, objKey.Namespace, secret)
 			if err != nil {
 				return nil, err
@@ -655,9 +621,6 @@ func (c *ValkeyCluster) loadUserSecret(ctx context.Context, objKey client.Object
 }
 
 func (c *ValkeyCluster) IsACLUserExists() bool {
-	if !c.Version().IsACLSupported() {
-		return false
-	}
 	if len(c.userInsts) == 0 {
 		return false
 	}
@@ -731,12 +694,12 @@ func (c *ValkeyCluster) IsResourceFullfilled(ctx context.Context) (bool, error) 
 }
 
 func (c *ValkeyCluster) IsACLAppliedToAll() bool {
-	if c == nil || !c.Version().IsACLSupported() {
+	if c == nil {
 		return false
 	}
 	for _, shard := range c.Shards() {
 		for _, node := range shard.Nodes() {
-			if !node.CurrentVersion().IsACLSupported() || !node.IsACLApplied() {
+			if !node.IsACLApplied() {
 				return false
 			}
 		}
@@ -778,7 +741,7 @@ func (c *ValkeyCluster) loadTLS(ctx context.Context) (*tls.Config, error) {
 			continue
 		} else {
 			for _, vol := range sts.Spec.Template.Spec.Volumes {
-				if vol.Name == clusterbuilder.ValkeyTLSVolumeName {
+				if vol.Name == builder.ValkeyTLSVolumeName {
 					secretName = vol.VolumeSource.Secret.SecretName
 				}
 			}

@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
@@ -26,7 +25,8 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/sentinel"
@@ -107,14 +107,13 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 	if ret := a.ensurePodDisruptionBudget(ctx, inst, logger); ret != nil {
 		return ret
 	}
-
 	sen := inst.Definition()
-	selector := inst.Selector()
 
 	salt := fmt.Sprintf("%s-%s-%s", sen.GetName(), sen.GetNamespace(), sen.GetName())
-	sts := sentinelbuilder.NewSentinelStatefulset(inst, selector)
-	if sts.Spec.Template.Annotations == nil {
-		sts.Spec.Template.Annotations = make(map[string]string)
+	sts, err := sentinelbuilder.GenerateSentinelStatefulset(inst)
+	if err != nil {
+		logger.Error(err, "generate statefulset failed")
+		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
 	if passwordSecret := sen.Spec.Access.DefaultPasswordSecret; passwordSecret != "" {
 		secret, err := a.client.GetSecret(ctx, sen.Namespace, passwordSecret)
@@ -127,10 +126,10 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 			logger.Error(err, "generate secret sig failed")
 			return actor.NewResultWithError(ops.CommandAbort, err)
 		}
-		sts.Spec.Template.Annotations[builder.PasswordSigAnnotationKey] = secretSig
+		sts.Spec.Template.Labels[builder.ChecksumKey("secret")] = secretSig
 	}
 
-	configName := sentinelbuilder.GetSentinelConfigMapName(sen.Name)
+	configName := sentinelbuilder.SentinelConfigMapName(sen.Name)
 	configMap, err := a.client.GetConfigMap(ctx, sen.Namespace, configName)
 	if err != nil {
 		logger.Error(err, "get configMap failed", "target", util.ObjectKey(sen.Namespace, configName))
@@ -141,7 +140,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 		logger.Error(err, "generate configMap sig failed")
 		return actor.NewResultWithError(ops.CommandAbort, err)
 	}
-	sts.Spec.Template.Annotations[builder.ConfigSigAnnotationKey] = configSig
+	sts.Spec.Template.Annotations[builder.ChecksumKey("configmap")] = configSig
 
 	oldSts, err := a.client.GetStatefulSet(ctx, sts.Namespace, sts.Name)
 	if errors.IsNotFound(err) {
@@ -152,7 +151,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 	} else if err != nil {
 		logger.Error(err, "get statefulset failed", "target", client.ObjectKeyFromObject(sts))
 		return actor.NewResultWithError(ops.CommandRequeue, err)
-	} else if builder.IsStatefulsetChanged(sts, oldSts, logger) {
+	} else if util.IsStatefulsetChanged(sts, oldSts, logger) {
 		if *oldSts.Spec.Replicas > *sts.Spec.Replicas {
 			oldSts.Spec.Replicas = sts.Spec.Replicas
 			if err := a.client.UpdateStatefulSet(ctx, sen.Namespace, oldSts); err != nil {
@@ -196,7 +195,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 
-	pdb := sentinelbuilder.NewPodDisruptionBudget(sen, inst.Selector())
+	pdb := sentinelbuilder.NewPodDisruptionBudget(sen)
 	if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, sen.Namespace, pdb.Name); errors.IsNotFound(err) {
 		if err := a.client.CreatePodDisruptionBudget(ctx, sen.Namespace, pdb); err != nil {
 			return actor.NewResultWithError(ops.CommandRequeue, err)
@@ -216,7 +215,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, ins
 
 func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	// ensure sentinel config
-	senitnelConfigMap, _ := sentinelbuilder.NewSentinelConfigMap(inst.Definition(), inst.Selector())
+	senitnelConfigMap, _ := sentinelbuilder.GenerateSentinelConfigMap(inst)
 	if _, err := a.client.GetConfigMap(ctx, inst.GetNamespace(), senitnelConfigMap.Name); errors.IsNotFound(err) {
 		if err := a.client.CreateIfNotExistsConfigMap(ctx, inst.GetNamespace(), senitnelConfigMap); err != nil {
 			logger.Error(err, "create configMap failed", "target", client.ObjectKeyFromObject(senitnelConfigMap))
@@ -258,18 +257,32 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Se
 		return nil
 	}
 
-	cert := sentinelbuilder.NewCertificate(def, inst.Selector())
-	if err := a.client.CreateIfNotExistsCertificate(ctx, def.Namespace, cert); err != nil {
+	dnsNames := []string{
+		certbuilder.GenerateServiceDNSName(sentinelbuilder.SentinelStatefulSetName(def.Name), def.Namespace),
+	}
+	for i := 0; i < int(def.Spec.Replicas); i++ {
+		dnsNames = append(dnsNames, certbuilder.GenerateHeadlessDNSName(
+			sentinelbuilder.SentinelPodServiceName(def.Name, i),
+			sentinelbuilder.SentinelHeadlessServiceName(def.Name),
+			def.Namespace,
+		))
+	}
+	cc, err := certbuilder.NewCertificate(inst, dnsNames, inst.Selector())
+	if err != nil {
+		logger.Error(err, "create certificate failed")
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
-	oldCert, err := a.client.GetCertificate(ctx, def.Namespace, cert.GetName())
+	if err := a.client.CreateIfNotExistsCertificate(ctx, def.Namespace, cc); err != nil {
+		return actor.NewResultWithError(ops.CommandRequeue, err)
+	}
+	oldCc, err := a.client.GetCertificate(ctx, def.Namespace, cc.GetName())
 	if err != nil && !errors.IsNotFound(err) {
-		logger.Error(err, "get certificate failed", "target", client.ObjectKeyFromObject(cert))
+		logger.Error(err, "get certificate failed", "target", client.ObjectKeyFromObject(cc))
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
 
 	var (
-		secretName = builder.GetValkeySSLSecretName(def.Name)
+		secretName = certbuilder.GenerateSSLSecretName(def.Name)
 		secret     *corev1.Secret
 	)
 	for i := 0; i < 5; i++ {
@@ -277,7 +290,7 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Se
 			break
 		}
 		// check when the certificate created
-		if oldCert != nil && time.Since(oldCert.GetCreationTimestamp().Time) > time.Minute*5 {
+		if oldCc != nil && time.Since(oldCc.GetCreationTimestamp().Time) > time.Minute*5 {
 			return actor.NewResultWithError(ops.CommandAbort, fmt.Errorf("issue for tls certificate failed, please check the cert-manager"))
 		}
 		time.Sleep(time.Second * time.Duration(i+1))
@@ -290,7 +303,7 @@ func (a *actorEnsureResource) ensureValkeySSL(ctx context.Context, inst types.Se
 
 func (a *actorEnsureResource) ensurePauseStatefulSet(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
-	name := sentinelbuilder.GetSentinelStatefulSetName(sen.Name)
+	name := sentinelbuilder.SentinelStatefulSetName(sen.Name)
 	if sts, err := a.client.GetStatefulSet(ctx, sen.Namespace, name); err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -310,11 +323,11 @@ func (a *actorEnsureResource) ensurePauseStatefulSet(ctx context.Context, inst t
 
 func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := sentinel.Definition()
-	sa := clusterbuilder.NewServiceAccount(sen)
-	role := clusterbuilder.NewRole(sen)
-	binding := clusterbuilder.NewRoleBinding(sen)
-	clusterRole := clusterbuilder.NewClusterRole(sen)
-	clusterRoleBinding := clusterbuilder.NewClusterRoleBinding(sen)
+	sa := sabuilder.GenerateServiceAccount(sen)
+	role := sabuilder.GenerateRole(sen)
+	binding := sabuilder.GenerateRoleBinding(sen)
+	clusterRole := sabuilder.GenerateClusterRole(sen)
+	clusterRoleBinding := sabuilder.GenerateClusterRoleBinding(sen)
 
 	if err := a.client.CreateOrUpdateServiceAccount(ctx, sentinel.GetNamespace(), sa); err != nil {
 		logger.Error(err, "create service account failed", "target", client.ObjectKeyFromObject(sa))
@@ -347,7 +360,7 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel
 		if !exists && len(oldClusterRb.Subjects) > 0 {
 			oldClusterRb.Subjects = append(oldClusterRb.Subjects,
 				rbacv1.Subject{Kind: "ServiceAccount",
-					Name:      clusterbuilder.ValkeyInstanceServiceAccountName,
+					Name:      sabuilder.ValkeyInstanceServiceAccountName,
 					Namespace: sentinel.GetNamespace()},
 			)
 			err := a.client.CreateOrUpdateClusterRoleBinding(ctx, oldClusterRb)
@@ -361,7 +374,6 @@ func (a *actorEnsureResource) ensureServiceAccount(ctx context.Context, sentinel
 
 func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
-	selector := inst.Selector()
 
 	if ret := a.cleanUselessService(ctx, inst, logger); ret != nil {
 		return ret
@@ -387,7 +399,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 		return nil
 	}
 
-	if ret := createService(sentinelbuilder.NewSentinelHeadlessServiceForCR(sen, selector)); ret != nil {
+	if ret := createService(sentinelbuilder.GenerateSentinelHeadlessService(sen)); ret != nil {
 		return ret
 	}
 
@@ -401,22 +413,18 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 			return ret
 		}
 	}
-
-	if ret := createService(sentinelbuilder.NewSentinelServiceForCR(sen, selector)); ret != nil {
-		return ret
-	}
 	return nil
 }
 
 func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
-	cr := inst.Definition()
+	sen := inst.Definition()
 
-	if cr.Spec.Access.Ports == "" {
+	if sen.Spec.Access.Ports == "" {
 		return a.ensureValkeyPodService(ctx, inst, logger)
 	}
 
-	logger.V(3).Info("ensure sentinel nodeports", "namepspace", cr.Namespace, "name", cr.Name)
-	configedPorts, err := helper.ParsePorts(cr.Spec.Access.Ports)
+	logger.V(3).Info("ensure sentinel nodeports", "namepspace", sen.Namespace, "name", sen.Name)
+	configedPorts, err := helper.ParsePorts(sen.Spec.Access.Ports)
 	if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
@@ -432,14 +440,9 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 	}
 
 	serviceNameRange := map[string]struct{}{}
-	for i := 0; i < int(cr.Spec.Replicas); i++ {
-		serviceName := sentinelbuilder.GetSentinelNodeServiceName(cr.GetName(), i)
+	for i := 0; i < int(sen.Spec.Replicas); i++ {
+		serviceName := sentinelbuilder.SentinelPodServiceName(sen.GetName(), i)
 		serviceNameRange[serviceName] = struct{}{}
-	}
-	senNodePortSvc, err := a.client.GetService(ctx, cr.GetNamespace(), sentinelbuilder.GetSentinelServiceName(cr.GetName()))
-	if err != nil && !errors.IsNotFound(err) {
-		logger.Error(err, "get nodeport service failed", "target", sentinelbuilder.GetSentinelServiceName(cr.GetName()))
-		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
 
 	// the whole process is divided into 3 steps:
@@ -452,8 +455,8 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 	// when pod not exists and service not in nodeport range, delete service
 	// NOTE: only delete service whose pod is not found
 	//       let statefulset auto scale up/down for pods
-	selector := sentinelbuilder.GenerateSelectorLabels("sentinel", cr.Name)
-	services, ret := a.fetchAllPodBindedServices(ctx, cr.Namespace, selector)
+	selector := sentinelbuilder.GenerateSelectorLabels(sen.Name)
+	services, ret := a.fetchAllPodBindedServices(ctx, sen.Namespace, selector)
 	if ret != nil {
 		return ret
 	}
@@ -473,15 +476,8 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			}
 		}
 	}
-	if senNodePortSvc != nil && slices.Contains(configedPorts, senNodePortSvc.Spec.Ports[0].NodePort) {
-		// delete cluster nodeport service
-		if err := a.client.DeleteService(ctx, cr.GetNamespace(), senNodePortSvc.Name); err != nil {
-			a.logger.Error(err, "delete service failed", "target", client.ObjectKeyFromObject(senNodePortSvc))
-			return actor.NewResultWithError(ops.CommandRequeue, err)
-		}
-	}
 
-	if services, ret = a.fetchAllPodBindedServices(ctx, cr.Namespace, selector); ret != nil {
+	if services, ret = a.fetchAllPodBindedServices(ctx, sen.Namespace, selector); ret != nil {
 		return ret
 	}
 
@@ -501,15 +497,15 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			newPorts = append(newPorts, port)
 		}
 	}
-	for i := 0; i < int(cr.Spec.Replicas); i++ {
-		serviceName := sentinelbuilder.GetSentinelNodeServiceName(cr.Name, i)
-		oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
+	for i := 0; i < int(sen.Spec.Replicas); i++ {
+		serviceName := sentinelbuilder.SentinelPodServiceName(sen.Name, i)
+		oldService, err := a.client.GetService(ctx, sen.Namespace, serviceName)
 		if errors.IsNotFound(err) {
 			if len(newPorts) == 0 {
 				continue
 			}
 			port := newPorts[0]
-			svc := sentinelbuilder.NewPodNodePortService(cr, i, selector, port)
+			svc := sentinelbuilder.GeneratePodNodePortService(sen, i, port)
 			if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 				a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -520,14 +516,14 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 
-		svc := sentinelbuilder.NewPodNodePortService(cr, i, selector, getClientPort(oldService))
+		svc := sentinelbuilder.GeneratePodNodePortService(sen, i, getClientPort(oldService))
 		// check old service for compability
 		if !reflect.DeepEqual(oldService.Spec.Selector, svc.Spec.Selector) ||
 			len(oldService.Spec.Ports) != len(svc.Spec.Ports) ||
 			!reflect.DeepEqual(oldService.Labels, svc.Labels) ||
 			!reflect.DeepEqual(oldService.Annotations, svc.Annotations) {
 
-			oldService.OwnerReferences = util.BuildOwnerReferences(cr)
+			oldService.OwnerReferences = util.BuildOwnerReferences(sen)
 			oldService.Spec = svc.Spec
 			oldService.Labels = svc.Labels
 			oldService.Annotations = svc.Annotations
@@ -556,8 +552,8 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(svc), "port", port)
 			return actor.NewResultWithValue(ops.CommandRequeue, err)
 		}
-		if pod, _ := a.client.GetPod(ctx, cr.Namespace, svc.Spec.Selector[builder.PodNameLabelKey]); pod != nil {
-			if err := a.client.DeletePod(ctx, cr.Namespace, pod.Name); err != nil {
+		if pod, _ := a.client.GetPod(ctx, sen.Namespace, svc.Spec.Selector[builder.PodNameLabelKey]); pod != nil {
+			if err := a.client.DeletePod(ctx, sen.Namespace, pod.Name); err != nil {
 				return actor.NewResultWithError(ops.CommandRequeue, err)
 			}
 			return actor.NewResult(ops.CommandRequeue)
@@ -568,8 +564,8 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 
 func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
-	for replica := 0; replica < int(sen.Spec.Replicas); replica++ {
-		newSvc := sentinelbuilder.NewPodService(sen, replica, inst.Selector())
+	for i := 0; i < int(sen.Spec.Replicas); i++ {
+		newSvc := sentinelbuilder.GeneratePodService(sen, i)
 		if svc, err := a.client.GetService(ctx, sen.Namespace, newSvc.Name); errors.IsNotFound(err) {
 			if err = a.client.CreateService(ctx, sen.Namespace, newSvc); err != nil {
 				logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -600,7 +596,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, inst type
 	}
 	for _, item := range services {
 		svc := item.DeepCopy()
-		index, err := util.ParsePodIndex(svc.Name)
+		index, err := builder.ParsePodIndex(svc.Name)
 		if err != nil {
 			logger.Error(err, "parse svc name failed", "target", client.ObjectKeyFromObject(svc))
 			continue

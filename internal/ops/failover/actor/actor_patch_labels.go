@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
@@ -23,7 +22,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
+	"github.com/chideat/valkey-operator/internal/builder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -84,10 +83,10 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 			return false
 		})
 
-		roleLabelVal := pod.GetLabels()[failoverbuilder.ValkeyRoleLabel]
+		roleLabelVal := pod.GetLabels()[builder.RoleLabelKey]
 		if node == nil {
 			if roleLabelVal != "" {
-				if err := a.client.PatchPodLabel(ctx, pod.DeepCopy(), failoverbuilder.ValkeyRoleLabel, ""); err != nil {
+				if err := a.client.PatchPodLabel(ctx, pod.DeepCopy(), builder.RoleLabelKey, ""); err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
 				}
@@ -96,16 +95,16 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 		}
 		nodeAddr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		if node.Role() == core.NodeRoleMaster && nodeAddr == masterAddr {
-			if roleLabelVal != failoverbuilder.ValkeyRoleMaster {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, failoverbuilder.ValkeyRoleMaster)
+			if roleLabelVal != string(core.NodeRoleMaster) {
+				err := a.client.PatchPodLabel(ctx, node.Definition(), builder.RoleLabelKey, string(core.NodeRoleMaster))
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
 				}
 			}
 		} else if node.Role() == core.NodeRoleReplica {
-			if roleLabelVal != failoverbuilder.ValkeyRoleReplica {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, failoverbuilder.ValkeyRoleReplica)
+			if roleLabelVal != string(core.NodeRoleReplica) {
+				err := a.client.PatchPodLabel(ctx, node.Definition(), builder.RoleLabelKey, string(core.NodeRoleReplica))
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)
@@ -113,7 +112,7 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 			}
 		} else {
 			if roleLabelVal != "" {
-				err := a.client.PatchPodLabel(ctx, node.Definition(), failoverbuilder.ValkeyRoleLabel, "")
+				err := a.client.PatchPodLabel(ctx, node.Definition(), builder.RoleLabelKey, "")
 				if err != nil {
 					logger.Error(err, "patch pod label failed")
 					return actor.RequeueWithError(err)

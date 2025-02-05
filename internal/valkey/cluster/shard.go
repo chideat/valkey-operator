@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package cluster
+*/package cluster
 
 import (
 	"context"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	model "github.com/chideat/valkey-operator/internal/valkey"
@@ -42,7 +42,7 @@ var _ types.ClusterShard = (*ValkeyClusterShard)(nil)
 
 func LoadValkeyClusterShards(ctx context.Context, client clientset.ClientSet, cluster types.ClusterInstance, logger logr.Logger) ([]types.ClusterShard, error) {
 	// load pods by label
-	labels := clusterbuilder.GetClusterLabels(cluster.GetName(), nil)
+	labels := clusterbuilder.GenerateClusterLabels(cluster.GetName(), nil)
 
 	var shards []types.ClusterShard
 	if resp, err := client.ListStatefulSetByLabels(ctx, cluster.GetNamespace(), labels); err != nil {
@@ -119,12 +119,12 @@ func (s *ValkeyClusterShard) Version() version.ValkeyVersion {
 		return version.ValkeyVersionUnknown
 	}
 
-	container := util.GetContainerByName(&s.Spec.Template.Spec, clusterbuilder.ServerContainerName)
+	container := util.GetContainerByName(&s.Spec.Template.Spec, builder.ServerContainerName)
 	ver, _ := version.ParseValkeyVersionFromImage(container.Image)
 	return ver
 }
 
-// Index valkey shard index. so the statefulset name must match ^drc-<name>-[0-9]+$ format
+// Index valkey shard index. so the statefulset name must match ^<prefix>-<name>-[0-9]+$ format
 func (s *ValkeyClusterShard) Index() int {
 	if s == nil || s.StatefulSet.GetName() == "" {
 		return -1

@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package cluster
+*/package cluster
 
 import (
 	"context"
@@ -27,6 +26,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core/helper"
 	clusterv1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -35,8 +35,6 @@ import (
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/types/user"
-	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -481,87 +479,31 @@ func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.ClusterIns
 func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
 	logger := g.logger.WithName("isPasswordChanged")
 
-	var (
-		cr                = cluster.Definition()
-		currentSecretName = cr.Spec.Access.DefaultPasswordSecret
-		users             = cluster.Users()
-	)
-
-	opUser := users.GetOpUser()
-	defaultUser := users.GetDefaultUser()
-	// UPGRADE: use User controller to manage the user update
-	if defaultUser.GetPassword().GetSecretName() != currentSecretName && !cluster.Version().IsACLSupported() {
-		return true, nil
-	}
-
-	name := clusterbuilder.GenerateClusterACLConfigMapName(cluster.GetName())
-	if _, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); err != nil && !errors.IsNotFound(err) {
-		logger.Error(err, "load configmap failed", "target", client.ObjectKey{Namespace: cluster.GetNamespace(), Name: name})
-		return false, err
-	} else if errors.IsNotFound(err) {
-		// init acl configmap
-		return true, nil
-	}
-
-	isAclEnabled := (users.GetOpUser().Role == user.RoleOperator)
-	if cluster.Version().IsACLSupported() && !isAclEnabled {
-		return true, nil
-	}
-	if cluster.Version().IsACLSupported() && !cluster.IsACLUserExists() {
-		return true, nil
-	}
-	if cluster.Version().IsACLSupported() {
-		if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
-			return true, nil
-		}
-	}
-
-	cmName := clusterbuilder.GenerateClusterACLConfigMapName(cluster.GetName())
-	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), cmName); errors.IsNotFound(err) {
+	name := aclbuilder.GenerateACLConfigMapName(cluster.Arch(), cluster.GetName())
+	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); errors.IsNotFound(err) {
 		return true, nil
 	} else if err != nil {
-		g.logger.Error(err, "failed to get configmap", "configmap", cmName)
+		g.logger.Error(err, "failed to get configmap", "configmap", name)
 		return false, err
 	} else if users, err := acl.LoadACLUsers(ctx, g.client, cm); err != nil {
-		logger.Error(err, "load acl users failed", "target", client.ObjectKey{Namespace: cluster.GetNamespace(), Name: cmName})
+		logger.Error(err, "load acl users failed", "target", client.ObjectKey{Namespace: cluster.GetNamespace(), Name: name})
 		return false, err
-	} else {
-		if cluster.Version().IsACLSupported() {
-			opUser := users.GetOpUser()
-			g.logger.V(3).Info("check acl2 support", "role", opUser.Role, "rules", opUser.Rules)
-			if opUser.Role == user.RoleOperator && (len(opUser.Rules) == 0 || len(opUser.Rules[0].Channels) == 0) {
-				g.logger.Info("operator user has no channel rules")
-				return true, nil
-			}
-
-			defaultRUName := clusterbuilder.GenerateClusterUserName(cluster.GetName(), defaultUser.Name)
-			if defaultRU, err := g.client.GetUser(ctx, cluster.GetNamespace(), defaultRUName); errors.IsNotFound(err) {
-				return true, nil
-			} else if err != nil {
-				return false, err
-			} else {
-				oldVersion := version.ValkeyVersion(defaultRU.Annotations[config.ACLSupportedVersionAnnotationKey])
-				if !oldVersion.IsACLSupported() {
-					return true, nil
-				}
-			}
-		}
-		if !reflect.DeepEqual(users.Encode(true), users.Encode(false)) {
-			g.logger.V(3).Info("not equal", "new", users.Encode(true), "old", users.Encode(false))
-			return true, nil
-		}
+	} else if users.GetOpUser() == nil {
+		return true, nil
+	} else if !reflect.DeepEqual(users.Encode(true), users.Encode(false)) {
+		g.logger.V(3).Info("not equal", "new", users.Encode(true), "old", users.Encode(false))
+		return true, nil
 	}
 	return false, nil
 }
 
 func (g *RuleEngine) isCustomServerChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
-
 	portsMap := make(map[int32]bool)
 	cr := cluster.Definition()
 	if cr.Spec.Access.Ports == "" {
 		return false, nil
 	}
-	labels := clusterbuilder.GetClusterLabels(cr.Name, nil)
+	labels := clusterbuilder.GenerateClusterLabels(cr.Name, nil)
 	svcs, err := g.client.GetServiceByLabels(ctx, cr.Namespace, labels)
 	if err != nil {
 		return true, err
@@ -592,7 +534,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	logger := g.logger.WithName("isConfigMapChanged")
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		return true, nil
 	} else if err != nil {
 		logger.Error(err, "get old configmap failed")
@@ -600,8 +542,8 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return true, nil

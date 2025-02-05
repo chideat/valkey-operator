@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package sentinel
+*/package sentinel
 
 import (
 	"context"
@@ -211,7 +210,7 @@ func (s *ValkeySentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 		return nil, nil
 	}
 	// get pods according to statefulset
-	name := sentinelbuilder.GetSentinelStatefulSetName(s.GetName())
+	name := sentinelbuilder.SentinelStatefulSetName(s.GetName())
 	sts, err := s.client.GetStatefulSet(ctx, s.GetNamespace(), name)
 	if errors.IsNotFound(err) {
 		return nil, nil
@@ -229,9 +228,10 @@ func (s *ValkeySentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return ret.Items, nil
 }
 
+// Deprecated
 func (s *ValkeySentinel) Selector() map[string]string {
 	// TODO: delete this method
-	return sentinelbuilder.GenerateSelectorLabels("sentinel", s.GetName())
+	return sentinelbuilder.GenerateSelectorLabels(s.GetName())
 }
 
 func (s *ValkeySentinel) Restart(ctx context.Context, annotationKeyVal ...string) error {
@@ -284,17 +284,17 @@ func (s *ValkeySentinel) IsResourceFullfilled(ctx context.Context) (bool, error)
 	)
 	resources := map[schema.GroupVersionKind][]string{
 		serviceKey: {
-			sentinelbuilder.GetSentinelServiceName(s.GetName()),         // rfs-<name>
-			sentinelbuilder.GetSentinelHeadlessServiceName(s.GetName()), // rfs-<name>-hl
+			sentinelbuilder.SentinelHeadlessServiceName(s.GetName()), // rfs-<name>
 		},
 		stsKey: {
-			sentinelbuilder.GetSentinelStatefulSetName(s.GetName()),
+			sentinelbuilder.SentinelStatefulSetName(s.GetName()),
 		},
 	}
+
 	if s.Spec.Access.ServiceType == corev1.ServiceTypeLoadBalancer ||
 		s.Spec.Access.ServiceType == corev1.ServiceTypeNodePort {
 		for i := 0; i < int(s.Spec.Replicas); i++ {
-			svcName := sentinelbuilder.GetSentinelNodeServiceName(s.GetName(), i)
+			svcName := sentinelbuilder.SentinelPodServiceName(s.GetName(), i)
 			resources[serviceKey] = append(resources[serviceKey], svcName)
 		}
 	}
@@ -375,7 +375,7 @@ func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStat
 			NodeName:    node.NodeIP().String(),
 		}
 		status.Nodes = append(status.Nodes, n)
-		if port := node.Definition().Labels[builder.PodAnnouncePortLabelKey]; port != "" {
+		if port := node.Definition().Labels[builder.AnnouncePortLabelKey]; port != "" {
 			val, _ := strconv.ParseInt(port, 10, 32)
 			nodeports[int32(val)] = struct{}{}
 		}

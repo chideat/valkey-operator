@@ -5,22 +5,20 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package failover
+*/package failover
 
 import (
 	"context"
 	"crypto/tls"
 	"fmt"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -30,7 +28,7 @@ import (
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	databasesv1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
@@ -98,10 +96,8 @@ func NewFailover(ctx context.Context, k8sClient clientset.ClientSet, eventRecord
 		inst.logger.Error(err, "load monitor failed")
 		return nil, err
 	}
+	inst.LoadUsers(ctx)
 
-	if inst.Version().IsACLSupported() {
-		inst.LoadUsers(ctx)
-	}
 	return inst, nil
 }
 
@@ -177,7 +173,7 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 			NodeName:    node.NodeIP().String(),
 		}
 		status.Nodes = append(status.Nodes, rnode)
-		if port := node.Definition().Labels[builder.PodAnnouncePortLabelKey]; port != "" {
+		if port := node.Definition().Labels[builder.AnnouncePortLabelKey]; port != "" {
 			val, _ := strconv.ParseInt(port, 10, 32)
 			nodeports[int32(val)] = struct{}{}
 		}
@@ -314,7 +310,7 @@ func (s *Failover) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	if s == nil {
 		return nil, nil
 	}
-	name := failoverbuilder.GetFailoverStatefulSetName(s.GetName())
+	name := failoverbuilder.FailoverStatefulSetName(s.GetName())
 	sts, err := s.client.GetStatefulSet(ctx, s.GetNamespace(), name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -435,57 +431,56 @@ func (s *Failover) Refresh(ctx context.Context) (err error) {
 }
 
 func (s *Failover) LoadUsers(ctx context.Context) {
-	oldOpUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverOperatorsUserName(s.GetName()))
-	oldDefultUser, _ := s.client.GetUser(ctx, s.GetNamespace(), failoverbuilder.GenerateFailoverDefaultUserName(s.GetName()))
+	oldOpUser, _ := s.client.GetUser(ctx, s.GetNamespace(), aclbuilder.GenerateOperatorUserResourceName(s.Arch(), s.GetName()))
+	oldDefultUser, _ := s.client.GetUser(ctx, s.GetNamespace(), aclbuilder.GenerateDefaultUserResourceName(s.Arch(), s.GetName()))
 	s.valkeyUsers = []*v1alpha1.User{oldOpUser, oldDefultUser}
 }
 
 func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 	var (
-		name  = failoverbuilder.GenerateFailoverACLConfigMapName(s.GetName())
+		name  = aclbuilder.GenerateACLConfigMapName(s.Arch(), s.GetName())
 		users types.Users
 	)
 
-	if s.Version().IsACLSupported() {
-		getPassword := func(secretName string) (*user.Password, error) {
-			if secret, err := s.loadUserSecret(ctx, client.ObjectKey{
-				Namespace: s.GetNamespace(),
-				Name:      secretName,
-			}); err != nil {
+	getPassword := func(secretName string) (*user.Password, error) {
+		if secret, err := s.loadUserSecret(ctx, client.ObjectKey{
+			Namespace: s.GetNamespace(),
+			Name:      secretName,
+		}); err != nil {
+			return nil, err
+		} else {
+			if password, err := user.NewPassword(secret); err != nil {
 				return nil, err
 			} else {
-				if password, err := user.NewPassword(secret); err != nil {
-					return nil, err
-				} else {
-					return password, nil
-				}
-			}
-		}
-		for _, name := range []string{
-			failoverbuilder.GenerateFailoverOperatorsUserName(s.GetName()),
-			failoverbuilder.GenerateFailoverDefaultUserName(s.GetName()),
-		} {
-			if ru, err := s.client.GetUser(ctx, s.GetNamespace(), name); err != nil {
-				s.logger.Error(err, "load operator user failed")
-				users = nil
-				break
-			} else {
-				var password *user.Password
-				if len(ru.Spec.PasswordSecrets) > 0 {
-					if password, err = getPassword(ru.Spec.PasswordSecrets[0]); err != nil {
-						s.logger.Error(err, "load operator user password failed")
-						return nil, err
-					}
-				}
-				if u, err := types.NewUserFromValkeyUser(ru.Spec.Username, ru.Spec.AclRules, password); err != nil {
-					s.logger.Error(err, "load operator user failed")
-					return nil, err
-				} else {
-					users = append(users, u)
-				}
+				return password, nil
 			}
 		}
 	}
+	for _, name := range []string{
+		aclbuilder.GenerateOperatorUserResourceName(s.Arch(), s.GetName()),
+		aclbuilder.GenerateDefaultUserResourceName(s.Arch(), s.GetName()),
+	} {
+		if ru, err := s.client.GetUser(ctx, s.GetNamespace(), name); err != nil {
+			s.logger.Error(err, "load operator user failed")
+			users = nil
+			break
+		} else {
+			var password *user.Password
+			if len(ru.Spec.PasswordSecrets) > 0 {
+				if password, err = getPassword(ru.Spec.PasswordSecrets[0]); err != nil {
+					s.logger.Error(err, "load operator user password failed")
+					return nil, err
+				}
+			}
+			if u, err := types.NewUserFromValkeyUser(ru.Spec.Username, ru.Spec.AclRules, password); err != nil {
+				s.logger.Error(err, "load operator user failed")
+				return nil, err
+			} else {
+				users = append(users, u)
+			}
+		}
+	}
+
 	if len(users) == 0 {
 		if cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name); errors.IsNotFound(err) {
 			var (
@@ -493,25 +488,23 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 				passwordSecret string
 				secret         *corev1.Secret
 			)
-			statefulSetName := failoverbuilder.GetFailoverStatefulSetName(s.GetName())
+			statefulSetName := failoverbuilder.FailoverStatefulSetName(s.GetName())
 			sts, err := s.client.GetStatefulSet(ctx, s.GetNamespace(), statefulSetName)
 			if err != nil {
 				if !errors.IsNotFound(err) {
 					s.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(s.GetNamespace(), s.GetName()))
 				}
-				if s.Version().IsACLSupported() {
-					passwordSecret = failoverbuilder.GenerateFailoverACLOperatorSecretName(s.GetName())
-					username = user.DefaultOperatorUserName
-				}
+				passwordSecret = aclbuilder.GenerateACLOperatorSecretName(s.Arch(), s.GetName())
+				username = user.DefaultOperatorUserName
 			} else {
 				spec := sts.Spec.Template.Spec
-				if container := util.GetContainerByName(&spec, failoverbuilder.ServerContainerName); container != nil {
+				if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
 					for _, env := range container.Env {
-						if env.Name == failoverbuilder.PasswordENV && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+						if env.Name == builder.PasswordEnvName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 							passwordSecret = env.ValueFrom.SecretKeyRef.LocalObjectReference.Name
-						} else if env.Name == failoverbuilder.OperatorSecretName && env.Value != "" {
+						} else if env.Name == builder.OperatorSecretName && env.Value != "" {
 							passwordSecret = env.Value
-						} else if env.Name == failoverbuilder.OperatorUsername {
+						} else if env.Name == builder.OperatorUsername {
 							username = env.Value
 						}
 					}
@@ -547,7 +540,7 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			}
 
 			if role == user.RoleOperator {
-				if u, err := types.NewOperatorUser(secret, s.Version().IsACLSupported()); err != nil {
+				if u, err := types.NewOperatorUser(secret); err != nil {
 					s.logger.Error(err, "init users failed")
 					return nil, err
 				} else {
@@ -559,14 +552,14 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 					if err != nil {
 						return nil, err
 					}
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, secret, s.Version().IsACLSupported())
+					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, secret)
 					users = append(users, u)
 				} else {
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil, s.Version().IsACLSupported())
+					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil)
 					users = append(users, u)
 				}
 			} else {
-				if u, err := user.NewUser(username, role, secret, s.Version().IsACLSupported()); err != nil {
+				if u, err := user.NewUser(username, role, secret); err != nil {
 					s.logger.Error(err, "init users failed")
 					return nil, err
 				} else {
@@ -581,32 +574,6 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			return nil, err
 		}
 	}
-
-	var (
-		defaultUser = users.GetDefaultUser()
-		rule        *user.Rule
-	)
-	if len(defaultUser.Rules) > 0 {
-		rule = defaultUser.Rules[0]
-	} else {
-		rule = &user.Rule{}
-	}
-	if s.Version().IsACLSupported() {
-		rule.Channels = []string{"*"}
-	}
-
-	renameVal := s.Definition().Spec.CustomConfigs[failoverbuilder.ValkeyConfig_RenameCommand]
-	renames, _ := clusterbuilder.ParseRenameConfigs(renameVal)
-	if len(renameVal) > 0 {
-		rule.DisallowedCommands = []string{}
-		for key, val := range renames {
-			if key != val && !slices.Contains(rule.DisallowedCommands, key) {
-				rule.DisallowedCommands = append(rule.DisallowedCommands, key)
-			}
-		}
-	}
-	defaultUser.Rules = append(defaultUser.Rules[0:0], rule)
-
 	return users, nil
 }
 
@@ -616,7 +583,7 @@ func (s *Failover) loadUserSecret(ctx context.Context, objKey client.ObjectKey) 
 		s.logger.Error(err, "load default users's password secret failed", "target", objKey.String())
 		return nil, err
 	} else if errors.IsNotFound(err) {
-		secret = failoverbuilder.NewFailoverOpSecret(s.Definition())
+		secret = aclbuilder.GenerateOperatorSecret(s)
 		err := s.client.CreateSecret(ctx, objKey.Namespace, secret)
 		if err != nil {
 			return nil, err
@@ -637,12 +604,12 @@ func (s *Failover) loadTLS(ctx context.Context) (*tls.Config, error) {
 	if secretName == "" {
 		// load current tls secret.
 		// because previous cr not recorded the secret name, we should load it from statefulset
-		stsName := failoverbuilder.GetFailoverStatefulSetName(s.GetName())
+		stsName := failoverbuilder.FailoverStatefulSetName(s.GetName())
 		if sts, err := s.client.GetStatefulSet(ctx, s.GetNamespace(), stsName); err != nil {
 			s.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(s.GetNamespace(), s.GetName()))
 		} else {
 			for _, vol := range sts.Spec.Template.Spec.Volumes {
-				if vol.Name == failoverbuilder.ValkeyTLSVolumeName {
+				if vol.Name == builder.ValkeyTLSVolumeName {
 					secretName = vol.VolumeSource.Secret.SecretName
 				}
 			}
@@ -680,9 +647,6 @@ func (s *Failover) Selector() map[string]string {
 }
 
 func (s *Failover) IsACLUserExists() bool {
-	if !s.Version().IsACLSupported() {
-		return false
-	}
 	if len(s.valkeyUsers) == 0 {
 		return false
 	}
@@ -702,12 +666,12 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	)
 	resources := map[schema.GroupVersionKind][]string{
 		serviceKey: {
-			failoverbuilder.GetFailoverStatefulSetName(s.GetName()), // rfr-<name>
-			failoverbuilder.GetValkeyROServiceName(s.GetName()),     // rfr-<name>-read-only
-			failoverbuilder.GetValkeyRWServiceName(s.GetName()),     // rfr-<name>-read-write
+			failoverbuilder.FailoverStatefulSetName(s.GetName()), // rfr-<name>
+			failoverbuilder.ROServiceName(s.GetName()),           // rfr-<name>-read-only
+			failoverbuilder.RWServiceName(s.GetName()),           // rfr-<name>-read-write
 		},
 		stsKey: {
-			failoverbuilder.GetFailoverStatefulSetName(s.GetName()),
+			failoverbuilder.FailoverStatefulSetName(s.GetName()),
 		},
 	}
 	if s.IsBindedSentinel() {
@@ -717,7 +681,7 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	if s.Spec.Access.ServiceType == corev1.ServiceTypeLoadBalancer ||
 		s.Spec.Access.ServiceType == corev1.ServiceTypeNodePort {
 		for i := 0; i < int(s.Spec.Replicas); i++ {
-			stsName := failoverbuilder.GetFailoverStatefulSetName(s.GetName())
+			stsName := failoverbuilder.FailoverStatefulSetName(s.GetName())
 			resources[serviceKey] = append(resources[serviceKey], fmt.Sprintf("%s-%d", stsName, i))
 		}
 	}
@@ -761,11 +725,11 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 }
 
 func (s *Failover) IsACLAppliedToAll() bool {
-	if s == nil || !s.Version().IsACLSupported() {
+	if s == nil {
 		return false
 	}
 	for _, node := range s.Nodes() {
-		if !node.CurrentVersion().IsACLSupported() || !node.IsACLApplied() {
+		if !node.IsACLApplied() {
 			return false
 		}
 	}

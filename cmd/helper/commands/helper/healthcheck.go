@@ -13,12 +13,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package clusterbuilder
+package helper
 
 import (
-	"fmt"
+	"context"
+
+	"github.com/chideat/valkey-operator/pkg/valkey"
 )
 
-func ValkeyProxySvcName(clusterName string) string {
-	return fmt.Sprintf("%s-proxy", clusterName)
+// Ping
+func Ping(ctx context.Context, addr string, authInfo valkey.AuthInfo) error {
+	client := valkey.NewValkeyClient(addr, authInfo)
+	defer client.Close()
+
+	if _, err := client.Do(ctx, "PING"); err != nil {
+		return err
+	}
+	return nil
 }

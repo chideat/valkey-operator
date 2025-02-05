@@ -5,18 +5,16 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package config
+*/package config
 
 import (
-	"os"
 	"testing"
 )
 
@@ -36,14 +34,5 @@ func TestGetValkeyVersion(t *testing.T) {
 		if output != tc.expectedOutput {
 			t.Errorf("Unexpected output for input '%s'. Expected '%s', but got '%s'", tc.input, tc.expectedOutput, output)
 		}
-	}
-}
-
-func TestGetDefaultValkeyImage(t *testing.T) {
-	os.Setenv("DEFAULT_VALKEY_IMAGE", "valkey:3.2-alpine")
-	expectedOutput := "valkey:3.2-alpine"
-	output := GetDefaultValkeyImage()
-	if output != expectedOutput {
-		t.Errorf("Unexpected output for GetDefaultValkeyImage(). Expected '%s', but got '%s'", expectedOutput, output)
 	}
 }

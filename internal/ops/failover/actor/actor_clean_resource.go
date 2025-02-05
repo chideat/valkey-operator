@@ -5,22 +5,20 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
 
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
-	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -63,28 +61,8 @@ func (a *actorCleanResource) Do(ctx context.Context, val types.Instance) *actor.
 	logger := val.Logger().WithValues("actor", ops.CommandCleanResource.String())
 
 	inst := val.(types.FailoverInstance)
-	cr := inst.Definition()
 
 	if inst.IsReady() {
-		// TODO: deprecated in 3.22
-		name := sentinelbuilder.GetSentinelStatefulSetName(inst.GetName())
-		sts, err := a.client.GetStatefulSet(ctx, cr.Namespace, name)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "failed to get sentinel statefulset")
-				return actor.RequeueWithError(err)
-			}
-		} else if sts != nil && sts.Status.ReadyReplicas == *sts.Spec.Replicas {
-			if _, err := a.client.GetDeployment(ctx, cr.Namespace, name); err != nil {
-				if !errors.IsNotFound(err) {
-					return actor.RequeueWithError(err)
-				}
-			} else if err := a.client.DeleteDeployment(ctx, cr.Namespace, name); err != nil {
-				logger.Error(err, "failed to delete old sentinel deployment")
-				return actor.RequeueWithError(err)
-			}
-		}
-
 		// delete sentinel after standalone is ready for old pod to gracefully shutdown
 		if !inst.IsBindedSentinel() {
 			var sen v1alpha1.Sentinel

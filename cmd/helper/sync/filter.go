@@ -13,22 +13,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package builder
+package sync
 
-import "testing"
+import (
+	"errors"
+)
 
-func TestGenerateValkeyTLSOptions(t *testing.T) {
-	tests := []struct {
-		name string
-		want string
-	}{
-		// TODO: Add test cases.
+type ClusterFilter struct{}
+
+func (v *ClusterFilter) Truncate(filename string, data string) (string, error) {
+	if len(data) == 0 {
+		return "", errors.New("empty data")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := GenerateValkeyTLSOptions(); got != tt.want {
-				t.Errorf("GenerateValkeyTLSOptions() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	// TODO: implement truncate
+	return data, nil
 }

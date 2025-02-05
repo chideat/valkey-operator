@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package clusterbuilder
+*/package clusterbuilder
 
 import (
 	"fmt"
@@ -27,10 +26,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// NewHeadlessSvcForCR creates a new headless service for the given Cluster.
-func NewHeadlessSvcForCR(cluster *v1alpha1.Cluster, index int) *corev1.Service {
-	name := ClusterHeadlessSvcName(cluster.GetName(), index)
-	labels := GetClusterStatefulsetSelectorLabels(cluster.Name, index)
+func ClusterHeadlessSvcName(name string, i int) string {
+	return fmt.Sprintf("%s-%d", name, i)
+}
+
+func ClusterNodeServiceName(clusterName string, shard, repl int) string {
+	return fmt.Sprintf("%s-%s-%d-%d", builder.ResourcePrefix(core.ValkeyCluster), clusterName, shard, repl)
+}
+
+// GenerateHeadlessService creates a new headless service for the given Cluster.
+func GenerateHeadlessService(cluster *v1alpha1.Cluster, index int) *corev1.Service {
+	var (
+		name      = ClusterHeadlessSvcName(cluster.GetName(), index)
+		selectors = GenerateClusterStatefulSetSelectors(cluster.Name, index)
+		labels    = GenerateClusterStatefulSetLabels(cluster.Name, index)
+	)
+
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -51,18 +62,19 @@ func NewHeadlessSvcForCR(cluster *v1alpha1.Cluster, index int) *corev1.Service {
 			IPFamilies:     protocol,
 			IPFamilyPolicy: &ptype,
 			Ports:          []corev1.ServicePort{clientPort, gossipPort},
-			Selector:       labels,
+			Selector:       selectors,
 			ClusterIP:      corev1.ClusterIPNone,
 		},
 	}
 	return svc
 }
 
-func NewServiceForCR(cluster *v1alpha1.Cluster) *corev1.Service {
-	selectors := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
-	labels := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
+func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
+	selectors := GenerateClusterStatefulSetSelectors(cluster.Name, -1)
+	labels := GenerateClusterStatefulSetLabels(cluster.Name, -1)
 	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
-	labels[builder.LabelValkeyArch] = string(core.ValkeyCluster)
+	labels[builder.ArchLabelKey] = string(core.ValkeyCluster)
+
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -70,13 +82,12 @@ func NewServiceForCR(cluster *v1alpha1.Cluster) *corev1.Service {
 	} else {
 		protocol = append(protocol, corev1.IPv4Protocol)
 	}
+
 	var ports []corev1.ServicePort
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379}
-	gossipPort := corev1.ServicePort{Name: "gossip", Port: 16379}
-	ports = append(ports, clientPort, gossipPort)
-
+	ports = append(ports, clientPort)
 	if cluster.Spec.Exporter != nil {
-		ports = append(ports, corev1.ServicePort{Name: "metrics", Port: PrometheusExporterPortNumber})
+		ports = append(ports, corev1.ServicePort{Name: "metrics", Port: builder.ExporterPortNumber})
 	}
 
 	svc := &corev1.Service{
@@ -96,7 +107,7 @@ func NewServiceForCR(cluster *v1alpha1.Cluster) *corev1.Service {
 	return svc
 }
 
-func NewNodeportSvc(cluster *v1alpha1.Cluster, name string, labels map[string]string, port int32) *corev1.Service {
+func GenerateNodePortSerivce(cluster *v1alpha1.Cluster, name string, labels map[string]string, port int32) *corev1.Service {
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379, NodePort: port}
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: name,
@@ -126,14 +137,14 @@ func NewNodeportSvc(cluster *v1alpha1.Cluster, name string, labels map[string]st
 	return svc
 }
 
-func NewPodService(cluster *v1alpha1.Cluster, name string, typ corev1.ServiceType,
-	labels map[string]string, annotations map[string]string) *corev1.Service {
-
+func GeneratePodService(cluster *v1alpha1.Cluster, name string, typ corev1.ServiceType, annotations map[string]string) *corev1.Service {
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379}
 	gossipPort := corev1.ServicePort{Name: "gossip", Port: 16379}
-	selectorLabels := map[string]string{
+	selectors := map[string]string{
 		builder.PodNameLabelKey: name,
 	}
+	labels := GenerateClusterStatefulSetLabels(cluster.Name, -1)
+
 	ptype := corev1.IPFamilyPolicySingleStack
 	protocol := []corev1.IPFamily{}
 	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
@@ -153,57 +164,9 @@ func NewPodService(cluster *v1alpha1.Cluster, name string, typ corev1.ServiceTyp
 			IPFamilies:     protocol,
 			IPFamilyPolicy: &ptype,
 			Ports:          []corev1.ServicePort{clientPort, gossipPort},
-			Selector:       selectorLabels,
+			Selector:       selectors,
 			Type:           typ,
 		},
 	}
 	return svc
-}
-
-func NewLbService(cluster *v1alpha1.Cluster) *corev1.Service {
-	name := ValkeyLbSvcName(cluster.Name)
-	selectors := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
-	labels := GetClusterStatefulsetSelectorLabels(cluster.Name, -1)
-	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
-	labels[builder.LabelValkeyArch] = string(core.ValkeyCluster)
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
-	var ports []corev1.ServicePort
-	clientPort := corev1.ServicePort{Name: "client", Port: 6379, Protocol: "TCP"}
-	ports = append(ports, clientPort)
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels:          labels,
-			Name:            name,
-			Namespace:       cluster.Namespace,
-			Annotations:     cluster.Spec.Access.Annotations,
-			OwnerReferences: util.BuildOwnerReferences(cluster),
-		},
-		Spec: corev1.ServiceSpec{
-			Type:           corev1.ServiceTypeLoadBalancer,
-			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
-			Ports:          ports,
-			Selector:       selectors,
-		},
-	}
-	return svc
-}
-
-func ValkeyLbSvcName(clusterName string) string {
-	return fmt.Sprintf("drc-%s-lb", clusterName)
-}
-
-func ClusterStatefulSetSvcName(clusterName string, index string) string {
-	return fmt.Sprintf("drc-%s-%s", clusterName, index)
-}
-
-func ClusterNodeSvcName(clusterName string, shard, repl int) string {
-	return fmt.Sprintf("drc-%s-%d-%d", clusterName, shard, repl)
 }

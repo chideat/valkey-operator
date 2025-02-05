@@ -5,15 +5,14 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
-package actor
+*/package actor
 
 import (
 	"context"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
@@ -62,19 +62,18 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	logger := val.Logger().WithValues("actor", ops.CommandUpdateConfig.String())
 
 	st := val.(types.FailoverInstance)
-	selectors := st.Selector()
-	newCm, err := failoverbuilder.NewValkeyConfigMap(st, selectors)
+	newCm, err := failoverbuilder.GenerateConfigMap(st)
 	if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
 	oldCm, err := a.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[clusterbuilder.ValkeyConfKey] == "" {
+	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		return actor.NewResultWithError(ops.CommandEnsureResource, fmt.Errorf("configmap %s not found", newCm.GetName()))
 	} else if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[clusterbuilder.ValkeyConfKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[clusterbuilder.ValkeyConfKey])
+	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
 		// NOTE: update configmap first may cause the hot config fail for it will not retry again
