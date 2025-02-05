@@ -43,7 +43,7 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
       with:
-        file: ./build/Dockerfile
+        file: ./Dockerfile
         context: .
         push: true
         tags: |
