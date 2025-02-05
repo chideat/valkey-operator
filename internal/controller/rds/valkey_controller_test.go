@@ -19,20 +19,22 @@ package rds
 import (
 	"context"
 
+	"github.com/chideat/valkey-operator/api/core"
+	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 )
 
 var _ = Describe("Valkey Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "vk-cluster"
 
 		ctx := context.Background()
 
@@ -51,7 +53,25 @@ var _ = Describe("Valkey Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: rdsv1alpha1.ValkeySpec{
+						Version: "7.2",
+						Arch:    core.ValkeyCluster,
+						Replicas: &rdsv1alpha1.ValkeyReplicas{
+							Shards:          3,
+							ReplicasOfShard: 1,
+						},
+						Resources: &corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
+							},
+						},
+						Exporter: &rdsv1alpha1.ValkeyExporter{},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

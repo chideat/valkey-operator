@@ -53,7 +53,7 @@ func NewUser(name string, role UserRole, secret *v1.Secret) (*User, error) {
 			return nil, err
 		}
 	}
-	Rules := []*Rule{{Categories: []string{"all"}, KeyPatterns: []string{"*"}}}
+	Rules := []*Rule{{Categories: []string{"all"}, KeyPatterns: []string{"*"}, Channels: []string{"*"}}}
 	if name == "" || name == DefaultUserName {
 		name = DefaultUserName
 		Rules = []*Rule{

@@ -72,7 +72,7 @@ func (a *actorEnsureResource) SupportedCommands() []actor.Command {
 }
 
 func (a *actorEnsureResource) Version() *semver.Version {
-	return semver.MustParse("3.18.0")
+	return semver.MustParse("0.1.0")
 }
 
 // Do
@@ -80,7 +80,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	logger := val.Logger().WithValues("actor", ops.CommandEnsureResource.String())
 
 	inst := val.(types.FailoverInstance)
-	if (inst.Definition().Spec.PodAnnotations != nil) && inst.Definition().Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
+	if (inst.Definition().Spec.PodAnnotations != nil) && inst.Definition().Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
 		if ret := a.pauseStatefulSet(ctx, inst, logger); ret != nil {
 			return ret
 		}

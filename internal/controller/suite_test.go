@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -27,12 +28,21 @@ import (
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/ops"
+	_ "github.com/chideat/valkey-operator/internal/ops/cluster/actor"
+	_ "github.com/chideat/valkey-operator/internal/ops/failover/actor"
+	_ "github.com/chideat/valkey-operator/internal/ops/sentinel/actor"
+	"github.com/chideat/valkey-operator/pkg/actor"
+	"github.com/chideat/valkey-operator/pkg/kubernetes"
+	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -41,6 +51,9 @@ import (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var k8sClientSet kubernetes.ClientSet
+var eventRecorder record.EventRecorder
+var engine *ops.OpEngine
 var testEnv *envtest.Environment
 
 func TestControllers(t *testing.T) {
@@ -81,6 +94,16 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	k8sClientSet = clientset.New(k8sClient, ctrl.Log.WithName("ClientSet"))
+	Expect(k8sClientSet).NotTo(BeNil())
+
+	eventRecorder = record.NewFakeRecorder(100)
+
+	actorManager := actor.NewActorManager(k8sClientSet, ctrl.Log.WithName("ActorManager"))
+	engine, err = ops.NewOpEngine(k8sClient, eventRecorder, actorManager, ctrl.Log.WithName("Engine"))
+	Expect(err).NotTo(HaveOccurred())
+
+	os.Setenv("VALKEY_OPERATOR_VERSION", "1.0.0")
 })
 
 var _ = AfterSuite(func() {

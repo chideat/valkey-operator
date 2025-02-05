@@ -54,7 +54,7 @@ func (a *actorHealMonitor) SupportedCommands() []actor.Command {
 }
 
 func (a *actorHealMonitor) Version() *semver.Version {
-	return semver.MustParse("3.18.0")
+	return semver.MustParse("0.1.0")
 }
 
 func (a *actorHealMonitor) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
