@@ -1,0 +1,23 @@
+# permissions for end users to view sentinels.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: valkey-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: sentinel-viewer-role
+rules:
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - sentinels
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - valkey.buf.red
+  resources:
+  - sentinels/status
+  verbs:
+  - get

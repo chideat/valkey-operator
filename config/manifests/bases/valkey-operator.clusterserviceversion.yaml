@@ -1,0 +1,76 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: valkey-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: Cluster is the Schema for the clusters API
+      displayName: Cluster
+      kind: Cluster
+      name: clusters.valkey.buf.red
+      version: v1alpha1
+    - description: Failover is the Schema for the failovers API
+      displayName: Failover
+      kind: Failover
+      name: failovers.valkey.buf.red
+      version: v1alpha1
+    - description: Sentinel is the Schema for the sentinels API
+      displayName: Sentinel
+      kind: Sentinel
+      name: sentinels.valkey.buf.red
+      version: v1alpha1
+    - description: User is the Schema for the users API
+      displayName: User
+      kind: User
+      name: users.valkey.buf.red
+      version: v1alpha1
+    - description: Valkey is the Schema for the valkeys API
+      displayName: Valkey
+      kind: Valkey
+      name: valkeys.rds.valkey.buf.red
+      version: v1alpha1
+  description: Valkey is a high-performance, in-memory data storage system widely
+    used for building highly scalable, fast-responding, real-time data applications.
+  displayName: ValkeyOperator
+  icon:
+  - base64data: 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
+    mediatype: image/png
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - Cache
+  - Database
+  links:
+  - name: Valkey Operator
+    url: https://valkey-operator.domain
+  maturity: alpha
+  minKubeVersion: 1.19.0
+  provider:
+    name: chideat
+  relatedImages:
+  - image: __IMAGE__:__VERSION__
+    name: valkey-operator
+  - image: oliver006/redis_exporter:v1.67.0-alpine
+    name: exporter
+  - image: valkey/valkey:7.2
+    name: valkey-7.2
+  - image: valkey/valkey:8.0
+    name: valkey-8.0
+  version: 0.0.0

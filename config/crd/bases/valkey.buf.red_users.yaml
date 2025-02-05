@@ -1,0 +1,107 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: users.valkey.buf.red
+spec:
+  group: valkey.buf.red
+  names:
+    kind: User
+    listKind: UserList
+    plural: users
+    singular: user
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.instanceName
+      name: Instance
+      type: string
+    - jsonPath: .spec.username
+      name: username
+      type: string
+    - jsonPath: .status.Phase
+      name: phase
+      type: string
+    - description: Time since creation
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: User is the Schema for the users API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UserSpec defines the desired state of User
+            properties:
+              accountType:
+                description: user account type
+                enum:
+                - system
+                - custom
+                - default
+                type: string
+              aclRules:
+                description: AclRules acl rules  string
+                type: string
+              arch:
+                description: user account type
+                enum:
+                - sentinel
+                - cluster
+                - standalone
+                type: string
+              instanceName:
+                description: InstanceName instance  Name (required)
+                maxLength: 63
+                minLength: 1
+                type: string
+              passwordSecrets:
+                description: PasswordSecrets Password secret name, key is password
+                items:
+                  type: string
+                type: array
+              username:
+                description: Username (required)
+                type: string
+            required:
+            - instanceName
+            - username
+            type: object
+          status:
+            description: UserStatus defines the observed state of User
+            properties:
+              Phase:
+                description: Phase
+                type: string
+              aclRules:
+                description: AclRules acl rules of valkey
+                type: string
+              message:
+                description: Message
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
