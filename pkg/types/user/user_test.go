@@ -66,7 +66,12 @@ func TestNewUser(t *testing.T) {
 				Name: DefaultUserName,
 				Role: RoleDeveloper,
 				Rules: []*Rule{
-					{Categories: []string{"all"}, DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"}, KeyPatterns: []string{"*"}},
+					{
+						Categories:         []string{"all"},
+						DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"},
+						KeyPatterns:        []string{"*"},
+						Channels:           []string{"*"},
+					},
 				},
 			},
 			wantErr: false,
@@ -83,7 +88,12 @@ func TestNewUser(t *testing.T) {
 				Name: DefaultUserName,
 				Role: RoleDeveloper,
 				Rules: []*Rule{
-					{Categories: []string{"all"}, DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"}, KeyPatterns: []string{"*"}},
+					{
+						Categories:         []string{"all"},
+						DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"},
+						KeyPatterns:        []string{"*"},
+						Channels:           []string{"*"},
+					},
 				},
 			},
 			wantErr: false,
@@ -100,8 +110,12 @@ func TestNewUser(t *testing.T) {
 				Name: DefaultUserName,
 				Role: RoleDeveloper,
 				Rules: []*Rule{
-					{Categories: []string{"all"}, DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"},
-						KeyPatterns: []string{"*"}, Channels: []string{"*"}},
+					{
+						Categories:         []string{"all"},
+						DisallowedCommands: []string{"acl", "flushall", "flushdb", "keys"},
+						KeyPatterns:        []string{"*"},
+						Channels:           []string{"*"},
+					},
 				},
 			},
 			wantErr: false,
@@ -118,7 +132,11 @@ func TestNewUser(t *testing.T) {
 				Name: "debug",
 				Role: RoleDeveloper,
 				Rules: []*Rule{
-					{Categories: []string{"all"}, KeyPatterns: []string{"*"}},
+					{
+						Categories:  []string{"all"},
+						KeyPatterns: []string{"*"},
+						Channels:    []string{"*"},
+					},
 				},
 			},
 			wantErr: false,

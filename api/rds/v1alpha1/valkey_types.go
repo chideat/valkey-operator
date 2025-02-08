@@ -52,6 +52,14 @@ type ValkeyModule struct {
 	Args []string `json:"args,omitempty"`
 }
 
+// ValkeyExporter defines the specification for the valkey exporter
+type ValkeyExporter struct {
+	core.Exporter `json:",inline"`
+
+	// Disable disable exporter
+	Disable bool `json:"disable,omitempty"`
+}
+
 // ValkeySpec defines the desired state of Valkey
 type ValkeySpec struct {
 	// Version supports 7.2, 8.0
@@ -110,7 +118,7 @@ type ValkeySpec struct {
 
 	// Exporter defines Valkey exporter settings
 	// +optional
-	Exporter *core.Exporter `json:"exporter,omitempty"`
+	Exporter *ValkeyExporter `json:"exporter,omitempty"`
 
 	// Sentinel defines Sentinel configuration settings Sentinel
 	// +optional

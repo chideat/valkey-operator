@@ -21,18 +21,21 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/chideat/valkey-operator/api/core"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 )
 
 var _ = Describe("Failover Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "valkey-failover"
 
 		ctx := context.Background()
 
@@ -51,7 +54,29 @@ var _ = Describe("Failover Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: valkeybufredv1alpha1.FailoverSpec{
+						Image:           "valkey/valkey:8.0",
+						ImagePullPolicy: "IfNotPresent",
+						Replicas:        3,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
+							},
+						},
+						Exporter: &core.Exporter{},
+						Access:   core.InstanceAccess{},
+						Sentinel: &valkeybufredv1alpha1.SentinelSettings{
+							SentinelSpec: valkeybufredv1alpha1.SentinelSpec{
+								Image:    "valkey/sentinel:8.0",
+								Replicas: 3,
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -69,8 +94,10 @@ var _ = Describe("Failover Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &FailoverReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:        k8sClient,
+				Scheme:        k8sClient.Scheme(),
+				EventRecorder: eventRecorder,
+				Engine:        engine,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

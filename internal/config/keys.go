@@ -21,21 +21,17 @@ const (
 	ValkeySecretUsernameKey = "username"
 	ValkeySecretPasswordKey = "password" // #nosec
 
-	PAUSE_ANNOTATION_KEY = "app.cpaas.io/pause-timestamp"
+	PauseAnnotationKey = "buf.red/pause-timestamp"
 
 	// DNS
 	LocalInjectName = "local.inject"
 
-	ImageVersionKeyPrefix = "middleware.instance/imageversions-"
+	ImageVersionKeyPrefix = "buf.red/imageversions-"
 )
 
 // Version Controller related keys
 const (
-	InstanceTypeKey   = "middleware.instance/type"
-	CRVersionKey      = "middleware.instance/crVersion"
-	CoreComponentName = "valkey"
+	CRVersionKey = "buf.red/crVersion"
 
 	OperatorVersionAnnotation = "operatorVersion"
-
-	ACLSupportedVersionAnnotationKey = "buf.red/acl-supported-version"
 )

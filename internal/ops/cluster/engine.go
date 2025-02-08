@@ -80,7 +80,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	}
 	cr := cluster.Definition()
 
-	if cr.Spec.PodAnnotations[config.PAUSE_ANNOTATION_KEY] != "" {
+	if cr.Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 
