@@ -14,8 +14,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.21.0
 	github.com/onsi/gomega v1.35.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.79.2
-	github.com/samber/lo v1.47.0
-	github.com/stretchr/testify v1.9.0
+	github.com/samber/lo v1.49.1
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
 	go.uber.org/zap v1.27.0
 	gotest.tools/v3 v3.5.1
