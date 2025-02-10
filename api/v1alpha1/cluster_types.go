@@ -95,17 +95,17 @@ type ClusterSpec struct {
 type ClusterPhase string
 
 const (
-	ClusterPhaseOK ClusterPhase = "Healthy"
+	ClusterPhaseReady ClusterPhase = "Ready"
 	// ClusterStatusKO ClusterPhase KO
-	ClusterPhaseKO ClusterPhase = "Failed"
+	ClusterPhaseFailed ClusterPhase = "Failed"
+	// clusterStatusPaused cluster status paused
+	ClusterPhasePaused ClusterPhase = "Paused"
 	// ClusterStatusCreating ClusterPhase Creating
 	ClusterPhaseCreating ClusterPhase = "Creating"
 	// ClusterStatusRollingUpdate ClusterPhase RollingUpdate
 	ClusterPhaseRollingUpdate ClusterPhase = "RollingUpdate"
 	// ClusterStatusRebalancing ClusterPhase rebalancing
 	ClusterPhaseRebalancing ClusterPhase = "Rebalancing"
-	// clusterStatusPaused cluster status paused
-	ClusterPhasePaused ClusterPhase = "Paused"
 )
 
 // ClusterServiceStatus

@@ -45,6 +45,10 @@ resources:
   kind: Valkey
   path: github.com/chideat/valkey-operator/api/rds/v1alpha1
   version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -53,4 +57,8 @@ resources:
   kind: User
   path: github.com/chideat/valkey-operator/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

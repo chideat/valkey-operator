@@ -174,7 +174,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		}
 		configmap.Data[inst.Spec.Username] = string(info)
 
-		if inst.Spec.AccountType != v1alpha1.System {
+		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rcm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, aclRules)
 				if err != nil {
@@ -219,7 +219,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		}
 		configmap.Data[inst.Spec.Username] = string(info)
 
-		if inst.Spec.AccountType != v1alpha1.System {
+		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rfm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, inst.Spec.AclRules)
 				if err != nil {

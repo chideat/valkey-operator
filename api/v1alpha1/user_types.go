@@ -24,9 +24,8 @@ import (
 type AccountType string
 
 const (
-	System  AccountType = "system"
-	Custom  AccountType = "custom"
-	Default AccountType = "default"
+	SystemAccount AccountType = "system"
+	CustomAccount AccountType = "custom"
 )
 
 // UserSpec defines the desired state of User

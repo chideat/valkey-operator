@@ -190,14 +190,14 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 	inst.Status.LastVersion = inst.Spec.Version
 	inst.Status.ClusterNodes = failover.Status.Nodes
 	inst.Status.Message = failover.Status.Message
-	if failover.Status.Phase == v1alpha1.Fail {
+	if failover.Status.Phase == v1alpha1.FailoverPhaseFailed {
 		logger.V(3).Info("instance is fail")
 		inst.Status.Phase = rdsv1alpha1.Failed
 		inst.Status.Message = failover.Status.Message
-	} else if failover.Status.Phase == v1alpha1.Ready {
+	} else if failover.Status.Phase == v1alpha1.FailoverPhaseReady {
 		logger.V(3).Info("instance is ready")
 		inst.Status.Phase = rdsv1alpha1.Ready
-	} else if failover.Status.Phase == v1alpha1.Paused {
+	} else if failover.Status.Phase == v1alpha1.FailoverPhasePaused {
 		logger.V(3).Info("instance is paused")
 		inst.Status.Phase = rdsv1alpha1.Paused
 	} else {
@@ -278,7 +278,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 	} else if cluster.Status.Phase == v1alpha1.ClusterPhaseRebalancing {
 		inst.Status.Phase = rdsv1alpha1.Rebalancing
 		inst.Status.Message = cluster.Status.Message
-	} else if cluster.Status.Phase == v1alpha1.ClusterPhaseKO {
+	} else if cluster.Status.Phase == v1alpha1.ClusterPhaseFailed {
 		inst.Status.Phase = rdsv1alpha1.Failed
 		inst.Status.Message = cluster.Status.Message
 	} else {
