@@ -82,7 +82,7 @@ type Storage struct {
 
 	// Capacity is the cap of the volume to request.
 	// if not set and StorageClassName is set, the default StorageClass size will be the double size of memory limit.
-	Capacity resource.Quantity `json:"capacity,omitempty"`
+	Capacity *resource.Quantity `json:"capacity,omitempty"`
 
 	// AccessMode is the access mode of the volume.
 	// +kubebuilder:default:=ReadWriteOnce

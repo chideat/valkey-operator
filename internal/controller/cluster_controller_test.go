@@ -59,7 +59,7 @@ var _ = Describe("Cluster Controller", func() {
 							Shards:          3,
 							ReplicasOfShard: 1,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: &corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
 								corev1.ResourceMemory: resource.MustParse("256Mi"),

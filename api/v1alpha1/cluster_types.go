@@ -32,10 +32,10 @@ type ShardConfig struct {
 type ClusterReplicas struct {
 	// Shards is the number of cluster shards
 	// +kubebuilder:validation:Minimum=3
-	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Maximum=128
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default=3
-	Shards int32 `json:"masterSize"`
+	Shards int32 `json:"shards"`
 
 	// ShardsConfig is the configuration of each shard
 	// +kubebuilder:validation:MinItems=3
@@ -66,7 +66,7 @@ type ClusterSpec struct {
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Resources
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Access defines the access for valkey
 	Access core.InstanceAccess `json:"access,omitempty"`
