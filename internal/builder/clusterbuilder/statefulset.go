@@ -243,7 +243,7 @@ func buildPersistentClaims(cluster *v1alpha1.Cluster, labels map[string]string) 
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: cluster.Spec.Storage.Capacity,
+					corev1.ResourceStorage: *cluster.Spec.Storage.Capacity,
 				},
 			},
 			StorageClassName: sc,
@@ -312,7 +312,7 @@ func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []
 				},
 			},
 		},
-		Resources: cluster.Spec.Resources,
+		Resources: *cluster.Spec.Resources,
 		Lifecycle: &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{

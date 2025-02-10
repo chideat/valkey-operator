@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
 	bufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,9 +32,15 @@ type ValkeyReplicas struct {
 	// +optional
 	Shards int32 `json:"shards,omitempty"`
 
-	// ReplicasOfShard defines the number of replicas for each shard
+	// ShardsConfig is the configuration of each shard
+	// +kubebuilder:validation:MinItems=3
 	// +optional
-	ReplicasOfShard int32 `json:"replicasOfShard,omitempty"`
+	ShardsConfig []*v1alpha1.ShardConfig `json:"shardsConfig,omitempty"`
+
+	// ReplicasOfShard is the number of replicas for each master node
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	ReplicasOfShard int32 `json:"replicasOfShard"`
 }
 
 // ValkeyModule defines the module for Valkey
@@ -97,7 +104,7 @@ type ValkeySpec struct {
 	// AffinityPolicy specifies the affinity policy for the Pod
 	// +optional
 	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInSharding";"AntiAffinity";"CustomAffinity"
-	AffinityPolicy core.AffinityPolicy `json:"affinityPolicy,omitempty"`
+	AffinityPolicy *core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 
 	// CustomAffinity specifies the custom affinity settings for the Pod
 	// if AffinityPolicy is set to CustomAffinity, this field is required
@@ -135,8 +142,8 @@ const (
 	Rebalancing ValkeyPhase = "Rebalancing"
 	// Ready
 	Ready ValkeyPhase = "Ready"
-	// Error
-	Error ValkeyPhase = "Error"
+	// Failed
+	Failed ValkeyPhase = "Failed"
 	// Paused
 	Paused ValkeyPhase = "Paused"
 )

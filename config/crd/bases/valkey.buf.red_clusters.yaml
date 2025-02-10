@@ -1348,19 +1348,19 @@ spec:
               replicas:
                 description: Replicas is the number of cluster replicas
                 properties:
-                  masterSize:
-                    default: 3
-                    description: Shards is the number of cluster shards
-                    format: int32
-                    maximum: 100
-                    minimum: 3
-                    type: integer
                   replicasOfShard:
                     description: ReplicasOfShard is the number of replicas for each
                       master node
                     format: int32
                     maximum: 5
                     minimum: 0
+                    type: integer
+                  shards:
+                    default: 3
+                    description: Shards is the number of cluster shards
+                    format: int32
+                    maximum: 128
+                    minimum: 3
                     type: integer
                   shardsConfig:
                     description: ShardsConfig is the configuration of each shard
@@ -1375,8 +1375,8 @@ spec:
                     minItems: 3
                     type: array
                 required:
-                - masterSize
                 - replicasOfShard
+                - shards
                 type: object
               resources:
                 description: Resources

@@ -1370,9 +1370,11 @@ spec:
                 description: Replicas defines desired number of replicas for Valkey
                 properties:
                   replicasOfShard:
-                    description: ReplicasOfShard defines the number of replicas for
-                      each shard
+                    description: ReplicasOfShard is the number of replicas for each
+                      master node
                     format: int32
+                    maximum: 5
+                    minimum: 0
                     type: integer
                   shards:
                     description: |-
@@ -1380,6 +1382,20 @@ spec:
                       for cluster arch, the default value is 3; for other arch, the value is always 1
                     format: int32
                     type: integer
+                  shardsConfig:
+                    description: ShardsConfig is the configuration of each shard
+                    items:
+                      properties:
+                        slots:
+                          description: 'Slots is the slot range for the shard, eg:
+                            0-1000,1002,1005-1100'
+                          pattern: ^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$
+                          type: string
+                      type: object
+                    minItems: 3
+                    type: array
+                required:
+                - replicasOfShard
                 type: object
               resources:
                 description: Resources for setting resource requirements for the Pod

@@ -56,9 +56,9 @@ type UserReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	K8sClient kubernetes.ClientSet
-	Record    record.EventRecorder
-	Handler   *user.UserHandler
+	K8sClient     kubernetes.ClientSet
+	EventRecorder record.EventRecorder
+	Handler       *user.UserHandler
 }
 
 // +kubebuilder:rbac:groups=valkey.buf.red,resources=users,verbs=get;list;watch;create;update;patch;delete
