@@ -132,7 +132,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 			return ctrl.Result{}, err
 		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
-			if instance.Spec.AccountType != v1alpha1.System {
+			if instance.Spec.AccountType != v1alpha1.SystemAccount {
 				instance.Status.Message = err.Error()
 				instance.Status.Phase = v1alpha1.UserFail
 				if e := r.Client.Status().Update(ctx, &instance); e != nil {

@@ -94,7 +94,7 @@ var _ = Describe("User Controller", func() {
 						Namespace: "default",
 					},
 					Spec: valkeybufredv1alpha1.UserSpec{
-						AccountType:  valkeybufredv1alpha1.System,
+						AccountType:  valkeybufredv1alpha1.SystemAccount,
 						Arch:         core.ValkeyCluster,
 						Username:     "operator",
 						AclRules:     "+@all ~* &*",

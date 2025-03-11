@@ -358,7 +358,7 @@ func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStat
 	case types.OK:
 		status.Phase = databasesv1.SentinelReady
 	case types.Fail:
-		status.Phase = databasesv1.SentinelFail
+		status.Phase = databasesv1.SentinelFailed
 	case types.Paused:
 		status.Phase = databasesv1.SentinelPaused
 	default:
@@ -385,7 +385,7 @@ func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStat
 
 	phase, msg := func() (databasesv1.SentinelPhase, string) {
 		// use passed status if provided
-		if status.Phase == databasesv1.SentinelFail || status.Phase == databasesv1.SentinelPaused {
+		if status.Phase == databasesv1.SentinelFailed || status.Phase == databasesv1.SentinelPaused {
 			return status.Phase, status.Message
 		}
 

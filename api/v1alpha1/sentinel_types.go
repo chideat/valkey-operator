@@ -82,7 +82,7 @@ const (
 	// SentinelReady the sentinel ready phase
 	SentinelReady SentinelPhase = "Ready"
 	// SentinelFail the sentinel fail phase
-	SentinelFail SentinelPhase = "Fail"
+	SentinelFailed SentinelPhase = "Failed"
 )
 
 // SentinelStatus defines the observed state of Sentinel

@@ -135,7 +135,7 @@ func ShouldUpdateCluster(cluster, newCluster *v1alpha1.Cluster, logger logr.Logg
 }
 
 func ClusterIsUp(cluster *v1alpha1.Cluster) bool {
-	return cluster.Status.Phase == v1alpha1.ClusterPhaseKO &&
+	return cluster.Status.Phase == v1alpha1.ClusterPhaseReady &&
 		cluster.Status.ServiceStatus == v1alpha1.ClusterInService
 }
 

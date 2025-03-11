@@ -98,15 +98,13 @@ type FailoverSpec struct {
 	Sentinel *SentinelSettings `json:"sentinel,omitempty"`
 }
 
-type Phase string
+type FailoverPhase string
 
 const (
-	Fail            Phase = "Fail"
-	Creating        Phase = "Creating"
-	Pending         Phase = "Pending"
-	Ready           Phase = "Ready"
-	WaitingPodReady Phase = "WaitingPodReady"
-	Paused          Phase = "Paused"
+	FailoverPhaseReady    FailoverPhase = "Ready"
+	FailoverPhaseFailed   FailoverPhase = "Failed"
+	FailoverPhasePaused   FailoverPhase = "Paused"
+	FailoverPhaseCreating FailoverPhase = "Creating"
 )
 
 type FailoverPolicy string
@@ -136,7 +134,7 @@ type MonitorStatus struct {
 // FailoverStatus defines the observed state of Failover
 type FailoverStatus struct {
 	// Phase
-	Phase Phase `json:"phase,omitempty"`
+	Phase FailoverPhase `json:"phase,omitempty"`
 	// Message the status message
 	Message string `json:"message,omitempty"`
 	// Nodes the valkey cluster nodes

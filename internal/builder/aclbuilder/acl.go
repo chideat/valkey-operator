@@ -66,7 +66,7 @@ func GenerateOperatorsUser(inst types.Instance, passwordsecret string) v1alpha1.
 			Namespace: inst.GetNamespace(),
 		},
 		Spec: v1alpha1.UserSpec{
-			AccountType:     v1alpha1.System,
+			AccountType:     v1alpha1.SystemAccount,
 			Arch:            inst.Arch(),
 			InstanceName:    inst.GetName(),
 			Username:        "operator",
@@ -84,13 +84,9 @@ func GenerateUser(inst types.Instance, u *user.User) *v1alpha1.User {
 	)
 	switch u.Role {
 	case user.RoleOperator:
-		accountType = v1alpha1.System
+		accountType = v1alpha1.SystemAccount
 	default:
-		if u.Name == "default" {
-			accountType = v1alpha1.Default
-		} else {
-			accountType = v1alpha1.Custom
-		}
+		accountType = v1alpha1.CustomAccount
 	}
 	if u.GetPassword().GetSecretName() != "" {
 		passwordSecrets = append(passwordSecrets, u.GetPassword().GetSecretName())
