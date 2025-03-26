@@ -30,6 +30,7 @@ type ValkeyReplicas struct {
 	// Shards defines the number of shards for Valkey
 	// for cluster arch, the default value is 3; for other arch, the value is always 1
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	Shards int32 `json:"shards,omitempty"`
 
 	// ShardsConfig is the configuration of each shard
@@ -38,7 +39,7 @@ type ValkeyReplicas struct {
 	ShardsConfig []*v1alpha1.ShardConfig `json:"shardsConfig,omitempty"`
 
 	// ReplicasOfShard is the number of replicas for each master node
-	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=5
 	ReplicasOfShard int32 `json:"replicasOfShard"`
 }

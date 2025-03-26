@@ -39,11 +39,13 @@ import (
 
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/controller"
 	rdscontroller "github.com/chideat/valkey-operator/internal/controller/rds"
 	"github.com/chideat/valkey-operator/internal/controller/user"
 	"github.com/chideat/valkey-operator/internal/ops"
-	"github.com/chideat/valkey-operator/pkg/actor"
+	webhookrdsv1alpha1 "github.com/chideat/valkey-operator/internal/webhook/rds/v1alpha1"
+	webhookvalkeybufredv1alpha1 "github.com/chideat/valkey-operator/internal/webhook/v1alpha1"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset"
 	// +kubebuilder:scaffold:imports
 )
@@ -216,6 +218,34 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "User")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookrdsv1alpha1.SetupValkeyWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Valkey")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookvalkeybufredv1alpha1.SetupUserWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "User")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookvalkeybufredv1alpha1.SetupClusterWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Cluster")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookvalkeybufredv1alpha1.SetupFailoverWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Failover")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

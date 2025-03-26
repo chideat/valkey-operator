@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops"
 )
@@ -75,14 +76,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	crVersion := instance.Annotations[config.CRVersionKey]
+	crVersion := instance.Annotations[builder.CRVersionKey]
 	if crVersion == "" {
 		if config.GetOperatorVersion() != "" {
 			if instance.Annotations == nil {
 				instance.Annotations = make(map[string]string)
 			}
 			// update crVersion to instance
-			instance.Annotations[config.CRVersionKey] = config.GetOperatorVersion()
+			instance.Annotations[builder.CRVersionKey] = config.GetOperatorVersion()
 			if err := r.Update(ctx, &instance); err != nil {
 				logger.Error(err, "update instance actor version failed")
 			}

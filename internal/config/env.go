@@ -62,6 +62,10 @@ func GetValkeyImageByVersion(version string) string {
 	return fmt.Sprintf("%s:%s", imageName, version)
 }
 
+const (
+	ImageVersionKeyPrefix = "buf.red/imageversions-"
+)
+
 func BuildImageVersionKey(typ string) string {
 	return ImageVersionKeyPrefix + typ
 }

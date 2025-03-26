@@ -24,6 +24,7 @@ import (
 const (
 	HostnameTopologyKey  = "kubernetes.io/hostname"
 	RestartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
+	PauseAnnotationKey   = "buf.red/pause-timestamp"
 	PodNameLabelKey      = "statefulset.kubernetes.io/pod-name"
 	ManagedByLabelKey    = "app.kubernetes.io/managed-by"
 	AppComponentLabelKey = "app.kubernetes.io/component"
@@ -45,9 +46,11 @@ func ChecksumKey(typ string) string {
 }
 
 const (
-	// Env
 	OperatorUsername   = "OPERATOR_USERNAME"
 	OperatorSecretName = "OPERATOR_SECRET_NAME"
+
+	ValkeySecretUsernameKey = "username"
+	ValkeySecretPasswordKey = "password" // #nosec
 )
 
 const (
@@ -66,4 +69,11 @@ const (
 
 	ValkeyDataVolumeName             = "valkey-data"
 	ValkeyDataVolumeDefaultMountPath = "/data"
+)
+
+// Version Controller related keys
+const (
+	CRVersionKey = "buf.red/crVersion"
+
+	OperatorVersionAnnotation = "operatorVersion"
 )

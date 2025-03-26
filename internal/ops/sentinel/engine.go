@@ -22,9 +22,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chideat/valkey-operator/internal/config"
+	"github.com/chideat/valkey-operator/internal/actor"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 
@@ -66,7 +66,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	logger.V(3).Info("Inspecting Sentinel")
 
 	cr := sentinel.Definition()
-	if val := cr.Spec.PodAnnotations[config.PauseAnnotationKey]; val != "" {
+	if val := cr.Spec.PodAnnotations[builder.PauseAnnotationKey]; val != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 

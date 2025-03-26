@@ -1374,13 +1374,14 @@ spec:
                       master node
                     format: int32
                     maximum: 5
-                    minimum: 0
+                    minimum: 1
                     type: integer
                   shards:
                     description: |-
                       Shards defines the number of shards for Valkey
                       for cluster arch, the default value is 3; for other arch, the value is always 1
                     format: int32
+                    minimum: 0
                     type: integer
                   shardsConfig:
                     description: ShardsConfig is the configuration of each shard
@@ -3370,6 +3371,12 @@ spec:
                     default: ReadWriteOnce
                     description: AccessMode is the access mode of the volume.
                     type: string
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
                   capacity:
                     anyOf:
                     - type: integer

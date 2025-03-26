@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"

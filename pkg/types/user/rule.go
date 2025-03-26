@@ -200,8 +200,18 @@ func (r *Rule) IsCommandEnabled(cmd string, cates []string) bool {
 	return false
 }
 
+func (r *Rule) IsACLCommandEnabled() bool {
+	return r.IsCommandEnabled("acl", []string{"all", "admin", "slow", "dangerous"})
+}
+
+func (r *Rule) IsACLCommandsDisabled() bool {
+	return !r.IsACLCommandEnabled() || slices.ContainsFunc(r.DisallowedCommands, func(cmd string) bool {
+		return strings.HasPrefix(cmd, "acl|")
+	})
+}
+
 func (r *Rule) Validate(disableACL bool) error {
-	for _, cate := range append(append([]string{}, r.Categories...), r.DisallowedCategories...) {
+	for _, cate := range slices.Concat(r.Categories, r.DisallowedCategories) {
 		if !slices.Contains(allowedCategories, cate) {
 			return fmt.Errorf("unsupported category %s", cate)
 		}

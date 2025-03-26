@@ -100,7 +100,7 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 		},
 		Spec: v1alpha1.FailoverSpec{
 			Image:          image,
-			Replicas:       int32(*&instance.Spec.Replicas.ReplicasOfShard) + 1,
+			Replicas:       int32(*&instance.Spec.Replicas.ReplicasOfShard),
 			Resources:      *instance.Spec.Resources,
 			CustomConfigs:  instance.Spec.CustomConfigs,
 			PodAnnotations: lo.Assign(instance.Spec.PodAnnotations),
@@ -126,7 +126,7 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 }
 
 func ShouldUpdateFailover(failover, newFailover *v1alpha1.Failover, logger logr.Logger) bool {
-	if diffAnnonation(newFailover.Annotations, failover.Annotations) ||
+	if !reflect.DeepEqual(newFailover.Annotations, failover.Annotations) ||
 		!reflect.DeepEqual(newFailover.Labels, failover.Labels) {
 		return true
 	}

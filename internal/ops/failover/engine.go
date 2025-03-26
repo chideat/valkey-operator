@@ -28,14 +28,13 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	v1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
-	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -79,7 +78,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	}
 	cr := inst.Definition()
 
-	if (cr.Spec.PodAnnotations != nil) && cr.Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
+	if (cr.Spec.PodAnnotations != nil) && cr.Spec.PodAnnotations[builder.PauseAnnotationKey] != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 

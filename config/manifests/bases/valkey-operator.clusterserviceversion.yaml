@@ -59,9 +59,9 @@ spec:
   - Database
   links:
   - name: Valkey Operator
-    url: https://valkey-operator.domain
+    url: https://github.com/chideat/valkey-operator
   maturity: alpha
-  minKubeVersion: 1.19.0
+  minKubeVersion: 1.22.0
   provider:
     name: chideat
   relatedImages:
@@ -69,8 +69,4 @@ spec:
     name: valkey-operator
   - image: oliver006/redis_exporter:v1.67.0-alpine
     name: exporter
-  - image: valkey/valkey:7.2
-    name: valkey-7.2
-  - image: valkey/valkey:8.0
-    name: valkey-8.0
   version: 0.0.0

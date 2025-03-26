@@ -18,7 +18,6 @@ package valkey
 
 import (
 	"reflect"
-	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
@@ -137,47 +136,4 @@ func ShouldUpdateCluster(cluster, newCluster *v1alpha1.Cluster, logger logr.Logg
 func ClusterIsUp(cluster *v1alpha1.Cluster) bool {
 	return cluster.Status.Phase == v1alpha1.ClusterPhaseReady &&
 		cluster.Status.ServiceStatus == v1alpha1.ClusterInService
-}
-
-const (
-	redisRestartAnnotation = "kubectl.kubernetes.io/restartedAt"
-	PauseAnnotationKey     = "app.cpaas.io/pause-timestamp"
-)
-
-func diffAnnonation(rfAnnotations map[string]string, targetAnnotations map[string]string) bool {
-	if len(rfAnnotations) == 0 {
-		if len(targetAnnotations) > 0 && targetAnnotations[PauseAnnotationKey] != "" {
-			return true
-		}
-		return false
-	} else {
-		if len(targetAnnotations) > 0 && targetAnnotations[PauseAnnotationKey] != rfAnnotations[PauseAnnotationKey] {
-			return true
-		}
-	}
-	if len(targetAnnotations) == 0 {
-		return true
-	}
-	for k, v := range rfAnnotations {
-		if k == redisRestartAnnotation {
-			if v == "" {
-				continue
-			}
-			targetV := targetAnnotations[redisRestartAnnotation]
-			if targetV == "" {
-				return true
-			}
-			newTime, err1 := time.Parse(time.RFC3339Nano, v)
-			targetTime, err2 := time.Parse(time.RFC3339Nano, targetV)
-			if err1 != nil || err2 != nil {
-				return true
-			}
-			if newTime.After(targetTime) {
-				return true
-			}
-		} else if targetAnnotations[k] != v {
-			return true
-		}
-	}
-	return false
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
@@ -36,7 +37,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/samber/lo"
@@ -80,7 +80,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	logger := val.Logger().WithValues("actor", ops.CommandEnsureResource.String())
 
 	inst := val.(types.FailoverInstance)
-	if (inst.Definition().Spec.PodAnnotations != nil) && inst.Definition().Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
+	if (inst.Definition().Spec.PodAnnotations != nil) && inst.Definition().Spec.PodAnnotations[builder.PauseAnnotationKey] != "" {
 		if ret := a.pauseStatefulSet(ctx, inst, logger); ret != nil {
 			return ret
 		}

@@ -82,26 +82,16 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	oldInst := inst.DeepCopy()
-	// inst.Default()
-	if !reflect.DeepEqual(oldInst, inst) {
-		if err := r.Update(ctx, inst); err != nil {
-			logger.Error(err, "fail to update valkey instance")
-			return ctrl.Result{}, err
-		}
-	}
-
 	var (
 		err             error
 		operatorVersion = config.GetOperatorVersion()
 	)
-
-	if operatorVersion != "" && operatorVersion != inst.Annotations[config.OperatorVersionAnnotation] {
+	if operatorVersion != "" && operatorVersion != inst.Annotations[builder.OperatorVersionAnnotation] {
 		logger.V(3).Info("instance operatorVersion is not match")
 		if inst.Annotations == nil {
 			inst.Annotations = make(map[string]string)
 		}
-		inst.Annotations[config.OperatorVersionAnnotation] = operatorVersion
+		inst.Annotations[builder.OperatorVersionAnnotation] = operatorVersion
 		return r.updateInstance(ctx, inst, logger)
 	}
 
@@ -124,7 +114,6 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		err = fmt.Errorf("this arch isn't valid, must be cluster, sentinel or standalone")
 		return ctrl.Result{}, err
 	}
-
 	return r.updateInstanceStatus(ctx, inst, err, logger)
 }
 
@@ -163,7 +152,7 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 			if inst.Spec.PodAnnotations == nil {
 				inst.Spec.PodAnnotations = map[string]string{}
 			}
-			inst.Spec.PodAnnotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339Nano)
+			inst.Spec.PodAnnotations[builder.RestartAnnotationKey] = time.Now().Format(time.RFC3339Nano)
 			break
 		}
 	}
@@ -222,7 +211,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 			return err
 		}
 		// Record actor versions too keep actions consistent
-		cluster.Annotations[config.CRVersionKey] = config.GetOperatorVersion()
+		cluster.Annotations[builder.CRVersionKey] = config.GetOperatorVersion()
 
 		if err := r.Create(ctx, cluster); err != nil {
 			logger.Error(err, "fail to create cluster instance")

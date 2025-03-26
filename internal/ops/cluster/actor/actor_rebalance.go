@@ -23,8 +23,8 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
