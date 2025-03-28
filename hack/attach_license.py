@@ -10,7 +10,6 @@ import re
 with open('./hack/boilerplate.go.txt') as f:
     AUTH_COMMENT = f.read()
 
-PATTERN = r"/\*.*?Licensed under the Apache License.*?\*/"
 EXTENSION = ".go"
 
 for root, dirs, files in os.walk('.'):
@@ -19,12 +18,11 @@ for root, dirs, files in os.walk('.'):
             file_path = os.path.join(root, file)
             with open(file_path, 'r+') as f:
                 content = f.read()
-                if re.search(PATTERN, content, re.DOTALL):
-                    # Replace existing block comment
-                    content = re.sub(PATTERN, AUTH_COMMENT, content, flags=re.DOTALL)
-                else:
-                    # Prepend new comment
+                index = content.index("package ")
+                if index == 0:
                     content = AUTH_COMMENT + '\n' + content
+                else:
+                    content = AUTH_COMMENT + '\n' + content[index:]
                 f.seek(0)
                 f.write(content)
                 f.truncate()

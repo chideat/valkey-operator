@@ -142,8 +142,8 @@ type ClusterNodeInfo struct {
 // ValkeyClient
 type ValkeyClient interface {
 	Do(ctx context.Context, cmd string, args ...any) (any, error)
-	DoWithTimeout(ctx context.Context, timeout time.Duration, cmd string, args ...interface{}) (interface{}, error)
-	Tx(ctx context.Context, cmds []string, args [][]any) (interface{}, error)
+	DoWithTimeout(ctx context.Context, timeout time.Duration, cmd string, args ...any) (any, error)
+	Tx(ctx context.Context, cmds []string, args [][]any) (any, error)
 	Pipeline(ctx context.Context, args [][]any) ([]PipelineResult, error)
 	Close() error
 	Clone(ctx context.Context, addr string) ValkeyClient
@@ -228,7 +228,7 @@ func (c *valkeyClient) Do(ctx context.Context, cmd string, args ...any) (any, er
 	return redis.DoContext(conn, ctx, cmd, args...)
 }
 
-func (c *valkeyClient) DoWithTimeout(ctx context.Context, timeout time.Duration, cmd string, args ...interface{}) (interface{}, error) {
+func (c *valkeyClient) DoWithTimeout(ctx context.Context, timeout time.Duration, cmd string, args ...any) (any, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -236,7 +236,7 @@ func (c *valkeyClient) DoWithTimeout(ctx context.Context, timeout time.Duration,
 }
 
 // Tx
-func (c *valkeyClient) Tx(ctx context.Context, cmds []string, args [][]any) (interface{}, error) {
+func (c *valkeyClient) Tx(ctx context.Context, cmds []string, args [][]any) (any, error) {
 	if c == nil || c.pool == nil {
 		return nil, nil
 	}

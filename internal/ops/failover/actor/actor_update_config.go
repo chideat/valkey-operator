@@ -101,10 +101,10 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 	} else {
-		var margs [][]interface{}
+		var margs [][]any
 		for key, vals := range changed {
 			logger.V(2).Info("hot config ", "key", key, "value", vals.String())
-			margs = append(margs, []interface{}{"config", "set", key, vals.String()})
+			margs = append(margs, []any{"config", "set", key, vals.String()})
 		}
 		var (
 			isUpdateFailed = false

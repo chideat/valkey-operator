@@ -494,7 +494,7 @@ func (c *ValkeySentinel) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *ValkeySentinel) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeySentinel) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}

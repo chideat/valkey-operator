@@ -714,7 +714,7 @@ func (c *ValkeyCluster) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *ValkeyCluster) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeyCluster) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}

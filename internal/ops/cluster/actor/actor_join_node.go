@@ -105,9 +105,9 @@ func (a *actorJoinNode) Do(ctx context.Context, val types.Instance) *actor.Actor
 	}
 	needRefresh := false
 	if len(unjoined) > 0 {
-		var margs [][]interface{}
+		var margs [][]any
 		for _, node := range unjoined {
-			margs = append(margs, []interface{}{"cluster", "meet", node.DefaultInternalIP().String(), node.InternalPort(), node.InternalIPort()})
+			margs = append(margs, []any{"cluster", "meet", node.DefaultInternalIP().String(), node.InternalPort(), node.InternalIPort()})
 		}
 		for _, targetNode := range joined {
 			if err := targetNode.Setup(ctx, margs...); err != nil {
@@ -142,11 +142,11 @@ func (a *actorJoinNode) Do(ctx context.Context, val types.Instance) *actor.Actor
 					// if this node is master and has slots, do rebalance
 					return actor.NewResult(cops.CommandRebalance)
 				}
-				if err := node.Setup(ctx, []interface{}{"cluster", "replicate", master.ID()}); err != nil {
+				if err := node.Setup(ctx, []any{"cluster", "replicate", master.ID()}); err != nil {
 					logger.Error(err, "replicate node failed", "node", node.ID())
 					if strings.Contains(err.Error(), "ERR To set a master the node must be empty and without assigned slots") {
 						// rejoin this node with master nodes
-						args := []interface{}{"cluster", "meet", node.DefaultInternalIP().String(), node.InternalPort(), node.InternalIPort()}
+						args := []any{"cluster", "meet", node.DefaultInternalIP().String(), node.InternalPort(), node.InternalIPort()}
 						if err := master.Setup(ctx, args); err != nil {
 							return actor.NewResultWithError(cops.CommandAbort, fmt.Errorf("set up cluster meet failed"))
 						}

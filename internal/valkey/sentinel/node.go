@@ -645,24 +645,24 @@ func (n *ValkeySentinelNode) Status() corev1.PodPhase {
 }
 
 func (n *ValkeySentinelNode) SetMonitor(ctx context.Context, name, ip, port, user, password, quorum string) error {
-	if err := n.Setup(ctx, []interface{}{"SENTINEL", "REMOVE", name}); err != nil {
+	if err := n.Setup(ctx, []any{"SENTINEL", "REMOVE", name}); err != nil {
 		n.logger.Error(err, "try remove cluster failed", "name", name)
 	}
 
 	n.logger.Info("set monitor", "name", name, "ip", ip, "port", port, "quorum", quorum)
-	if err := n.Setup(ctx, []interface{}{"SENTINEL", "MONITOR", name, ip, port, quorum}); err != nil {
+	if err := n.Setup(ctx, []any{"SENTINEL", "MONITOR", name, ip, port, quorum}); err != nil {
 		return err
 	}
 	if password != "" {
 		if user != "" {
-			if err := n.Setup(ctx, []interface{}{"SENTINEL", "SET", name, "auth-user", user}); err != nil {
+			if err := n.Setup(ctx, []any{"SENTINEL", "SET", name, "auth-user", user}); err != nil {
 				return err
 			}
 		}
-		if err := n.Setup(ctx, []interface{}{"SENTINEL", "SET", name, "auth-pass", password}); err != nil {
+		if err := n.Setup(ctx, []any{"SENTINEL", "SET", name, "auth-pass", password}); err != nil {
 			return err
 		}
-		if err := n.Setup(ctx, []interface{}{"SENTINEL", "RESET", name}); err != nil {
+		if err := n.Setup(ctx, []any{"SENTINEL", "RESET", name}); err != nil {
 			return err
 		}
 	}

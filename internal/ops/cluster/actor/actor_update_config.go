@@ -118,10 +118,10 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 		// }
 		return actor.NewResult(cops.CommandEnsureResource)
 	} else {
-		var margs [][]interface{}
+		var margs [][]any
 		for key, vals := range changed {
 			logger.V(2).Info("hot config ", "key", key, "value", vals.String())
-			margs = append(margs, []interface{}{"config", "set", key, vals.String()})
+			margs = append(margs, []any{"config", "set", key, vals.String()})
 		}
 
 		var (

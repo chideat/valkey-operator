@@ -745,7 +745,7 @@ func (c *Failover) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *Failover) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *Failover) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}
