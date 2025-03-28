@@ -8,6 +8,7 @@ NAMESPACE ?= chideat
 
 REDIS_EXPORTER_IMAGE_NAME ?= "oliver006/redis_exporter"
 REDIS_EXPORTER_IMAGE_VERSION ?= "v1.67.0-alpine"
+VALKEY_IMAGE_NAME ?= "valkey/valkey"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -278,14 +279,15 @@ endif
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
-	@cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	@cd config/manager && $(KUSTOMIZE) edit add annotation -f valkeyImageName:""
-	@cd config/manager && $(KUSTOMIZE) edit add annotation -f redisExporterImage:"$(REDIS_EXPORTER_IMAGE_NAME):$(REDIS_EXPORTER_IMAGE_VERSION)"
-	@cd config/manager && $(KUSTOMIZE) edit add annotation -f valkeyHelperImage:"$(IMAGE_TAG_BASE):v$(VERSION)"
+	@cd config/manager && $(KUSTOMIZE) edit set image manager=$(IMG)
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultRegistry:""
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultExporterImageName:"$(REDIS_EXPORTER_IMAGE_NAME)"
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultExporterVersion:"$(REDIS_EXPORTER_IMAGE_VERSION)"
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f valkeyImageName:"$(VALKEY_IMAGE_NAME)"
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorImageName:"$(IMAGE_TAG_BASE)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorVersion:"v$(VERSION)"
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	@sed -i 's#__IMAGE__#$(IMAGE_TAG_BASE)#g' ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
-	@sed -i 's#__VERSION__#v$(VERSION)#g' ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
+	@sed -i 's#__OPERATOR_IMAGE__#$(IMAGE_TAG_BASE):$(VERSION)#g' ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build

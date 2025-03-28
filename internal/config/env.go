@@ -24,10 +24,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func GetOperatorVersion() string {
-	return os.Getenv("VALKEY_OPERATOR_VERSION")
-}
-
 func GetValkeyVersion(image string) string {
 	if image == "" {
 		return ""
@@ -54,12 +50,20 @@ func Getenv(name string, defaults ...string) string {
 	return ""
 }
 
+func GetFullImageURL(path string, tag string) string {
+	registry := Getenv("DEFAULT_REGISTRY")
+	if registry == "" {
+		return fmt.Sprintf("%s:%s", path, tag)
+	}
+	return fmt.Sprintf("%s/%s:%s", registry, path, tag)
+}
+
 func GetValkeyImageByVersion(version string) string {
 	imageName := os.Getenv("VALKEY_IMAGE_NAME")
 	if imageName == "" {
 		imageName = "valkey/valkey"
 	}
-	return fmt.Sprintf("%s:%s", imageName, version)
+	return GetFullImageURL(imageName, version)
 }
 
 const (
@@ -70,22 +74,31 @@ func BuildImageVersionKey(typ string) string {
 	return ImageVersionKeyPrefix + typ
 }
 
+func GetOperatorVersion() string {
+	return Getenv("OPERATOR_VERSION", "latest")
+}
+
 func GetValkeyHelperImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "valkey-operator"
+	key := BuildImageVersionKey("valkey-helper")
 	if obj != nil {
 		if val := obj.GetAnnotations()[key]; val != "" {
 			return val
 		}
 	}
-	return Getenv("VALKEY_HELPER_IMAGE")
+
+	imgName := Getenv("OPERATOR_IMAGE_NAME", "chideat/valkey-operator")
+	imgVersion := GetOperatorVersion()
+	return GetFullImageURL(imgName, imgVersion)
 }
 
 func GetValkeyExporterImage(obj v1.Object) string {
-	key := ImageVersionKeyPrefix + "redis-exporter"
+	key := BuildImageVersionKey("exporter")
 	if obj != nil {
 		if val := obj.GetAnnotations()[key]; val != "" {
 			return val
 		}
 	}
-	return Getenv("REDIS_EXPORTER_IMAGE")
+	imgName := Getenv("DEFAULT_EXPORTER_IMAGE_NAME", "oliver006/redis_exporter")
+	imgVersion := Getenv("DEFAULT_EXPORTER_VERSION", "v1.67.0-alpine")
+	return GetFullImageURL(imgName, imgVersion)
 }

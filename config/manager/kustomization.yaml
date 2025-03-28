@@ -6,8 +6,13 @@ images:
 - name: controller
   newName: chideat/valkey-operator
   newTag: v0.1.0-alpha
+- name: manager
+  newName: chideat/valkey-operator
+  newTag: v0.1.0-alpha
 commonAnnotations:
+  defaultExporterImageName: oliver006/redis_exporter
+  defaultExporterVersion: v1.67.0-alpine
+  defaultRegistry: ""
+  operatorImageName: chideat/valkey-operator
   operatorVersion: v0.1.0-alpha
-  redisExporterImage: oliver006/redis_exporter:v1.67.0-alpine
-  valkeyHelperImage: chideat/valkey-operator:v0.1.0-alpha
-  valkeyImageName: ""
+  valkeyImageName: valkey/valkey

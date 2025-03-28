@@ -65,8 +65,14 @@ spec:
   provider:
     name: chideat
   relatedImages:
-  - image: __IMAGE__:__VERSION__
-    name: valkey-operator
+  - image: valkey/valkey:8.1
+    name: valkey_8_1
+  - image: valkey/valkey:8.0
+    name: valkey_8
+  - image: valkey/valkey:7.2
+    name: valkey_7_2
   - image: oliver006/redis_exporter:v1.67.0-alpine
     name: exporter
+  - image: __OPERATOR_IMAGE__
+    name: valkey-operator
   version: 0.0.0
