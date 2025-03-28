@@ -6,7 +6,17 @@ ARG TARGETARCH
 WORKDIR /workspace
 
 # Copy the go source
-COPY . .
+COPY version version
+COPY api/ api/
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY pkg/ pkg/
+COPY Makefile Makefile
+
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+ENV GOPROXY=https://goproxy.cn,direct
 
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
@@ -28,9 +38,12 @@ LABEL org.opencontainers.image.source https://github.com/chideat/valkey-operator
 
 RUN apk --no-cache add gcompat
 WORKDIR /
-COPY --from=builder /workspace/manager /opt/manager
-COPY --from=builder /workspace/valkey-helper /opt/valkey-helper
+COPY --link --from=builder --chmod=555 /workspace/manager .
+COPY --link --from=builder --chmod=555 /workspace/valkey-helper /opt/valkey-helper
+COPY --link --from=builder --chmod=555 /workspace/cmd/*.sh /opt/
+
+ENV PATH="/opt:$PATH"
 
 USER nobody:nobody
 
-ENTRYPOINT ["/opt/manager"]
+ENTRYPOINT ["/manager"]

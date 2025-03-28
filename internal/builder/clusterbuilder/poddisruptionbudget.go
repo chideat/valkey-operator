@@ -42,7 +42,6 @@ func GeneratePodDisruptionBudget(cluster types.ClusterInstance, index int) *poli
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MaxUnavailable: ptr.To(intstr.FromInt(1)),
-			MinAvailable:   ptr.To(intstr.FromInt(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: selectors,
 			},

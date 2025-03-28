@@ -73,7 +73,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	instance := v1alpha1.User{}
 	err := r.Client.Get(ctx, req.NamespacedName, &instance)
 	if err != nil {
-		logger.Error(err, "get redis user failed")
+		logger.Error(err, "get valkey user failed")
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}

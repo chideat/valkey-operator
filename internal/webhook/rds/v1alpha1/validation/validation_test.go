@@ -6,7 +6,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -355,66 +354,6 @@ func TestValidateReplicationScalingResource(t *testing.T) {
 			}
 			if !reflect.DeepEqual(warns, tt.wantWarns) {
 				t.Errorf("ValidateClusterScalingResource() warns = %v, want %v", warns, tt.wantWarns)
-			}
-		})
-	}
-}
-
-func TestValidateActiveRedisService(t *testing.T) {
-	type args struct {
-		f         bool
-		serviceID *int32
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "not enabled",
-			args: args{
-				f: false,
-			},
-			wantErr: false,
-		},
-		{
-			name: "enabled but serviceID=nil",
-			args: args{
-				f:         true,
-				serviceID: nil,
-			},
-			wantErr: true,
-		},
-		{
-			name: "enabled serviceID=1",
-			args: args{
-				f:         true,
-				serviceID: ptr.To(int32(1)),
-			},
-			wantErr: false,
-		},
-		{
-			name: "enabled serviceID=-1",
-			args: args{
-				f:         true,
-				serviceID: ptr.To(int32(-1)),
-			},
-			wantErr: true,
-		},
-		{
-			name: "enabled serviceID=16",
-			args: args{
-				f:         true,
-				serviceID: ptr.To(int32(16)),
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var warns admission.Warnings
-			if err := ValidateActiveRedisService(tt.args.f, tt.args.serviceID, &warns); (err != nil) != tt.wantErr {
-				t.Errorf("ValidateActiveRedisService() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

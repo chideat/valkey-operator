@@ -223,7 +223,7 @@ func (r *Rule) Validate(disableACL bool) error {
 		return fmt.Errorf("at least one key pattern or channel pattern should be enabled")
 	}
 	if disableACL {
-		if r.IsCommandEnabled("acl", []string{"all", "admin", "slow", "dangerous"}) {
+		if r.IsACLCommandEnabled() {
 			return fmt.Errorf("`acl` and it's sub commands are enabled")
 		}
 		for _, cmd := range r.AllowedCommands {

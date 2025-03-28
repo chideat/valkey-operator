@@ -44,11 +44,14 @@ type NodeInfo struct {
 	MasterLinkStatus      string `json:"master_link_status"`
 	MasterReplId          string `json:"master_replid"`
 	MasterReplOffset      int64  `json:"master_repl_offset"`
+	MasterReplId2         string `json:"master_replid2"`
+	SecondReplOffset      int64  `json:"second_repl_offset"`
 	UsedMemory            int64  `json:"used_memory"`
 	UsedMemoryDataset     int64  `json:"used_memory_dataset"`
 	SentinelMasters       int64  `json:"sentinel_masters"`
 	SentinelTiLt          int64  `json:"sentinel_tilt"`
 	SentinelRunningScript int64  `json:"sentinel_running_scripts"`
+	Dbsize                int64  `json:"dbsize"`
 	SentinelMaster0       struct {
 		Name            string                `json:"name"`
 		Status          string                `json:"status"`
@@ -443,6 +446,11 @@ func (c *valkeyClient) Info(ctx context.Context, sections ...any) (*NodeInfo, er
 			case "master_repl_offset":
 				val, _ := strconv.ParseInt(fields[1], 10, 64)
 				info.MasterReplOffset = val
+			case "master_replid2":
+				info.MasterReplId2 = fields[1]
+			case "second_repl_offset":
+				val, _ := strconv.ParseInt(fields[1], 10, 64)
+				info.SecondReplOffset = val
 			case "used_memory":
 				val, _ := strconv.ParseInt(fields[1], 10, 64)
 				info.UsedMemory = val
@@ -487,13 +495,20 @@ func (c *valkeyClient) Info(ctx context.Context, sections ...any) (*NodeInfo, er
 					}
 				}
 			}
+			if strings.HasPrefix(fields[0], "db") {
+				vals := strings.SplitN(fields[1], ",", 2)
+				if strings.HasPrefix(vals[0], "key=") {
+					val, _ := strconv.ParseInt(vals[0][4:], 10, 64)
+					info.Dbsize += val
+				}
+			}
 		}
 		return &info
 	}
 	return parseInfo(data), nil
 }
 
-func ParseSentinelMonitorNode(val interface{}) *SentinelMonitorNode {
+func ParseSentinelMonitorNode(val any) *SentinelMonitorNode {
 	kvs, _ := redis.StringMap(val, nil)
 	node := SentinelMonitorNode{}
 	for k, v := range kvs {

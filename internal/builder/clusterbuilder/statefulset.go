@@ -53,7 +53,7 @@ const (
 	PasswordVolumeMountPath  = "/account"
 
 	ConfigVolumeName      = "conf"
-	ConfigVolumeMountPath = "/valkey"
+	ConfigVolumeMountPath = "/etc/valkey"
 
 	ValkeyOptVolumeName      = "valkey-opt"
 	ValkeyOptVolumeMountPath = "/opt"

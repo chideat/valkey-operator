@@ -56,7 +56,7 @@ func (r *SentinelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		logger.Error(err, "failed to get RedisSentinel")
+		logger.Error(err, "failed to get Sentinel")
 		return reconcile.Result{}, err
 	}
 	return r.Engine.Run(ctx, &inst)

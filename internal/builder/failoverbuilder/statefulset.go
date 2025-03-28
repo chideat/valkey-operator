@@ -45,7 +45,7 @@ const (
 	StorageVolumeMountPath = builder.ValkeyDataVolumeDefaultMountPath
 
 	ConfigVolumeName      = "conf"
-	ConfigVolumeMountPath = "/valkey"
+	ConfigVolumeMountPath = "/etc/valkey"
 
 	ValkeyTempVolumeName      = "temp"
 	ValkeyTempVolumeMountPath = "/tmp"

@@ -74,7 +74,7 @@ func (d *UserCustomDefaulter) Default(ctx context.Context, obj runtime.Object) (
 		return fmt.Errorf("expected an User object but got %T", obj)
 	}
 
-	logger.V(3).Info("setup defaults", "redisUser.name", inst.Name)
+	logger.V(3).Info("setup defaults", "user.name", inst.Name)
 	if inst.Labels == nil {
 		inst.Labels = make(map[string]string)
 	}
@@ -96,7 +96,7 @@ func (d *UserCustomDefaulter) Default(ctx context.Context, obj runtime.Object) (
 			Namespace: inst.Namespace,
 			Name:      inst.Spec.InstanceName,
 		}, vf); err != nil {
-			logger.Error(err, "get redis failover failed", "name", inst.Name)
+			logger.Error(err, "get valkey failover failed", "name", inst.Name)
 		} else {
 			inst.OwnerReferences = util.BuildOwnerReferencesWithParents(vf)
 		}
@@ -106,7 +106,7 @@ func (d *UserCustomDefaulter) Default(ctx context.Context, obj runtime.Object) (
 			Namespace: inst.Namespace,
 			Name:      inst.Spec.InstanceName,
 		}, cluster); err != nil {
-			logger.Error(err, "get redis cluster failed", "name", inst.Name)
+			logger.Error(err, "get valkey cluster failed", "name", inst.Name)
 		} else {
 			inst.OwnerReferences = util.BuildOwnerReferencesWithParents(cluster)
 		}
@@ -198,7 +198,7 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Ob
 			return nil, err
 		}
 		if rf.Status.Phase != v1alpha1.FailoverPhaseReady {
-			return nil, fmt.Errorf("redis failover %s is not ready", inst.Spec.InstanceName)
+			return nil, fmt.Errorf("failover %s is not ready", inst.Spec.InstanceName)
 		}
 	case core.ValkeyCluster:
 		cluster := v1alpha1.Cluster{}
@@ -208,7 +208,7 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Ob
 			return nil, err
 		}
 		if cluster.Status.Phase != v1alpha1.ClusterPhaseReady {
-			return nil, fmt.Errorf("redis cluster %s is not ready", inst.Spec.InstanceName)
+			return nil, fmt.Errorf("cluster %s is not ready", inst.Spec.InstanceName)
 		}
 	}
 	return
@@ -271,7 +271,7 @@ func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 			return nil, err
 		}
 		if vf.Status.Phase != v1alpha1.FailoverPhaseReady {
-			return nil, fmt.Errorf("redis failover %s is not ready", inst.Spec.InstanceName)
+			return nil, fmt.Errorf("failover %s is not ready", inst.Spec.InstanceName)
 		}
 	case core.ValkeyCluster:
 		cluster := v1alpha1.Cluster{}
@@ -281,7 +281,7 @@ func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 			return nil, err
 		}
 		if cluster.Status.Phase != v1alpha1.ClusterPhaseReady {
-			return nil, fmt.Errorf("redis cluster %s is not ready", inst.Spec.InstanceName)
+			return nil, fmt.Errorf("cluster %s is not ready", inst.Spec.InstanceName)
 		}
 	}
 	return

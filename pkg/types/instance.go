@@ -61,9 +61,10 @@ type Instance interface {
 	TLSConfig() *tls.Config
 	IsInService() bool
 	IsACLUserExists() bool
+	// TODO: deprecated
 	IsACLAppliedToAll() bool
 	IsResourceFullfilled(ctx context.Context) (bool, error)
 	UpdateStatus(ctx context.Context, st InstanceStatus, message string) error
-	SendEventf(eventtype, reason, messageFmt string, args ...interface{})
+	SendEventf(eventtype, reason, messageFmt string, args ...any)
 	Logger() logr.Logger
 }

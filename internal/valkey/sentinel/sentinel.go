@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -228,6 +229,22 @@ func (s *ValkeySentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 		return nil, err
 	}
 	return ret.Items, nil
+}
+
+// Clusters loads the clusters which this sentinel is monitoring
+func (s *ValkeySentinel) Clusters(ctx context.Context) (ret []string, err error) {
+	for _, node := range s.Nodes() {
+		if vals, err := node.MonitoringClusters(ctx); err != nil {
+			s.logger.Error(err, "failed to get monitoring clusters")
+		} else {
+			for _, v := range vals {
+				if !slices.Contains(ret, v) {
+					ret = append(ret, v)
+				}
+			}
+		}
+	}
+	return ret, nil
 }
 
 // Deprecated

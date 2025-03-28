@@ -38,7 +38,7 @@ import (
 
 const (
 	SentinelConfigVolumeName      = "sentinel-config"
-	SentinelConfigVolumeMountPath = "/valkey"
+	SentinelConfigVolumeMountPath = "/etc/valkey"
 
 	ValkeyTLSVolumeName      = builder.ValkeyTLSVolumeName
 	ValkeyTLSVolumeMountPath = builder.ValkeyTLSVolumeDefaultMountPath

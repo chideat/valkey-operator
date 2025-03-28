@@ -185,7 +185,7 @@ vars currentEpoch 5 lastVoteEpoch 0`),
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := portClusterNodesConf(tt.args.ctx, tt.args.data, tt.args.logger, tt.args.opts)
+			got, err := fixClusterNodesConf(tt.args.data, tt.args.logger, tt.args.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("portClusterNodesConf() error = %v, wantErr %v", err, tt.wantErr)
 				return

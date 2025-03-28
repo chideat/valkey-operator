@@ -206,7 +206,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 		Name:      inst.Name,
 		Namespace: inst.Namespace,
 	}, cluster); errors.IsNotFound(err) {
-		cluster, err = vkHandler.GenerateRedisCluster(inst)
+		cluster, err = vkHandler.GenerateValkeyCluster(inst)
 		if err != nil {
 			return err
 		}
@@ -237,7 +237,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 			break
 		}
 	}
-	newCluster, err := vkHandler.GenerateRedisCluster(inst)
+	newCluster, err := vkHandler.GenerateValkeyCluster(inst)
 	if err != nil {
 		return err
 	}

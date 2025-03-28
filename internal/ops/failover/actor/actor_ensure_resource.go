@@ -187,10 +187,10 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf 
 		}
 	} else if err != nil {
 		return actor.RequeueWithError(err)
-	} else if !reflect.DeepEqual(oldPdb.Spec.Selector, pdb.Spec.Selector) {
-		oldPdb.Labels = pdb.Labels
-		oldPdb.Spec.Selector = pdb.Spec.Selector
-		if err := a.client.UpdatePodDisruptionBudget(ctx, rf.Namespace, oldPdb); err != nil {
+	} else if !reflect.DeepEqual(oldPdb.Spec, pdb.Spec) {
+		pdb.ResourceVersion = oldPdb.ResourceVersion
+		if err := a.client.UpdatePodDisruptionBudget(ctx, rf.Namespace, pdb); err != nil {
+			logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
 			return actor.RequeueWithError(err)
 		}
 	}

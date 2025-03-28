@@ -148,3 +148,81 @@ func TestCustomConfigs(t *testing.T) {
 		})
 	}
 }
+
+func TestValkeyVersionCompare(t *testing.T) {
+	tests := []struct {
+		name string
+		v1   ValkeyVersion
+		v2   ValkeyVersion
+		want int
+	}{
+		{
+			name: "v1 major greater than v2",
+			v1:   "7.0",
+			v2:   "6.0",
+			want: 1,
+		},
+		{
+			name: "v1 major less than v2",
+			v1:   "6.0",
+			v2:   "7.0",
+			want: -1,
+		},
+		{
+			name: "v1 minor greater than v2",
+			v1:   "7.2",
+			v2:   "7.0",
+			want: 1,
+		},
+		{
+			name: "v1 minor less than v2",
+			v1:   "7.0",
+			v2:   "7.2",
+			want: -1,
+		},
+		{
+			name: "equal versions",
+			v1:   "6.0",
+			v2:   "6.0",
+			want: 0,
+		},
+		{
+			name: "both empty versions",
+			v1:   ValkeyVersionUnknown,
+			v2:   ValkeyVersionUnknown,
+			want: 0,
+		},
+		{
+			name: "v1 empty",
+			v1:   ValkeyVersionUnknown,
+			v2:   "6.0",
+			want: -1,
+		},
+		{
+			name: "v2 empty",
+			v1:   "6.0",
+			v2:   ValkeyVersionUnknown,
+			want: 1,
+		},
+		{
+			name: "invalid v1",
+			v1:   "invalid",
+			v2:   "6.0",
+			want: -2,
+		},
+		{
+			name: "invalid v2",
+			v1:   "6.0",
+			v2:   "invalid",
+			want: -2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.v1.Compare(tt.v2); got != tt.want {
+				t.Errorf("ValkeyVersion.Compare() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
