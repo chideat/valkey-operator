@@ -3436,10 +3436,11 @@ spec:
                   type: object
                 type: array
               version:
-                description: Version supports 7.2, 8.0
+                description: Version supports 7.2, 8.0, 8.1
                 enum:
                 - "7.2"
                 - "8.0"
+                - "8.1"
                 type: string
             required:
             - arch
