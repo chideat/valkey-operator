@@ -1370,16 +1370,33 @@ spec:
                 description: Replicas defines desired number of replicas for Valkey
                 properties:
                   replicasOfShard:
-                    description: ReplicasOfShard defines the number of replicas for
-                      each shard
+                    description: ReplicasOfShard is the number of replicas for each
+                      master node
                     format: int32
+                    maximum: 5
+                    minimum: 1
                     type: integer
                   shards:
                     description: |-
                       Shards defines the number of shards for Valkey
                       for cluster arch, the default value is 3; for other arch, the value is always 1
                     format: int32
+                    minimum: 0
                     type: integer
+                  shardsConfig:
+                    description: ShardsConfig is the configuration of each shard
+                    items:
+                      properties:
+                        slots:
+                          description: 'Slots is the slot range for the shard, eg:
+                            0-1000,1002,1005-1100'
+                          pattern: ^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$
+                          type: string
+                      type: object
+                    minItems: 3
+                    type: array
+                required:
+                - replicasOfShard
                 type: object
               resources:
                 description: Resources for setting resource requirements for the Pod
@@ -3354,6 +3371,12 @@ spec:
                     default: ReadWriteOnce
                     description: AccessMode is the access mode of the volume.
                     type: string
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
                   capacity:
                     anyOf:
                     - type: integer
@@ -3413,10 +3436,11 @@ spec:
                   type: object
                 type: array
               version:
-                description: Version supports 7.2, 8.0
+                description: Version supports 7.2, 8.0, 8.1
                 enum:
                 - "7.2"
                 - "8.0"
+                - "8.1"
                 type: string
             required:
             - arch

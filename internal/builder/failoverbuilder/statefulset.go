@@ -45,7 +45,7 @@ const (
 	StorageVolumeMountPath = builder.ValkeyDataVolumeDefaultMountPath
 
 	ConfigVolumeName      = "conf"
-	ConfigVolumeMountPath = "/valkey"
+	ConfigVolumeMountPath = "/etc/valkey"
 
 	ValkeyTempVolumeName      = "temp"
 	ValkeyTempVolumeMountPath = "/tmp"
@@ -320,7 +320,7 @@ func buildPersistentClaims(rf *v1alpha1.Failover, labels map[string]string) (ret
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: rf.Spec.Storage.Capacity,
+					corev1.ResourceStorage: *rf.Spec.Storage.Capacity,
 				},
 			},
 			StorageClassName: sc,

@@ -17,21 +17,8 @@ limitations under the License.
 package config
 
 const (
-	AppName                 = "valkey-operator"
-	ValkeySecretUsernameKey = "username"
-	ValkeySecretPasswordKey = "password" // #nosec
-
-	PauseAnnotationKey = "buf.red/pause-timestamp"
+	AppName = "valkey-operator"
 
 	// DNS
 	LocalInjectName = "local.inject"
-
-	ImageVersionKeyPrefix = "buf.red/imageversions-"
-)
-
-// Version Controller related keys
-const (
-	CRVersionKey = "buf.red/crVersion"
-
-	OperatorVersionAnnotation = "operatorVersion"
 )

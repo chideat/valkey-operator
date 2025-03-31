@@ -22,7 +22,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/internal/config"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 
@@ -269,7 +269,7 @@ func TestActorManager_Search(t *testing.T) {
 	am := NewActorManager(nil, logger)
 	for _, ver := range []string{"3.18.0", "3.18.10", "3.18.10-11111", "3.18.1-1111-bbbb"} {
 		inst := &MockObject{
-			annotations: map[string]string{config.CRVersionKey: ver},
+			annotations: map[string]string{builder.CRVersionKey: ver},
 			arch:        core.ValkeyCluster,
 		}
 
@@ -295,7 +295,7 @@ func TestActorManager_Search(t *testing.T) {
 		"3.17.0", "3.17.10", "3.17.10-11111", "3.17.1-1111-bbbb",
 	} {
 		inst := &MockObject{
-			annotations: map[string]string{config.CRVersionKey: ver},
+			annotations: map[string]string{builder.CRVersionKey: ver},
 			arch:        core.ValkeyCluster,
 		}
 
@@ -322,7 +322,7 @@ func TestActorManager_Search(t *testing.T) {
 		"3.17.0", "3.17.10", "3.17.10-11111", "3.17.1-1111-bbbb",
 	} {
 		inst := &MockObject{
-			annotations: map[string]string{config.CRVersionKey: ver},
+			annotations: map[string]string{builder.CRVersionKey: ver},
 			arch:        core.ValkeyFailover,
 		}
 
@@ -344,7 +344,7 @@ func TestActorManager_Search(t *testing.T) {
 
 	{
 		inst := &MockObject{
-			annotations: map[string]string{config.CRVersionKey: "3.18.0"},
+			annotations: map[string]string{builder.CRVersionKey: "3.18.0"},
 		}
 
 		{

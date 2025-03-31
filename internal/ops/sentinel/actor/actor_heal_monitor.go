@@ -18,15 +18,15 @@ package actor
 
 import (
 	"context"
-	"slices"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/sentinel"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -67,37 +67,75 @@ func (a *actorHealMonitor) Do(ctx context.Context, val types.Instance) *actor.Ac
 		return actor.NewResult(ops.CommandHealPod)
 	}
 
-	var (
-		clusters []string
-	)
-	for _, node := range inst.Nodes() {
-		if vals, err := node.MonitoringClusters(ctx); err != nil {
-			logger.Error(err, "failed to get monitoring clusters")
-		} else {
-			for _, v := range vals {
-				if !slices.Contains(clusters, v) {
-					clusters = append(clusters, v)
+	clusters, err := inst.Clusters(ctx)
+	if err != nil {
+		logger.Error(err, "failed to get monitoring clusters")
+		return actor.NewResult(ops.CommandHealMonitor)
+	}
+
+	unknownSentinels, _ := ops.FindUnknownSentinel(ctx, inst, logger)
+	if len(unknownSentinels) > 0 {
+		var (
+			user = inst.Users().GetOpUser()
+			tls  = inst.TLSConfig()
+		)
+		for name, nodes := range unknownSentinels {
+			// set sentinels
+			for _, node := range inst.Nodes() {
+				args := []any{"SENTINEL", "REMOVE", name}
+				if err := node.Setup(ctx, args); err != nil {
+					logger.Error(err, "failed to remove sentinel", "name", name)
+				} else {
+					logger.Info("remove monitoring cluster with sentinel", "name", name, "node", node.GetName())
 				}
+
 			}
+			for _, addr := range nodes {
+				logger.Info("found unknown sentinel", "name", name, "addr", addr)
+				// connect to unknown sentinel and reset with name
+				func() {
+					cli := valkey.NewValkeyClient(addr, valkey.AuthConfig{
+						Username:  user.Name,
+						Password:  user.GetPassword().String(),
+						TLSConfig: tls,
+					})
+					defer cli.Close()
+
+					if _, err := cli.Do(ctx, "SENTINEL", "REMOVE", name); err != nil {
+						logger.Error(err, "failed to remove monitoring cluster with sentinel", "name", name, "addr", addr)
+					} else {
+						logger.Info("remove monitoring cluster with sentinel", "name", name, "addr", addr)
+					}
+				}()
+			}
+			inst.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
+				"force reset sentinels %s, belong with unknown sentinels", name)
 		}
 	}
+
 	// list all sentinels
 	for _, name := range clusters {
-		reseted := false
-		for _, node := range inst.Nodes() {
-			needReset := ops.NeedResetValkeySentinel(ctx, name, node, logger)
-			if needReset {
+		needReset := func() bool {
+			for _, node := range inst.Nodes() {
+				if needReset, _ := ops.NeedResetSentinel(ctx, name, node, logger); needReset {
+					return true
+				}
+			}
+			return false
+		}()
+
+		if needReset {
+			// reset all nodes
+			for _, node := range inst.Nodes() {
 				args := []any{"SENTINEL", "RESET", name}
 				if err := node.Setup(ctx, args); err != nil {
 					logger.Error(err, "failed to reset sentinel", "name", name)
 				}
-				reseted = true
 			}
-		}
-		if reseted {
 			inst.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
 				"force reset sentinels %s", name)
 		}
 	}
 	return nil
+
 }

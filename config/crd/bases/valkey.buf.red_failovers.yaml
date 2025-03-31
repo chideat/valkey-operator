@@ -3309,6 +3309,12 @@ spec:
                     default: ReadWriteOnce
                     description: AccessMode is the access mode of the volume.
                     type: string
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
                   capacity:
                     anyOf:
                     - type: integer

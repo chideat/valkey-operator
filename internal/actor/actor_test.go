@@ -79,7 +79,7 @@ func TestNewResult(t *testing.T) {
 func TestNewResultWithValue(t *testing.T) {
 	type args struct {
 		cmd Command
-		val interface{}
+		val any
 	}
 	tests := []struct {
 		name string

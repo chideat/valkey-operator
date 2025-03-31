@@ -22,7 +22,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 )
 
 func NewPodDisruptionBudget(sen *v1alpha1.Sentinel) *policyv1.PodDisruptionBudget {
@@ -40,7 +39,6 @@ func NewPodDisruptionBudget(sen *v1alpha1.Sentinel) *policyv1.PodDisruptionBudge
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MaxUnavailable: &maxUnavailable,
-			MinAvailable:   ptr.To(intstr.FromInt(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: selectors,
 			},

@@ -21,8 +21,8 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"

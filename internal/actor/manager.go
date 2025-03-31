@@ -21,6 +21,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/go-logr/logr"
@@ -110,7 +111,7 @@ func (m *ActorManager) Search(cmd Command, inst Object) Actor {
 		return nil
 	}
 
-	crVersion := inst.GetAnnotations()[config.CRVersionKey]
+	crVersion := inst.GetAnnotations()[builder.CRVersionKey]
 	if crVersion == "" {
 		crVersion = config.GetOperatorVersion()
 	}

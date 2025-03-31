@@ -25,3 +25,9 @@ var MustUpperValkeyConfig = map[string]struct{}{
 	"tls-ciphersuites": {},
 	"tls-protocols":    {},
 }
+
+var SentinelMonitorDefaultConfigs = map[string]string{
+	"down-after-milliseconds": "30000",
+	"failover-timeout":        "180000",
+	"parallel-syncs":          "1",
+}

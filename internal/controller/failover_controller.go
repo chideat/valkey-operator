@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
@@ -64,23 +65,12 @@ func (r *FailoverReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// err := instance.Validate()
-	// if err != nil {
-	// 	instance.Status.Message = err.Error()
-	// 	instance.Status.Phase = v1alpha1.Fail
-	// 	if err := r.Status().Update(ctx, &instance); err != nil {
-	// 		logger.Error(err, "update status failed")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	return ctrl.Result{}, err
-	// }
-
-	if crVersion := instance.Annotations[config.CRVersionKey]; crVersion == "" {
+	if crVersion := instance.Annotations[builder.CRVersionKey]; crVersion == "" {
 		if config.GetOperatorVersion() != "" {
 			if instance.Annotations == nil {
 				instance.Annotations = make(map[string]string)
 			}
-			instance.Annotations[config.CRVersionKey] = config.GetOperatorVersion()
+			instance.Annotations[builder.CRVersionKey] = config.GetOperatorVersion()
 			if err := r.Client.Update(ctx, &instance); err != nil {
 				logger.Error(err, "update instance actor version failed")
 			}
@@ -101,8 +91,8 @@ func (r *FailoverReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 		} else {
 			// TODO: use DNS SRV replace config all sentinel node address, which will cause data pods restart
-			for i := 0; i < int(instance.Spec.Sentinel.Replicas); i++ {
-				podName := sentinelbuilder.SentinelPodServiceName(instance.GetName(), i)
+			for i := range instance.Spec.Sentinel.Replicas {
+				podName := sentinelbuilder.SentinelPodServiceName(instance.GetName(), int(i))
 				srv := fmt.Sprintf("%s.%s.%s", podName, serviceName, instance.GetNamespace())
 				nodes = append(nodes, v1alpha1.SentinelMonitorNode{IP: srv, Port: 26379})
 			}

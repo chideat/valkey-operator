@@ -88,7 +88,7 @@ type ValkeyNode interface {
 	// Setup
 	Setup(ctx context.Context, margs ...[]any) error
 	ReplicaOf(ctx context.Context, ip, port string) error
-	SetACLUser(ctx context.Context, username string, passwords []string, rules string) (interface{}, error)
+	SetACLUser(ctx context.Context, username string, passwords []string, rules string) (any, error)
 	Query(ctx context.Context, cmd string, args ...any) (any, error)
 	Info() vkcli.NodeInfo
 	ClusterInfo() vkcli.ClusterNodeInfo

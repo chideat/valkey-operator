@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -230,6 +231,22 @@ func (s *ValkeySentinel) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return ret.Items, nil
 }
 
+// Clusters loads the clusters which this sentinel is monitoring
+func (s *ValkeySentinel) Clusters(ctx context.Context) (ret []string, err error) {
+	for _, node := range s.Nodes() {
+		if vals, err := node.MonitoringClusters(ctx); err != nil {
+			s.logger.Error(err, "failed to get monitoring clusters")
+		} else {
+			for _, v := range vals {
+				if !slices.Contains(ret, v) {
+					ret = append(ret, v)
+				}
+			}
+		}
+	}
+	return ret, nil
+}
+
 // Deprecated
 func (s *ValkeySentinel) Selector() map[string]string {
 	// TODO: delete this method
@@ -358,7 +375,7 @@ func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStat
 	case types.OK:
 		status.Phase = databasesv1.SentinelReady
 	case types.Fail:
-		status.Phase = databasesv1.SentinelFail
+		status.Phase = databasesv1.SentinelFailed
 	case types.Paused:
 		status.Phase = databasesv1.SentinelPaused
 	default:
@@ -385,7 +402,7 @@ func (s *ValkeySentinel) UpdateStatus(ctx context.Context, st types.InstanceStat
 
 	phase, msg := func() (databasesv1.SentinelPhase, string) {
 		// use passed status if provided
-		if status.Phase == databasesv1.SentinelFail || status.Phase == databasesv1.SentinelPaused {
+		if status.Phase == databasesv1.SentinelFailed || status.Phase == databasesv1.SentinelPaused {
 			return status.Phase, status.Message
 		}
 
@@ -477,7 +494,7 @@ func (c *ValkeySentinel) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *ValkeySentinel) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeySentinel) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}
