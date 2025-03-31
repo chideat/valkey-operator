@@ -28,6 +28,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/samber/lo"
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -113,7 +114,7 @@ func GenerateSentinelStatefulset(inst types.SentinelInstance) (*appv1.StatefulSe
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: sen.Spec.PodAnnotations,
+					Annotations: lo.Assign(map[string]string{}, sen.Spec.PodAnnotations),
 				},
 				Spec: corev1.PodSpec{
 					HostAliases: []corev1.HostAlias{

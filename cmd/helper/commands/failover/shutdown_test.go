@@ -45,16 +45,6 @@ func Test_loadAnnounceAddress(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "slave config",
-			args: args{
-				filepath: "/tmp/slave-abc123",
-				data: `
-slave-announce-ip 192.168.138.159
-slave-announce-port 31095`,
-			},
-			want: "192.168.138.159:31095",
-		},
-		{
 			name: "replica config",
 			args: args{
 				filepath: "/tmp/replica-abc123",
@@ -68,8 +58,8 @@ replica-announce-port 31095`,
 			name: "slave config without lead space",
 			args: args{
 				filepath: "/tmp/slave-abc123",
-				data: `slave-announce-ip 192.168.138.159
-slave-announce-port 31095`,
+				data: `replica-announce-ip 192.168.138.159
+replica-announce-port 31095`,
 			},
 			want: "192.168.138.159:31095",
 		},
