@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -97,7 +96,7 @@ func (d *DeploymentOption) RestartDeployment(ctx context.Context, namespace stri
 	if deployment.Spec.Template.Annotations == nil {
 		deployment.Spec.Template.Annotations = make(map[string]string)
 	}
-	deployment.Spec.Template.Annotations[builder.RestartAnnotationKey] = date
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = date
 	old_deployment := &appsv1.Deployment{}
 	err = d.client.Get(ctx, types.NamespacedName{
 		Name:      name,

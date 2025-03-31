@@ -29,37 +29,39 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
+type SentinelMaster struct {
+	Name            string                `json:"name"`
+	Status          string                `json:"status"`
+	Address         Address               `json:"address"`
+	Replicas        int                   `json:"slaves"`
+	Sentinels       int                   `json:"sentinels"`
+	MonitorReplicas []SentinelMonitorNode `json:"monitor_replicas"`
+}
+
 // NodeInfo
 type NodeInfo struct {
-	Version               string `json:"valkey_version"`
-	ServerMode            string `json:"server_mode"`
-	RunId                 string `json:"run_id"`
-	UptimeInSeconds       int64  `json:"uptime_in_seconds"`
-	AOFEnabled            string `json:"aof_enabled"`
-	Role                  string `json:"role"`
-	ConnectedReplicas     int64  `json:"connected_slaves"`
-	MasterHost            string `json:"master_host"`
-	MasterPort            string `json:"master_port"`
-	ClusterEnabled        string `json:"cluster_enabled"`
-	MasterLinkStatus      string `json:"master_link_status"`
-	MasterReplId          string `json:"master_replid"`
-	MasterReplOffset      int64  `json:"master_repl_offset"`
-	MasterReplId2         string `json:"master_replid2"`
-	SecondReplOffset      int64  `json:"second_repl_offset"`
-	UsedMemory            int64  `json:"used_memory"`
-	UsedMemoryDataset     int64  `json:"used_memory_dataset"`
-	SentinelMasters       int64  `json:"sentinel_masters"`
-	SentinelTiLt          int64  `json:"sentinel_tilt"`
-	SentinelRunningScript int64  `json:"sentinel_running_scripts"`
-	Dbsize                int64  `json:"dbsize"`
-	SentinelMaster0       struct {
-		Name            string                `json:"name"`
-		Status          string                `json:"status"`
-		Address         Address               `json:"address"`
-		Replicas        int                   `json:"slaves"`
-		Sentinels       int                   `json:"sentinels"`
-		MonitorReplicas []SentinelMonitorNode `json:"monitor_replicas"`
-	} `json:"master0"`
+	Version               string         `json:"valkey_version"`
+	ServerMode            string         `json:"server_mode"`
+	RunId                 string         `json:"run_id"`
+	UptimeInSeconds       int64          `json:"uptime_in_seconds"`
+	AOFEnabled            string         `json:"aof_enabled"`
+	Role                  string         `json:"role"`
+	ConnectedReplicas     int64          `json:"connected_slaves"`
+	MasterHost            string         `json:"master_host"`
+	MasterPort            string         `json:"master_port"`
+	ClusterEnabled        string         `json:"cluster_enabled"`
+	MasterLinkStatus      string         `json:"master_link_status"`
+	MasterReplId          string         `json:"master_replid"`
+	MasterReplOffset      int64          `json:"master_repl_offset"`
+	MasterReplId2         string         `json:"master_replid2"`
+	SecondReplOffset      int64          `json:"second_repl_offset"`
+	UsedMemory            int64          `json:"used_memory"`
+	UsedMemoryDataset     int64          `json:"used_memory_dataset"`
+	SentinelMasters       int64          `json:"sentinel_masters"`
+	SentinelTiLt          int64          `json:"sentinel_tilt"`
+	SentinelRunningScript int64          `json:"sentinel_running_scripts"`
+	Dbsize                int64          `json:"dbsize"`
+	SentinelMaster0       SentinelMaster `json:"master0"`
 }
 
 type SentinelMonitorNode struct {
