@@ -19,7 +19,7 @@ package helper
 import (
 	"fmt"
 	"net/netip"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,8 +62,15 @@ func ParsePorts(portSequence string) ([]int32, error) {
 	for port := range portMap {
 		ports = append(ports, port)
 	}
-	sort.Slice(ports, func(i, j int) bool { return ports[i] < ports[j] })
-
+	slices.SortStableFunc(ports, func(a, b int32) int {
+		if a == b {
+			return 0
+		}
+		if a < b {
+			return -1
+		}
+		return 1
+	})
 	return ports, nil
 }
 

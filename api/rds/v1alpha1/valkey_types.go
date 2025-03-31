@@ -70,8 +70,8 @@ type ValkeyExporter struct {
 
 // ValkeySpec defines the desired state of Valkey
 type ValkeySpec struct {
-	// Version supports 7.2, 8.0
-	// +kubebuilder:validation:Enum="7.2";"8.0"
+	// Version supports 7.2, 8.0, 8.1
+	// +kubebuilder:validation:Enum="7.2";"8.0";"8.1"
 	Version string `json:"version"`
 
 	// Arch supports cluster, sentinel

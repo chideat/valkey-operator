@@ -287,7 +287,7 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorImageName:"$(IMAGE_TAG_BASE)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorVersion:"v$(VERSION)"
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	@sed -i 's#__OPERATOR_IMAGE__#$(IMAGE_TAG_BASE):$(VERSION)#g' ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
+	@sed -i "s#__OPERATOR_IMAGE__#$(IMAGE_TAG_BASE):$(VERSION)#g" ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
