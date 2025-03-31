@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/util"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -113,16 +114,16 @@ func (s *ValkeySentinelReplication) Restart(ctx context.Context, annotationKeyVa
 	logger := s.logger.WithName("Restart")
 
 	kv := map[string]string{
-		"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339Nano),
+		builder.RestartAnnotationKey: time.Now().Format(time.RFC3339Nano),
 	}
 	for i := 0; i < len(annotationKeyVal)-1; i += 2 {
 		kv[annotationKeyVal[i]] = annotationKeyVal[i+1]
 	}
 
-	data, _ := json.Marshal(map[string]interface{}{
-		"spec": map[string]interface{}{
-			"template": map[string]interface{}{
-				"metadata": map[string]interface{}{
+	data, _ := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
 					"annotations": kv,
 				},
 			},

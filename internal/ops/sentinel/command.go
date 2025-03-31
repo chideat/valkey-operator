@@ -18,7 +18,7 @@ package sentinel
 
 import (
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/pkg/actor"
+	"github.com/chideat/valkey-operator/internal/actor"
 )
 
 var (

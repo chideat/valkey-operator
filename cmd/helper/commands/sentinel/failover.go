@@ -21,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -32,34 +32,6 @@ import (
 	"github.com/urfave/cli/v2"
 	"k8s.io/client-go/kubernetes"
 )
-
-func isNeededToFailover(ctx context.Context, valkeyCli valkey.ValkeyClient, name string, escapeAddresses []string, logger logr.Logger) (bool, string, error) {
-	logger.Info("check if failover is required")
-	masterInfo, err := valkey.StringMap(valkeyCli.DoWithTimeout(ctx, time.Second, "SENTINEL", "MASTER", name))
-	if err != nil {
-		logger.Error(err, "get sentinel info failed")
-		return false, "", err
-	}
-	var (
-		masterAddr string
-		flags      = masterInfo["flags"]
-	)
-	if masterInfo["ip"] != "" && masterInfo["port"] != "" {
-		masterAddr = net.JoinHostPort(masterInfo["ip"], masterInfo["port"])
-	}
-	if masterAddr == "" {
-		logger.Info("master not registered yet, abort failover")
-		return false, "", nil
-	}
-	if slices.Contains(escapeAddresses, masterAddr) || strings.Contains(flags, "down") || strings.Contains(flags, "disconnected") {
-		if numSlaves := masterInfo["num-slaves"]; numSlaves == "0" || numSlaves == "" {
-			logger.Info("no suitable replica to promote, abort failover")
-			return false, "", nil
-		}
-		return true, masterAddr, nil
-	}
-	return false, "", nil
-}
 
 func checkReadyToFailover(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, logger logr.Logger) ([]string, error) {
 	var healthyNodes []string
@@ -91,82 +63,146 @@ func checkReadyToFailover(ctx context.Context, nodes []string, name string, senA
 var (
 	ErrFailoverRetry = errors.New("failover retry")
 	ErrFailoverAbort = errors.New("failover abort")
+	ErrNoMaster      = errors.New("no master found")
 )
 
-func doFailover(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, escapeAddresses []string, logger logr.Logger) error {
-	var (
-		valkeyCli                  valkey.ValkeyClient
-		noSentinelUsableCheckCount int
-	)
-	for i := 0; noSentinelUsableCheckCount < 2 && i < 6; i++ {
-		healthySentinelNodeAddrs, err := checkReadyToFailover(ctx, nodes, name, senAuthInfo, logger)
-		if err != nil {
-			logger.Error(err, "check monitoring master failed, retry later")
-			time.Sleep(time.Second * 5)
-			continue
-		} else if len(healthySentinelNodeAddrs) < len(nodes)/2+1 {
-			if len(healthySentinelNodeAddrs) == 0 {
-				noSentinelUsableCheckCount += 1
-				time.Sleep(time.Second * 10)
-				continue
+func batchDo(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, minSucceed int, logger logr.Logger,
+	callback func(ctx context.Context, client valkey.ValkeyClient) (any, error)) (rets []any, err error) {
+
+	logger.Info("check sentinel status")
+	healthySentinelNodeAddrs, err := checkReadyToFailover(ctx, nodes, name, senAuthInfo, logger)
+	if err != nil {
+		logger.Error(err, "cluster not ready to do failover, retry in 10s")
+		time.Sleep(time.Second * 10)
+		return nil, err
+	}
+	if len(healthySentinelNodeAddrs) < len(nodes)/2+1 {
+		logger.Error(errors.New("not enough healthy sentinel nodes"), "cluster not ready to do failover, retry in 10s")
+		return nil, ErrFailoverRetry
+	}
+
+	for _, node := range healthySentinelNodeAddrs {
+		if len(rets) >= minSucceed {
+			break
+		}
+		func() {
+			senClient := valkey.NewValkeyClient(node, *senAuthInfo)
+			defer senClient.Close()
+
+			if ret, err := callback(ctx, senClient); err != nil {
+				logger.Error(err, "do command failed", "node", node)
+			} else {
+				rets = append(rets, ret)
 			}
-			logger.Error(errors.New("not enough healthy sentinel nodes"), "cluster not ready to do failover, retry in 5s")
-			time.Sleep(time.Second * 5)
+		}()
+	}
+	return
+}
+
+func getCurrentMaster(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, logger logr.Logger) (string, error) {
+	quorum := len(nodes)/2 + 1
+	masterInfos, err := batchDo(ctx, nodes, name, senAuthInfo, len(nodes), logger, func(ctx context.Context, client valkey.ValkeyClient) (any, error) {
+		if info, err := valkey.StringMap(client.DoWithTimeout(ctx, time.Second*3, "SENTINEL", "MASTER", name)); err != nil {
+			return nil, err
+		} else if info["flags"] == "master" && info["ip"] != "" && info["port"] != "" {
+			return net.JoinHostPort(info["ip"], info["port"]), nil
+		}
+		return nil, errors.New("master not found")
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if len(masterInfos) == 0 {
+		return "", ErrFailoverAbort
+	}
+
+	masterAddr := ""
+	masterGroup := map[string]int{}
+	for _, val := range masterInfos {
+		if val == nil {
 			continue
 		}
-
-		// connect to the first healthy sentinel node
-		for _, node := range healthySentinelNodeAddrs {
-			if valkeyCli, err = func() (valkey.ValkeyClient, error) {
-				senClient := valkey.NewValkeyClient(node, *senAuthInfo)
-				if _, err := senClient.DoWithTimeout(ctx, time.Second, "PING"); err != nil {
-					senClient.Close()
-					return nil, err
-				}
-				return senClient, nil
-			}(); err != nil {
-				logger.Error(err, "connect to sentinel node failed")
-				continue
-			}
+		addr := val.(string)
+		masterGroup[addr]++
+		if masterGroup[addr] >= quorum {
+			masterAddr = addr
 			break
 		}
 	}
-	if valkeyCli == nil {
-		logger.Error(errors.New("no sentinel node usable"), "failover abort")
-		return ErrFailoverAbort
+	if masterAddr == "" {
+		return "", ErrNoMaster
 	}
-	defer valkeyCli.Close()
+	return masterAddr, nil
+}
 
-	nf, masterAddr, err := isNeededToFailover(ctx, valkeyCli, name, escapeAddresses, logger)
-	if err != nil {
-		logger.Error(err, "check failover failed")
-		return ErrFailoverRetry
-	} else if !nf {
-		logger.Info("no need to failover, abort")
-		return ErrFailoverAbort
+func doFailover(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, escapeAddresses map[string]struct{}, logger logr.Logger) error {
+	if masterAddr, err := getCurrentMaster(ctx, nodes, name, senAuthInfo, logger); err != nil {
+		return err
+	} else {
+		fields := strings.Split(masterAddr, ":")
+		ok2 := fields[len(fields)-1] != "6379"
+		if port := fields[len(fields)-1]; port != "6379" {
+			_, ok2 = escapeAddresses[port]
+		}
+		if _, ok := escapeAddresses[masterAddr]; ok || ok2 {
+			logger.Info("current node is master, try failover", "master", masterAddr)
+		} else {
+			logger.Info("master is not in serve addresses, skip", "master", masterAddr, "escapeAddresses", escapeAddresses)
+			return nil
+		}
 	}
 
-	logger.Info("current node need failover, try failover", "master", masterAddr)
-	if _, err := valkeyCli.DoWithTimeout(ctx, time.Second, "SENTINEL", "FAILOVER", name); err != nil {
+	if _, err := batchDo(ctx, nodes, name, senAuthInfo, 1, logger, func(ctx context.Context, senClient valkey.ValkeyClient) (any, error) {
+		return senClient.DoWithTimeout(ctx, time.Second, "SENTINEL", "FAILOVER", name)
+	}); err != nil {
 		logger.Error(err, "do failover failed")
 		return ErrFailoverRetry
+	}
+
+	for j := 0; j < 6; j++ {
+		if masterAddr, err := getCurrentMaster(ctx, nodes, name, senAuthInfo, logger); err != nil {
+			return err
+		} else {
+			fields := strings.Split(masterAddr, ":")
+			ok2 := false
+			if port := fields[len(fields)-1]; port != "6379" {
+				_, ok2 = escapeAddresses[port]
+			}
+			if _, ok := escapeAddresses[masterAddr]; !ok && !ok2 {
+				logger.Info("failover success", "master", masterAddr)
+				return nil
+			}
+		}
+		time.Sleep(time.Second * 5)
 	}
 	return ErrFailoverRetry
 }
 
 func Failover(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) error {
 	var (
-		sentinelUri       = c.String("monitor-uri")
-		name              = c.String("name")
-		podIPs            = c.String("pod-ips")
-		failoverAddresses = c.StringSlice("escape")
+		sentinelUri      = c.String("monitor-uri")
+		name             = c.String("name")
+		podIPs           = c.String("pod-ips")
+		_escapeAddresses = c.StringSlice("escape")
+		escapeAddresses  = make(map[string]struct{})
 	)
 	if sentinelUri == "" {
 		return nil
 	}
+	for _, addr := range _escapeAddresses {
+		if addr != "" && addr != ":" && addr != "[]:" {
+			if strings.HasPrefix(addr, "[") {
+				if a, err := netip.ParseAddrPort(addr); err == nil {
+					addr = net.JoinHostPort(a.Addr().String(), fmt.Sprintf("%d", a.Port()))
+				}
+			}
+			escapeAddresses[addr] = struct{}{}
+		}
+	}
 	if podIPs != "" {
 		for _, ip := range strings.Split(podIPs, ",") {
-			failoverAddresses = append(failoverAddresses, net.JoinHostPort(ip, "6379"))
+			escapeAddresses[net.JoinHostPort(ip, "6379")] = struct{}{}
 		}
 	}
 
@@ -183,19 +219,54 @@ func Failover(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 		return cli.Exit(fmt.Sprintf("load sentinel auth info failed, error=%s", err), 1)
 	}
 
-	for i := 0; i < 10; i++ {
-		err := doFailover(ctx, sentinelNodes, name, senAuthInfo, failoverAddresses, logger)
+	var masterAddr string
+	for range 10 {
+		select {
+		case <-ctx.Done():
+			return context.DeadlineExceeded
+		default:
+		}
+
+		err := doFailover(ctx, sentinelNodes, name, senAuthInfo, escapeAddresses, logger)
 		if err == ErrFailoverAbort {
-			break
-		} else if err == ErrFailoverRetry {
-			time.Sleep(time.Second * 5)
-			continue
+			logger.Error(err, "failover aborted")
+			return err
 		} else if err != nil {
-			logger.Error(err, "failover failed")
+			logger.Error(err, "do failover failed")
 			time.Sleep(time.Second * 5)
 			continue
 		}
-		break
+
+		if masterAddr, err = getCurrentMaster(ctx, sentinelNodes, name, senAuthInfo, logger); err != nil {
+			if err == ErrFailoverAbort {
+				logger.Error(err, "failover aborted")
+				return err
+			}
+			logger.Error(err, "get current master failed")
+			continue
+		} else {
+			fields := strings.Split(masterAddr, ":")
+			ok2 := false
+			if port := fields[len(fields)-1]; port != "6379" {
+				_, ok2 = escapeAddresses[port]
+			}
+			if _, ok := escapeAddresses[masterAddr]; ok || ok2 {
+				logger.Info("current node is master, try failover", "master", masterAddr)
+				time.Sleep(time.Second * 5)
+			} else {
+				logger.Info("master is not in serve addresses, skip", "master", masterAddr, "escapeAddresses", escapeAddresses)
+				break
+			}
+		}
+	}
+	if masterAddr == "" {
+		return ErrNoMaster
+	} else if _, ok := escapeAddresses[masterAddr]; ok {
+		logger.Info("try failover failed", "old master", masterAddr)
+		return ErrFailoverAbort
+	} else {
+		logger.Info("master is not current node", "master", masterAddr)
+		fmt.Println(masterAddr)
 	}
 	return nil
 }

@@ -20,7 +20,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/chideat/valkey-operator/cmd/helper/commands"
 	"github.com/chideat/valkey-operator/cmd/helper/commands/runner"
+	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	"github.com/urfave/cli/v2"
 	"k8s.io/client-go/kubernetes"
@@ -39,6 +41,20 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 	logger.Info("persistent sentinel.conf to secret")
 	if err := runner.SyncFromLocalToEtcd(c, ctx, "secret", false, logger); err != nil {
 		logger.Error(err, "persistent sentinel.conf to configmap failed")
+	}
+
+	authInfo, err := commands.LoadAuthInfo(c, ctx)
+	if err != nil {
+		logger.Error(err, "load auth info failed")
+		return err
+	}
+	valkeyClient := valkey.NewValkeyClient("local.inject:26379", *authInfo)
+	defer valkeyClient.Close()
+
+	time.Sleep(time.Second * 30)
+
+	if _, err = valkeyClient.Do(ctx, "SHUTDOWN"); err != nil {
+		logger.Error(err, "shutdown sentinel failed")
 	}
 	return nil
 }

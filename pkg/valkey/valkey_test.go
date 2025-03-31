@@ -439,3 +439,68 @@ func TestValkeyClient_TLS(t *testing.T) {
 		t.Fatalf("Expected non-nil Info")
 	}
 }
+
+func TestValkeyClient_Pipeline(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    [][]any
+		want    []PipelineResult
+		wantErr bool
+	}{
+		{
+			name: "single command",
+			args: [][]any{
+				{"SET", "key1", "value1"},
+			},
+			want: []PipelineResult{
+				{Value: "OK", Error: nil},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple commands",
+			args: [][]any{
+				{"SET", "key1", "value1"},
+				{"GET", "key1"},
+				{"DEL", "key1"},
+			},
+			want: []PipelineResult{
+				{Value: "OK", Error: nil},
+				{Value: "value1", Error: nil},
+				{Value: int64(1), Error: nil},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid command",
+			args: [][]any{
+				{123, "key1", "value1"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := miniredis.Run()
+			if err != nil {
+				t.Fatalf("Failed to start miniredis: %v", err)
+			}
+			defer s.Close()
+
+			client := NewValkeyClient(s.Addr(), AuthConfig{})
+			got, err := client.Pipeline(context.Background(), tt.args)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Pipeline() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if len(got) != len(tt.want) {
+					t.Errorf("Pipeline() got %v results, want %v", len(got), len(tt.want))
+				}
+			}
+		})
+	}
+}

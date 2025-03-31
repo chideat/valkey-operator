@@ -74,7 +74,7 @@ func (m *MockValkeyNode) ConfigedMasterIP() string                             {
 func (m *MockValkeyNode) ConfigedMasterPort() string                           { return "6379" }
 func (m *MockValkeyNode) Setup(ctx context.Context, margs ...[]any) error      { return nil }
 func (m *MockValkeyNode) ReplicaOf(ctx context.Context, ip, port string) error { return nil }
-func (m *MockValkeyNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (interface{}, error) {
+func (m *MockValkeyNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (any, error) {
 	return nil, nil
 }
 func (m *MockValkeyNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {

@@ -88,7 +88,7 @@ func NewSlots() *Slots {
 	}
 }
 
-func LoadSlots(v interface{}) (*Slots, error) {
+func LoadSlots(v any) (*Slots, error) {
 	s := NewSlots()
 	if err := s.Load(v); err != nil {
 		return nil, err
@@ -184,7 +184,7 @@ func (s *Slots) parseStrSlots(v string) (ret map[int]SlotAssignStatus, nodes map
 	return
 }
 
-func (s *Slots) Load(v interface{}) error {
+func (s *Slots) Load(v any) error {
 	if s == nil {
 		return nil
 	}
@@ -249,7 +249,7 @@ func (s *Slots) Load(v interface{}) error {
 }
 
 // Set
-func (s *Slots) Set(v interface{}, status SlotAssignStatus) error {
+func (s *Slots) Set(v any, status SlotAssignStatus) error {
 	if s == nil {
 		return nil
 	}

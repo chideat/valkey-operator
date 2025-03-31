@@ -280,7 +280,7 @@ func importSlots(ctx context.Context, nodes valkey.ClusterNodes, currentNode, so
 		}
 
 		// references: https://valkey.io/commands/migrate/
-		args := []interface{}{localAddr, DefaultValkeyServerPort, "", 0, 3600000, "REPLACE"}
+		args := []any{localAddr, DefaultValkeyServerPort, "", 0, 3600000, "REPLACE"}
 		if authInfo.Password != "" {
 			if authInfo.Username != "" && authInfo.Username != "default" {
 				args = append(args, "AUTH2", authInfo.Username, authInfo.Password)

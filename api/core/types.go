@@ -75,6 +75,9 @@ const (
 )
 
 type Storage struct {
+	// The annnotations of the service which will be attached to services
+	Annotations map[string]string `json:"annotations,omitempty"`
+
 	// storageClassName is the name of the StorageClass required by the claim.
 	// if not set, the default StorageClass will be used
 	// +optional
@@ -82,7 +85,7 @@ type Storage struct {
 
 	// Capacity is the cap of the volume to request.
 	// if not set and StorageClassName is set, the default StorageClass size will be the double size of memory limit.
-	Capacity resource.Quantity `json:"capacity,omitempty"`
+	Capacity *resource.Quantity `json:"capacity,omitempty"`
 
 	// AccessMode is the access mode of the volume.
 	// +kubebuilder:default:=ReadWriteOnce

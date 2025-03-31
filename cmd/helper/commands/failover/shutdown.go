@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -33,12 +34,49 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+func loadAnnounceAddress(filepath string, logger logr.Logger) string {
+	if filepath == "" {
+		filepath = "/data/announce.conf"
+	}
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		logger.Error(err, "read announce file failed", "path", filepath)
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+
+	var (
+		ip   string
+		port string
+	)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		if fields[0] == "replica-announce-ip" {
+			ip = fields[1]
+		}
+		if fields[0] == "replica-announce-port" {
+			port = fields[1]
+		}
+	}
+	if ip != "" && port != "" {
+		return net.JoinHostPort(ip, port)
+	}
+	return ""
+}
+
 func getValkeyInfo(ctx context.Context, valkeyClient valkey.ValkeyClient, logger logr.Logger) (*valkey.NodeInfo, error) {
 	var (
 		err  error
 		info *valkey.NodeInfo
 	)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if info, err = valkeyClient.Info(ctx); err != nil {
 			logger.Error(err, "get info failed, retry...")
 			time.Sleep(time.Second)
@@ -54,7 +92,7 @@ func getValkeyConfig(ctx context.Context, valkeyClient valkey.ValkeyClient, logg
 		err error
 		cfg map[string]string
 	)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		cfg, err = valkeyClient.ConfigGet(ctx, "*")
 		if err != nil {
 			logger.Error(err, "get config failed")
@@ -94,90 +132,119 @@ func checkReadyToFailover(ctx context.Context, nodes []string, name string, senA
 }
 
 var (
-	ErrFailoverRetry = errors.New("failover retry")
-	ErrFailoverAbort = errors.New("failover abort")
+	ErrFailoverRetry    = errors.New("failover retry")
+	ErrFailoverAbort    = errors.New("failover abort")
+	ErrNoSentinelUsable = errors.New("no sentinel node usable")
 )
 
-func doFailover(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo, serveAddresses map[string]struct{}, logger logr.Logger) error {
-	var (
-		senClient                  valkey.ValkeyClient
-		noSentinelUsableCheckCount int
-	)
-	for i := 0; noSentinelUsableCheckCount < 2; i++ {
+func doFailover(ctx context.Context, nodes []string, name string, senAuthInfo *valkey.AuthInfo,
+	serveAddresses map[string]struct{}, logger logr.Logger) error {
+
+	batchDo := func(ctx context.Context, minSucceed int, callback func(ctx context.Context, client valkey.ValkeyClient) (any, error)) (rets []any, err error) {
 		logger.Info("check sentinel status")
 		healthySentinelNodeAddrs, err := checkReadyToFailover(ctx, nodes, name, senAuthInfo, logger)
 		if err != nil {
 			logger.Error(err, "cluster not ready to do failover, retry in 10s")
 			time.Sleep(time.Second * 10)
-			continue
-		} else if len(healthySentinelNodeAddrs) < len(nodes)/2+1 {
-			if len(healthySentinelNodeAddrs) == 0 {
-				noSentinelUsableCheckCount += 1
-				time.Sleep(time.Second * 15)
-				continue
-			}
+			return nil, err
+		}
+		if len(healthySentinelNodeAddrs) == 0 {
+			return nil, ErrNoSentinelUsable
+		}
+		if len(healthySentinelNodeAddrs) < len(nodes)/2+1 {
 			logger.Error(errors.New("not enough healthy sentinel nodes"), "cluster not ready to do failover, retry in 10s")
-			time.Sleep(time.Second * 10)
-			continue
+			return nil, ErrFailoverRetry
 		}
-		noSentinelUsableCheckCount = 0
 
-		// connect to the first healthy sentinel node
 		for _, node := range healthySentinelNodeAddrs {
-			if senClient, err = func() (valkey.ValkeyClient, error) {
+			if len(rets) >= minSucceed {
+				break
+			}
+			func() {
 				senClient := valkey.NewValkeyClient(node, *senAuthInfo)
-				if _, err := senClient.DoWithTimeout(ctx, time.Second, "PING"); err != nil {
-					senClient.Close()
-					return nil, err
+				defer senClient.Close()
+
+				if ret, err := callback(ctx, senClient); err != nil {
+					logger.Error(err, "do command failed", "node", node)
+				} else {
+					rets = append(rets, ret)
 				}
-				return senClient, nil
-			}(); err != nil {
-				logger.Error(err, "connect to sentinel node failed")
+			}()
+		}
+		return
+	}
+
+	getCurrentMaster := func(ctx context.Context, nodes []string) (string, error) {
+		quorum := len(nodes)/2 + 1
+		masterInfos, err := batchDo(ctx, len(nodes), func(ctx context.Context, client valkey.ValkeyClient) (any, error) {
+			if info, err := valkey.StringMap(client.DoWithTimeout(ctx, time.Second*3, "SENTINEL", "MASTER", name)); err != nil {
+				return nil, err
+			} else if info["flags"] == "master" && info["ip"] != "" && info["port"] != "" {
+				return net.JoinHostPort(info["ip"], info["port"]), nil
+			}
+			return nil, errors.New("master not found")
+		})
+		if err != nil {
+			logger.Error(err, "get master from sentinel failed")
+			return "", err
+		}
+
+		masterAddr := ""
+		masterGroup := map[string]int{}
+		for _, val := range masterInfos {
+			if val == nil {
 				continue
 			}
-			break
-		}
-		if senClient != nil {
-			break
-		}
-		time.Sleep(time.Second * 10)
-	}
-	if senClient == nil {
-		logger.Error(errors.New("no sentinel node usable"), "failover abort")
-		return ErrFailoverAbort
-	}
-	defer senClient.Close()
-
-	masterInfo, err := valkey.StringMap(senClient.DoWithTimeout(ctx, time.Second, "SENTINEL", "MASTER", name))
-	if err != nil {
-		logger.Error(err, "get master info failed")
-		return ErrFailoverRetry
-	}
-	var addr string
-	if ip, port := masterInfo["ip"], masterInfo["port"]; ip != "" && port != "" {
-		addr = net.JoinHostPort(ip, port)
-	}
-
-	logger.Info("current node is master, try failover", "master", addr)
-	if _, err = senClient.DoWithTimeout(ctx, time.Second, "SENTINEL", "FAILOVER", name); err != nil {
-		logger.Error(err, "do failover failed")
-		return ErrFailoverRetry
-	}
-
-	for j := 0; j < 6; j++ {
-		if masterInfo, err := valkey.StringMap(senClient.DoWithTimeout(ctx, time.Second, "SENTINEL", "MASTER", name)); err != nil {
-			logger.Error(err, "get info failed")
-			return ErrFailoverRetry
-		} else {
-			var addr string
-			if ip, port := masterInfo["ip"], masterInfo["port"]; ip != "" && port != "" {
-				addr = net.JoinHostPort(ip, port)
+			addr := val.(string)
+			masterGroup[addr]++
+			if masterGroup[addr] >= quorum {
+				masterAddr = addr
+				break
 			}
-			if addr != "" {
-				if _, ok := serveAddresses[addr]; !ok {
-					logger.Info("failover success", "master", addr)
-					return nil
-				}
+		}
+		if masterAddr == "" {
+			return "", ErrFailoverRetry
+		}
+		return masterAddr, nil
+	}
+
+	if masterAddr, err := getCurrentMaster(ctx, nodes); err != nil {
+		logger.Error(err, "get current master failed")
+		return err
+	} else {
+		fields := strings.Split(masterAddr, ":")
+		ok2 := false
+		if port := fields[len(fields)-1]; port != "6379" {
+			_, ok2 = serveAddresses[port]
+		}
+		if _, ok := serveAddresses[masterAddr]; !ok && !ok2 {
+			logger.Info("master is not in serve addresses, skip", "master", masterAddr, "serveAddresses", serveAddresses)
+			return nil
+		} else {
+			logger.Info("current node is master, try failover", "master", masterAddr)
+		}
+	}
+
+	if _, err := batchDo(ctx, 1, func(ctx context.Context, senClient valkey.ValkeyClient) (any, error) {
+		return senClient.DoWithTimeout(ctx, time.Second, "SENTINEL", "FAILOVER", name)
+	}); err != nil {
+		logger.Error(err, "do failover failed")
+		return err
+	}
+
+	for range 6 {
+		if masterAddr, err := getCurrentMaster(ctx, nodes); err != nil {
+			logger.Error(err, "get current master failed")
+			return err
+		} else {
+			fields := strings.Split(masterAddr, ":")
+			ok2 := false
+			if port := fields[len(fields)-1]; port != "6379" {
+				_, ok2 = serveAddresses[port]
+			}
+			if _, ok := serveAddresses[masterAddr]; !ok && !ok2 {
+				logger.Info("failover success", "master", masterAddr)
+				return nil
 			}
 		}
 		time.Sleep(time.Second * 5)
@@ -185,11 +252,7 @@ func doFailover(ctx context.Context, nodes []string, name string, senAuthInfo *v
 	return ErrFailoverRetry
 }
 
-// Shutdown 在退出时做 failover
-//
-// NOTE: 在4.0, 5.0中，在更新密码时，会重启实例。但是由于密码在重启前已经热更新，导致其他脚本无法连接到实例，包括shutdown脚本
-// 为了解决这个问题，针对4,5 版本，会在重启前，先做failover，将master failover 到-0 节点。
-// 由于重启是逆序的，最后一个pod启动成功之后，会使用新密码连接到 master，从而确保服务一直可用,切数据不会丢失
+// Shutdown shutdown the node and do failover before complete shutdown.
 func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) error {
 	var (
 		podIPs  = c.String("pod-ips")
@@ -225,6 +288,13 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 	}
 
 	if info.Role == "master" && monitor == "sentinel" {
+		// set node priority to 0 to prevent it from being elected as master again.
+		if _, err := valkeyClient.DoWithTimeout(ctx, time.Second*3, "CONFIG", "SET", "replica-priority", "0"); err != nil {
+			logger.Error(err, "set replica priority failed, ignored and continue")
+		} else {
+			time.Sleep(time.Second * 5)
+		}
+
 		err = func() error {
 			serveAddresses := map[string]struct{}{}
 			if podIPs != "" {
@@ -233,12 +303,22 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				}
 			}
 			if config, err := getValkeyConfig(ctx, valkeyClient, logger); err != nil {
-				logger.Error(err, "get config failed ")
+				logger.Error(err, "get config failed")
 			} else {
 				ip, port := config["replica-announce-ip"], config["replica-announce-port"]
 				if ip != "" && port != "" {
 					serveAddresses[net.JoinHostPort(ip, port)] = struct{}{}
 				}
+				if port != "6379" {
+					serveAddresses[port] = struct{}{}
+				}
+			}
+			if addr := loadAnnounceAddress("", logger); addr != "" {
+				fields := strings.Split(addr, ":")
+				if fields[len(fields)-1] != "6379" {
+					serveAddresses[fields[len(fields)-1]] = struct{}{}
+				}
+				serveAddresses[addr] = struct{}{}
 			}
 
 			var sentinelNodes []string
@@ -252,14 +332,24 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				sentinelNodes = strings.Split(u.Host, ",")
 			}
 
+			logger.Info("do failover", "sentinelNodes", sentinelNodes, "serveAddresses", serveAddresses)
+			noSentinelRetry := 0
 			for {
 				if err := doFailover(ctx, sentinelNodes, name, senAuthInfo, serveAddresses, logger); err != nil {
-					if err == ErrFailoverRetry {
-						time.Sleep(time.Second * 10)
-						continue
+					if err == ErrFailoverAbort {
+						logger.Error(err, "failover aborted")
+						return err
+					} else if err == ErrNoSentinelUsable {
+						noSentinelRetry += 1
+						if noSentinelRetry >= 6 {
+							return err
+						}
+						logger.Error(err, "no sentinel node usable, retry in 10s")
+					} else {
+						noSentinelRetry = 0
 					}
-					logger.Error(err, "failover aborted")
-					return err
+					time.Sleep(time.Second * 10)
+					continue
 				}
 				// wait 30 for data sync
 				time.Sleep(time.Second * 30)
@@ -267,6 +357,9 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 			}
 		}()
 	}
+
+	// sleep some time for other new start pod sync info
+	time.Sleep(time.Second * 30)
 
 	logger.Info("do shutdown node")
 	// NOTE: here set timeout to 300s, which will try best to do a shutdown snapshot

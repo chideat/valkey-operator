@@ -63,6 +63,8 @@ type SentinelInstance interface {
 	Replication() SentinelReplication
 	Nodes() []SentinelNode
 	RawNodes(ctx context.Context) ([]corev1.Pod, error)
+	// Clusters returns the clusters which this sentinel is monitoring
+	Clusters(ctx context.Context) ([]string, error)
 
 	// helper methods
 	GetPassword() (string, error)

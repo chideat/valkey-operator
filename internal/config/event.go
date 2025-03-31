@@ -27,6 +27,7 @@ const (
 	EventFailover       EventReason = "Failover"
 
 	EventSetupMaster   EventReason = "SetupMaster"
+	EventResetReplica  EventReason = "ResetReplica"
 	EventAllocateSlots EventReason = "AllocatedSlots"
 	EventAssignSlots   EventReason = "AssignSlots"
 	EventRebalance     EventReason = "Rebalancing"

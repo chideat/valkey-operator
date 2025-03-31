@@ -126,7 +126,7 @@ func (w *FileWatcher) Run(ctx context.Context) error {
 	defer watcher.Close()
 
 	checker := func(ctx context.Context) {
-		w.watchingFiles.Range(func(key, value interface{}) bool {
+		w.watchingFiles.Range(func(key, value any) bool {
 			fs, _ := value.(*FileStat)
 			if err := w.watch(ctx, watcher, fs); err != nil {
 				w.logger.Error(err, "watch file state failed", "file", fs.filepath)

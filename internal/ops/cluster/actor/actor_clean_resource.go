@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -91,9 +91,9 @@ func (a *actorCleanResource) Do(ctx context.Context, val types.Instance) *actor.
 	}
 
 	if len(failedNodeId) > 0 {
-		var margs [][]interface{}
+		var margs [][]any
 		for _, id := range failedNodeId {
-			margs = append(margs, []interface{}{"cluster", "forget", id})
+			margs = append(margs, []any{"cluster", "forget", id})
 		}
 		for i := 0; i < int(cr.Spec.Replicas.Shards) && len(cluster.Shards()) >= int(cr.Spec.Replicas.Shards); i++ {
 			shard := cluster.Shards()[i]

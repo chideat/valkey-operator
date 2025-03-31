@@ -182,6 +182,17 @@ func (sn *SentinelNode) Failover(ctx context.Context, name string) error {
 	return fmt.Errorf("failover timeout, old master addr %s, current master addr %s", masterAddr, currentMasterAddr)
 }
 
+func (sn *SentinelNode) Reset(ctx context.Context, name string) error {
+	if sn == nil || sn.client == nil {
+		return fmt.Errorf("no client")
+	}
+
+	if _, err := sn.client.Do(ctx, "SENTINEL", "RESET", name); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (sn *SentinelNode) IsReady() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

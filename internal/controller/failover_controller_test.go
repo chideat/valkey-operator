@@ -31,6 +31,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 )
 
 var _ = Describe("Failover Controller", func() {
@@ -53,6 +54,9 @@ var _ = Describe("Failover Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
+						Annotations: map[string]string{
+							builder.CRVersionKey: "0.1.0",
+						},
 					},
 					Spec: valkeybufredv1alpha1.FailoverSpec{
 						Image:           "valkey/valkey:8.0",
@@ -72,7 +76,7 @@ var _ = Describe("Failover Controller", func() {
 						Access:   core.InstanceAccess{},
 						Sentinel: &valkeybufredv1alpha1.SentinelSettings{
 							SentinelSpec: valkeybufredv1alpha1.SentinelSpec{
-								Image:    "valkey/sentinel:8.0",
+								Image:    "valkey/valkey:8.0",
 								Replicas: 3,
 							},
 						},

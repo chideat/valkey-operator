@@ -232,7 +232,7 @@ func (s *ManualMonitor) Failover(ctx context.Context) error {
 	}
 
 	if masterCandidate != nil {
-		if err := masterCandidate.ReplicaOf(ctx, "no", "one"); err != nil {
+		if err := masterCandidate.ReplicaOf(ctx, "NO", "ONE"); err != nil {
 			return err
 		}
 		time.Sleep(time.Second)
@@ -279,5 +279,9 @@ func (s *ManualMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNode
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *ManualMonitor) Reset(ctx context.Context) error {
 	return nil
 }
