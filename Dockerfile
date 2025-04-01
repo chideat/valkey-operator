@@ -32,7 +32,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM alpine:latest
 
-LABEL org.opencontainers.image.source https://github.com/chideat/valkey-operator
+LABEL org.opencontainers.image.source=https://github.com/chideat/valkey-operator
 
 WORKDIR /
 COPY --link --from=builder --chmod=555 /workspace/manager .
