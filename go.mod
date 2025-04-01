@@ -2,7 +2,7 @@ module github.com/chideat/valkey-operator
 
 go 1.23.0
 
-toolchain go1.24.0
+toolchain go1.24.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
@@ -18,7 +18,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
 	go.uber.org/zap v1.27.0
-	gotest.tools/v3 v3.5.1
+	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
