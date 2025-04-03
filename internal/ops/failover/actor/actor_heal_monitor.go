@@ -24,15 +24,17 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -78,6 +80,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 		instMonitor     = inst.Monitor()
 		masterCandidate types.ValkeyNode
 		monitoringNodes = map[string]struct{}{}
+		idAddrMap       = map[string][]string{}
 		// used to check if all any node online, if not, we should reset the monitor
 		onlineNodeCount int
 		// used to indicate whether a node has been registered, if no nodes are registered,
@@ -94,21 +97,26 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 			if monitorMaster == nil {
 				logger.Error(err, "multi masters found, sentinel split brain")
 				return actor.RequeueWithError(err)
+			} else {
+				monitoringNodes[monitorMaster.Address()] = struct{}{}
+				if monitor.IsMonitoringNodeOnline(monitorMaster) {
+					onlineNodeCount += 1
+				}
 			}
-
-			monitoringNodes[monitorMaster.Address()] = struct{}{}
-			if monitor.IsMonitoringNodeOnline(monitorMaster) {
-				onlineNodeCount += 1
-			}
-		} else if !errors.Is(err, monitor.ErrNoMaster) &&
-			!errors.Is(err, monitor.ErrAddressConflict) {
+		} else if !errors.Is(err, monitor.ErrNoMaster) && !errors.Is(err, monitor.ErrAddressConflict) {
 			logger.Error(err, "failed to get master node")
 			return actor.RequeueWithError(err)
 		}
 	} else {
 		monitoringNodes[monitorMaster.Address()] = struct{}{}
+		if monitorMaster.Port != "6379" {
+			monitoringNodes[monitorMaster.Port] = struct{}{}
+		}
 		if monitor.IsMonitoringNodeOnline(monitorMaster) {
 			onlineNodeCount += 1
+			if monitorMaster.RunId != "" && !slices.Contains(idAddrMap[monitorMaster.RunId], monitorMaster.Address()) {
+				idAddrMap[monitorMaster.RunId] = append(idAddrMap[monitorMaster.RunId], monitorMaster.Address())
+			}
 		}
 	}
 
@@ -123,8 +131,14 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 	} else {
 		for _, node := range replicaNodes {
 			monitoringNodes[node.Address()] = struct{}{}
+			if node.Port != "6379" {
+				monitoringNodes[node.Port] = struct{}{}
+			}
 			if monitor.IsMonitoringNodeOnline(node) {
 				onlineNodeCount += 1
+				if node.RunId != "" && !slices.Contains(idAddrMap[node.RunId], node.Address()) {
+					idAddrMap[node.RunId] = append(idAddrMap[node.RunId], node.Address())
+				}
 			}
 		}
 	}
@@ -144,88 +158,33 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 				(monitorMaster.Port != "6379" && monitorMaster.Port == strconv.Itoa(node.Port()))) {
 			masterCandidate = node
 		}
+
+		// NOTE: only check replica nodes
+		if node.Role() == core.NodeRoleReplica {
+			registeredAddrs := idAddrMap[node.Info().RunId]
+			if (len(registeredAddrs) == 1 && registeredAddrs[0] != addr && registeredAddrs[0] != addr2) ||
+				len(registeredAddrs) > 1 {
+				// found a node registered with different address
+				logger.Info("node registered with different address", "node", node.GetName(), "registered", registeredAddrs, "current", addr)
+				// replicaof no one
+				if err := node.ReplicaOf(ctx, "NO", "ONE"); err != nil {
+					logger.Error(err, "failed to reset replicaof", "node", node.GetName())
+					return actor.RequeueWithError(err)
+				}
+				inst.SendEventf(corev1.EventTypeWarning, config.EventResetReplica, "reset replica %s", node.GetName())
+
+				// reset all sentinels
+				_ = inst.Monitor().Reset(ctx)
+
+				return actor.RequeueAfter(time.Second * 5)
+			}
+		}
 	}
 
 	if monitorMaster == nil || !monitorInited || onlineNodeCount == 0 || registeredNodeCount == 0 {
 		nodes := inst.Nodes()
-		// cases:
-		// 1. new create instance, should select one node as master
-		// 2. sentinel is new created, should check who is the master, or how can do as a master
-		listeningMasters := map[string]int{}
-		if masterCandidate == nil {
-			// check if master exists
-			for _, node := range nodes {
-				if node.Role() == core.NodeRoleMaster && node.Info().ConnectedReplicas > 0 {
-					masterCandidate = node
-					break
-				}
-			}
-		}
 
-		if masterCandidate == nil {
-			// check if exists nodes got most replicas
-			for _, node := range nodes {
-				if node.Role() == core.NodeRoleReplica && node.IsMasterLinkUp() {
-					addr := net.JoinHostPort(node.ConfigedMasterIP(), node.ConfigedMasterPort())
-					listeningMasters[addr]++
-				}
-			}
-			masterCandidate = func() types.ValkeyNode {
-				var (
-					listeningMostAddr string
-					count             int
-				)
-				for addr, c := range listeningMasters {
-					if listeningMostAddr == "" {
-						listeningMostAddr = addr
-						count = c
-						continue
-					} else if c > count {
-						listeningMostAddr = addr
-						count = c
-					}
-				}
-				if listeningMostAddr != "" {
-					for _, node := range nodes {
-						if net.JoinHostPort(node.ConfigedMasterIP(), node.ConfigedMasterPort()) == listeningMostAddr {
-							return node
-						}
-					}
-				}
-				return nil
-			}()
-		}
-
-		if masterCandidate == nil {
-			// find node with most repl offset
-			replIds := map[string]struct{}{}
-			for _, node := range nodes {
-				if node.Info().MasterReplOffset > 0 {
-					replIds[node.Info().MasterReplId] = struct{}{}
-				}
-			}
-			if len(replIds) == 1 {
-				slices.SortStableFunc(nodes, func(i, j types.ValkeyNode) int {
-					if i.Info().MasterReplOffset >= j.Info().MasterReplOffset {
-						return -1
-					}
-					return 1
-				})
-				masterCandidate = nodes[0]
-			}
-		}
-
-		if masterCandidate == nil {
-			// selected uptime longest node as master
-			slices.SortStableFunc(nodes, func(i, j types.ValkeyNode) int {
-				if i.Info().UptimeInSeconds >= j.Info().UptimeInSeconds {
-					return -1
-				}
-				return 1
-			})
-			masterCandidate = nodes[0]
-		}
-
+		masterCandidate = a.candidatePicker(ctx, nodes)
 		if masterCandidate != nil {
 			if !masterCandidate.IsReady() {
 				logger.Error(fmt.Errorf("candicate master not ready"), "selected master node is not ready", "node", masterCandidate.GetName())
@@ -244,14 +203,14 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 			return actor.RequeueWithError(err)
 		}
 	} else {
-		if masterCandidate != nil && masterCandidate.Role() != core.NodeRoleMaster {
+		if masterCandidate != nil && masterCandidate.Role() != core.NodeRoleMaster && masterCandidate.Config()["replica-priority"] != "0" {
 			// exists cases all nodes are replicas, and sentinel connected to one of this replicas
-			if err := masterCandidate.Setup(ctx, []any{"REPLICAOF", "NO", "ONE"}); err != nil {
+			if err := masterCandidate.ReplicaOf(ctx, "NO", "ONE"); err != nil {
 				logger.Error(err, "failed to setup replicaof", "node", masterCandidate.GetName())
 				return actor.RequeueWithError(err)
 			}
 			addr := net.JoinHostPort(masterCandidate.DefaultIP().String(), strconv.Itoa(masterCandidate.Port()))
-			inst.SendEventf(corev1.EventTypeWarning, config.EventSetupMaster, "reset slave %s node as new master", addr)
+			inst.SendEventf(corev1.EventTypeWarning, config.EventSetupMaster, "reset replica %s node as new master", addr)
 			return actor.Requeue()
 		}
 
@@ -284,7 +243,7 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 			inst.SendEventf(corev1.EventTypeWarning, config.EventFailover, "try failover as no master found")
 			return actor.Requeue()
 			// TODO: maybe we can manually setup the replica as a new master
-		} else {
+		} else if masterCandidate.Config()["replica-priority"] != "0" {
 			masterAddr := monitorMaster.Address()
 			// check all other nodes connected to master
 			for _, node := range inst.Nodes() {
@@ -294,7 +253,8 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 				}
 				listeningAddr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 				listeningInternalAddr := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalIPort()))
-				if masterAddr == listeningAddr || masterAddr == listeningInternalAddr {
+				if masterAddr == listeningAddr || masterAddr == listeningInternalAddr ||
+					(monitorMaster.Port != "6379" && monitorMaster.Port == strconv.Itoa(node.Port())) {
 					continue
 				}
 
@@ -312,7 +272,121 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 					continue
 				}
 			}
+		} else {
+			logger.Info("node is flaged not to failover", "node", masterCandidate.GetName())
+			return actor.Requeue()
 		}
 	}
 	return nil
+}
+
+func (a *actorHealMaster) candidatePicker(ctx context.Context, nodes []types.ValkeyNode) types.ValkeyNode {
+	// cases:
+	// 1. new create instance, should select one node as master
+	// 2. sentinel is new created, should check who is the master, or how can do as a master
+
+	tmpNodes := nodes
+	nodes = nodes[0:0]
+	for _, node := range tmpNodes {
+		if err := node.Refresh(ctx); err != nil {
+			a.logger.Error(err, "failed to refresh node", "node", node.GetName())
+			continue
+		}
+		if !node.IsReady() || node.Config()["replica-priority"] == "0" {
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	var (
+		readyNodes []types.ValkeyNode
+		maxVersion version.ValkeyVersion
+		dbsize     int64
+		onlineTime int64
+	)
+	// check if master exists
+	for _, node := range nodes {
+		if node.Role() == core.NodeRoleMaster && node.Info().Dbsize > 0 {
+			readyNodes = append(readyNodes, node)
+			if node.CurrentVersion().Compare(maxVersion) > 0 {
+				maxVersion = node.CurrentVersion()
+			}
+			if node.Info().Dbsize > dbsize {
+				dbsize = node.Info().Dbsize
+			}
+			if node.Info().UptimeInSeconds > onlineTime {
+				onlineTime = node.Info().UptimeInSeconds
+			}
+		}
+	}
+
+	if len(readyNodes) == 1 {
+		return readyNodes[0]
+	} else if len(readyNodes) > 1 {
+		// check nodes with most data
+		slices.SortStableFunc(readyNodes, func(i, j types.ValkeyNode) int {
+			if i.Info().Dbsize >= j.Info().Dbsize {
+				return 1
+			}
+			return -1
+		})
+
+		for _, node := range readyNodes {
+			if node.CurrentVersion() == maxVersion {
+				return node
+			}
+		}
+		return readyNodes[0]
+	}
+
+	// check if replicas exists
+	maxVersion = version.ValkeyVersionUnknown
+	dbsize = 0
+	onlineTime = 0
+	readyNodes = readyNodes[0:0]
+	for _, node := range nodes {
+		if node.Info().Dbsize > 0 {
+			readyNodes = append(readyNodes, node)
+			if node.CurrentVersion().Compare(maxVersion) > 0 {
+				maxVersion = node.CurrentVersion()
+			}
+			if node.Info().Dbsize > dbsize {
+				dbsize = node.Info().Dbsize
+			}
+		}
+		if node.Info().UptimeInSeconds > onlineTime {
+			onlineTime = node.Info().UptimeInSeconds
+		}
+	}
+
+	if len(readyNodes) == 1 {
+		return readyNodes[0]
+	} else if len(readyNodes) > 1 {
+		// check nodes with most data
+		slices.SortStableFunc(readyNodes, func(i, j types.ValkeyNode) int {
+			if i.Info().Dbsize >= j.Info().Dbsize {
+				return 1
+			}
+			return -1
+		})
+
+		for _, node := range readyNodes {
+			if node.CurrentVersion() == maxVersion {
+				return node
+			}
+		}
+		return readyNodes[0]
+	}
+
+	// selected uptime longest node as master
+	slices.SortStableFunc(nodes, func(i, j types.ValkeyNode) int {
+		if i.Info().UptimeInSeconds >= j.Info().UptimeInSeconds {
+			return 1
+		}
+		return -1
+	})
+	return nodes[0]
 }

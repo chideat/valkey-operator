@@ -53,7 +53,7 @@ const (
 	PasswordVolumeMountPath  = "/account"
 
 	ConfigVolumeName      = "conf"
-	ConfigVolumeMountPath = "/valkey"
+	ConfigVolumeMountPath = "/etc/valkey"
 
 	ValkeyOptVolumeName      = "valkey-opt"
 	ValkeyOptVolumeMountPath = "/opt"
@@ -137,6 +137,10 @@ func buildEnvs(inst types.ClusterInstance, headlessSvcName string) []corev1.EnvV
 			Name:  "SERVICE_TYPE",
 			Value: string(cluster.Spec.Access.ServiceType),
 		},
+		{
+			Name:  "SERVICE_NAME",
+			Value: string(headlessSvcName),
+		},
 	}
 
 	if cluster.Spec.Access.EnableTLS {
@@ -166,7 +170,7 @@ func GenerateStatefulSet(inst types.ClusterInstance, index int) (*appsv1.Statefu
 	envs := buildEnvs(inst, headlessSvcName)
 
 	// persistent shard id
-	data := sha1.Sum([]byte(fmt.Sprintf("%s/%s", cluster.Namespace, stsName))) // #nosec
+	data := sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", cluster.Namespace, stsName)) // #nosec
 	shardId := fmt.Sprintf("%x", data)
 	envs = append(envs, corev1.EnvVar{
 		Name:  "SHARD_ID",
@@ -193,9 +197,9 @@ func GenerateStatefulSet(inst types.ClusterInstance, index int) (*appsv1.Statefu
 			OwnerReferences: util.BuildOwnerReferences(cluster),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			ServiceName: headlessSvcName,
-			Replicas:    ptr.To(spec.Replicas.ReplicasOfShard + 1),
-			// TODO: added suuport for PodManagementPolicy in parallel
+			ServiceName:         headlessSvcName,
+			Replicas:            ptr.To(spec.Replicas.ReplicasOfShard),
+			PodManagementPolicy: appsv1.ParallelPodManagement,
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
@@ -243,7 +247,7 @@ func buildPersistentClaims(cluster *v1alpha1.Cluster, labels map[string]string) 
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: cluster.Spec.Storage.Capacity,
+					corev1.ResourceStorage: *cluster.Spec.Storage.Capacity,
 				},
 			},
 			StorageClassName: sc,
@@ -312,7 +316,7 @@ func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []
 				},
 			},
 		},
-		Resources: cluster.Spec.Resources,
+		Resources: *cluster.Spec.Resources,
 		Lifecycle: &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{

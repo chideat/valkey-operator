@@ -20,10 +20,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"path"
+	"strings"
+	"time"
 
+	"github.com/chideat/valkey-operator/cmd/helper/commands"
 	"github.com/chideat/valkey-operator/cmd/helper/sync"
+	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	"github.com/urfave/cli/v2"
 	"k8s.io/client-go/kubernetes"
@@ -39,6 +45,27 @@ type HealOptions struct {
 	Workspace  string
 	TargetName string
 	Prefix     string
+}
+
+type MonitorServerReplica struct {
+	IP   string
+	Port string
+}
+type MonitorServer struct {
+	IP          string
+	Port        string
+	Quorum      string
+	AuthUser    string
+	AuthPass    string
+	LeaderEpoch string
+	ConfigEpoch string
+	Replicas    []*MonitorServerReplica
+}
+
+type MonitorSentinel struct {
+	Id   string
+	IP   string
+	Port string
 }
 
 // MergeConfig merge sentinel local and cached config
@@ -69,40 +96,160 @@ func MergeConfig(ctx context.Context, c *cli.Context, client *kubernetes.Clients
 		return err
 	}
 
-	parts := bytes.SplitN(cachedData, []byte(REDIS_CONFIG_REWRITE_SIGNATURE), 2)
-	if len(parts) == 2 {
-		for _, line := range bytes.Split(parts[0], []byte{'\n'}) {
-			if len(line) == 0 || line[0] == '#' {
-				continue
-			}
-			if bytes.HasPrefix(line, []byte("sentinel ")) {
-				localFileData = append(localFileData, line...)
-				localFileData = append(localFileData, '\n')
-			}
+	var (
+		parts          = bytes.Split(cachedData, []byte{'\n'})
+		brotherGroups  = map[string][]*MonitorSentinel{}
+		monitorServers = map[string]*MonitorServer{}
+	)
+
+	for _, line := range parts {
+		if len(line) == 0 || line[0] == '#' ||
+			bytes.Equal(line, []byte("sentinel ")) || bytes.Equal(line, []byte("sentinel")) {
+			continue
 		}
 
-		localFileData = append(localFileData, REDIS_CONFIG_REWRITE_SIGNATURE...)
-		localFileData = append(localFileData, '\n')
-		for _, line := range bytes.Split(parts[1], []byte{'\n'}) {
-			if len(line) == 0 || line[0] == '#' ||
-				bytes.Equal(line, []byte("sentinel ")) || bytes.Equal(line, []byte("sentinel")) {
-				continue
-			}
-			if bytes.HasPrefix(line, []byte("port ")) ||
-				bytes.HasPrefix(line, []byte("bind ")) ||
-				bytes.HasPrefix(line, []byte("dir ")) ||
-				bytes.HasPrefix(line, []byte("user")) ||
-				bytes.HasPrefix(line, []byte("requirepass")) ||
-				bytes.HasPrefix(line, []byte("sentinel announce-ip")) ||
-				bytes.HasPrefix(line, []byte("sentinel announce-port")) ||
-				bytes.HasPrefix(line, []byte("sentinel sentinel-user")) ||
-				bytes.HasPrefix(line, []byte("sentinel sentinel-pass")) ||
-				// ignore known-replica
-				bytes.HasPrefix(line, []byte("sentinel known-replica")) {
-				continue
-			}
+		if bytes.HasPrefix(line, []byte("sentinel ")) && len(bytes.Fields(line)) < 4 &&
+			!bytes.HasPrefix(line, []byte("sentinel announce-ip")) &&
+			!bytes.HasPrefix(line, []byte("sentinel announce-port")) {
+
 			localFileData = append(localFileData, line...)
 			localFileData = append(localFileData, '\n')
+		}
+	}
+
+	localFileData = append(localFileData, REDIS_CONFIG_REWRITE_SIGNATURE...)
+	localFileData = append(localFileData, '\n')
+	for _, line := range parts {
+		if len(line) == 0 || line[0] == '#' ||
+			bytes.Equal(line, []byte("sentinel ")) || bytes.Equal(line, []byte("sentinel")) {
+			continue
+		}
+
+		if bytes.HasPrefix(line, []byte("sentinel known-sentinel")) {
+			fields := bytes.Fields(line)
+			if len(fields) != 6 {
+				continue
+			}
+			name := string(fields[2])
+			brotherGroups[name] = append(brotherGroups[name], &MonitorSentinel{
+				Id:   string(fields[5]),
+				IP:   string(fields[3]),
+				Port: string(fields[4]),
+			})
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel monitor")) {
+			// refresh server new annouce ip and port
+			fields := bytes.Fields(line)
+			if len(fields) != 6 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.IP = string(fields[3])
+			server.Port = string(fields[4])
+			server.Quorum = string(fields[5])
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel auth-user")) {
+			fields := bytes.Fields(line)
+			if len(fields) != 4 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.AuthUser = string(fields[3])
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel auth-pass")) {
+			fields := bytes.Fields(line)
+			if len(fields) != 4 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.AuthPass = string(fields[3])
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel config-epoch")) {
+			fields := bytes.Fields(line)
+			if len(fields) != 4 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.ConfigEpoch = string(fields[3])
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel leader-epoch")) {
+			fields := bytes.Fields(line)
+			if len(fields) != 4 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.LeaderEpoch = string(fields[3])
+			continue
+		} else if bytes.HasPrefix(line, []byte("sentinel known-replica")) {
+			// ignore known-replica which may cause sentinel node crossing each other
+			fields := bytes.Fields(line)
+			if len(fields) != 5 {
+				continue
+			}
+			name := string(fields[2])
+			server := monitorServers[name]
+			if server == nil {
+				server = &MonitorServer{}
+				monitorServers[name] = server
+			}
+			server.Replicas = append(server.Replicas, &MonitorServerReplica{
+				IP:   string(fields[3]),
+				Port: string(fields[4]),
+			})
+			continue
+		}
+	}
+	for name, server := range monitorServers {
+		// refresh server new annouce ip and port
+		if server.IP != "" && server.Port != "" {
+			logger.Info("refresh server", "name", name, "ip", server.IP, "port", server.Port)
+			nserver, err := refreshValkeyServerInfo(ctx, c, client, server, logger)
+			if err != nil {
+				logger.Error(err, "refresh server failed", "name", name, "ip", server.IP, "port", server.Port)
+				nserver = server
+			}
+			line := fmt.Sprintf("sentinel monitor %s %s %s %s\n", name, nserver.IP, nserver.Port, nserver.Quorum)
+			if server.AuthUser != "" {
+				line += fmt.Sprintf("sentinel auth-user %s %s\n", name, nserver.AuthUser)
+			}
+			if server.AuthPass != "" {
+				line += fmt.Sprintf("sentinel auth-pass %s %s\n", name, nserver.AuthPass)
+			}
+			localFileData = append(localFileData, line...)
+
+			for _, ms := range brotherGroups[name] {
+				if ms.Port == "6379" {
+					// ignore internal redis server
+					continue
+				}
+				line := fmt.Sprintf("sentinel known-sentinel %s %s %s %s\n", name, ms.IP, ms.Port, ms.Id)
+				localFileData = append(localFileData, line...)
+			}
 		}
 	}
 
@@ -115,6 +262,9 @@ func MergeConfig(ctx context.Context, c *cli.Context, client *kubernetes.Clients
 		logger.Error(err, "rename tmp-sentinel.conf to sentinel.conf failed")
 		return err
 	}
+
+	// wait 5s for sentinel to refresh configs
+	time.Sleep(time.Second * 5)
 	return nil
 }
 
@@ -125,4 +275,71 @@ func loadCachedData(ctx context.Context, client *kubernetes.Clientset, opts *Hea
 		return nil, err
 	}
 	return obj.Get(opts.TargetName), nil
+}
+
+func refreshValkeyServerInfo(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, server *MonitorServer, logger logr.Logger) (*MonitorServer, error) {
+	authInfo, err := commands.LoadMonitorAuthInfo(c, ctx, client)
+	if err != nil {
+		logger.Error(err, "load auto info failed")
+		return nil, err
+	}
+	authInfo.Username = server.AuthUser
+	authInfo.Password = server.AuthPass
+
+	ipFamily := c.String("ip-family")
+
+	redisCli := valkey.NewValkeyClient(net.JoinHostPort(server.IP, server.Port), *authInfo)
+	defer redisCli.Close()
+
+	var (
+		info   *valkey.NodeInfo
+		config map[string]string
+	)
+
+	for range 5 {
+		if info, err = redisCli.Info(ctx); err == nil {
+			break
+		}
+		logger.Error(err, "get redis info failed")
+		time.Sleep(time.Second * 2)
+	}
+	if info == nil {
+		return nil, err
+	}
+	for range 5 {
+		if config, err = redisCli.ConfigGet(ctx, "*"); err == nil {
+			break
+		}
+		logger.Error(err, "get redis config failed")
+		time.Sleep(time.Second * 2)
+	}
+	if config == nil {
+		return nil, err
+	}
+
+	if info.Role == "master" {
+		if config["replica-announce-ip"] != "" {
+			server.IP = config["replica-announce-ip"]
+		} else if config["replica-announce-port"] != "" {
+			server.Port = config["replica-announce-port"]
+		} else {
+			// internal ip and port
+			items := strings.Fields(config["bind"])
+			for _, item := range items {
+				if item == "127.0.0.1" || item == "::1" {
+					continue
+				}
+				addr := netip.MustParseAddr(item)
+				if (ipFamily == "IPv6" && addr.Is6()) || (ipFamily == "IPv4" && addr.Is4()) {
+					server.IP = item
+					break
+				}
+			}
+		}
+	} else if info.MasterLinkStatus == "up" {
+		server.IP = info.MasterHost
+		server.Port = info.MasterPort
+	}
+
+	return server, nil
 }

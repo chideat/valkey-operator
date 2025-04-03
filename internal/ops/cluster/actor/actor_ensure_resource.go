@@ -26,6 +26,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
@@ -34,7 +35,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/ops/cluster"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
@@ -75,7 +75,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	logger := val.Logger().WithValues("actor", cops.CommandEnsureResource.String())
 	cluster := val.(types.ClusterInstance)
 
-	if cluster.Definition().Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
+	if cluster.Definition().Spec.PodAnnotations[builder.PauseAnnotationKey] != "" {
 		if ret := a.pauseStatefulSet(ctx, cluster, logger); ret != nil {
 			return ret
 		}
@@ -658,10 +658,6 @@ func (a *actorEnsureResource) fetchAllPodBindedServices(ctx context.Context, nam
 	return services, nil
 }
 
-const (
-	valkeyRestartAnnotation = "kubectl.kubernetes.io/restartedAt"
-)
-
 func MergeAnnotations(t, s map[string]string) map[string]string {
 	if t == nil {
 		return s
@@ -671,7 +667,7 @@ func MergeAnnotations(t, s map[string]string) map[string]string {
 	}
 
 	for k, v := range s {
-		if k == valkeyRestartAnnotation {
+		if k == builder.RestartAnnotationKey {
 			tRestartAnn := t[k]
 			if tRestartAnn == "" && v != "" {
 				t[k] = v

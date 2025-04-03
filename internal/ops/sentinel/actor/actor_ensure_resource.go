@@ -26,14 +26,13 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
-	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/sentinel"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
@@ -79,7 +78,7 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 		sentinel = val.(types.SentinelInstance)
 		inst     = sentinel.Definition()
 	)
-	if inst.Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
+	if inst.Spec.PodAnnotations[builder.PauseAnnotationKey] != "" {
 		if ret := a.ensurePauseStatefulSet(ctx, sentinel, logger); ret != nil {
 			return ret
 		}

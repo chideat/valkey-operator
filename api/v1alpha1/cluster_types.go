@@ -32,10 +32,10 @@ type ShardConfig struct {
 type ClusterReplicas struct {
 	// Shards is the number of cluster shards
 	// +kubebuilder:validation:Minimum=3
-	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Maximum=128
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default=3
-	Shards int32 `json:"masterSize"`
+	Shards int32 `json:"shards"`
 
 	// ShardsConfig is the configuration of each shard
 	// +kubebuilder:validation:MinItems=3
@@ -66,7 +66,7 @@ type ClusterSpec struct {
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Resources
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Access defines the access for valkey
 	Access core.InstanceAccess `json:"access,omitempty"`
@@ -95,17 +95,17 @@ type ClusterSpec struct {
 type ClusterPhase string
 
 const (
-	ClusterPhaseOK ClusterPhase = "Healthy"
+	ClusterPhaseReady ClusterPhase = "Ready"
 	// ClusterStatusKO ClusterPhase KO
-	ClusterPhaseKO ClusterPhase = "Failed"
+	ClusterPhaseFailed ClusterPhase = "Failed"
+	// clusterStatusPaused cluster status paused
+	ClusterPhasePaused ClusterPhase = "Paused"
 	// ClusterStatusCreating ClusterPhase Creating
 	ClusterPhaseCreating ClusterPhase = "Creating"
 	// ClusterStatusRollingUpdate ClusterPhase RollingUpdate
 	ClusterPhaseRollingUpdate ClusterPhase = "RollingUpdate"
 	// ClusterStatusRebalancing ClusterPhase rebalancing
 	ClusterPhaseRebalancing ClusterPhase = "Rebalancing"
-	// clusterStatusPaused cluster status paused
-	ClusterPhasePaused ClusterPhase = "Paused"
 )
 
 // ClusterServiceStatus

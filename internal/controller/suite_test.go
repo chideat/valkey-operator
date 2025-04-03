@@ -36,11 +36,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/ops"
 	_ "github.com/chideat/valkey-operator/internal/ops/cluster/actor"
 	_ "github.com/chideat/valkey-operator/internal/ops/failover/actor"
 	_ "github.com/chideat/valkey-operator/internal/ops/sentinel/actor"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset"
 	// +kubebuilder:scaffold:imports

@@ -33,6 +33,7 @@ type FailoverMonitor interface {
 	UpdateConfig(ctx context.Context, params map[string]string) error
 	Failover(ctx context.Context) error
 	Monitor(ctx context.Context, node ValkeyNode) error
+	Reset(ctx context.Context) error
 }
 
 type FailoverInstance interface {

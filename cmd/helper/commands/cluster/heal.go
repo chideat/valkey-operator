@@ -69,8 +69,8 @@ func Heal(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, log
 		logger.Error(err, "nit nodes.conf failed")
 		return err
 	}
-	if data, err = portClusterNodesConf(ctx, data, logger, opts); err != nil {
-		logger.Error(err, "port nodes.conf failed")
+	if data, err = fixClusterNodesConf(data, logger, opts); err != nil {
+		logger.Error(err, "fix nodes.conf failed")
 		return err
 	}
 
@@ -119,7 +119,7 @@ func initClusterNodesConf(ctx context.Context, client *kubernetes.Clientset, log
 	return data, nil
 }
 
-func portClusterNodesConf(ctx context.Context, data []byte, logger logr.Logger, opts *HealOptions) ([]byte, error) {
+func fixClusterNodesConf(data []byte, logger logr.Logger, opts *HealOptions) ([]byte, error) {
 	var (
 		shardId   = opts.ShardID
 		lines     []string
@@ -347,8 +347,8 @@ vars currentEpoch 0 lastVoteEpoch 0`
 		shardId = fmt.Sprintf(",,tls-port=0,shard-id=%s", shardId)
 	}
 
-	nodeId := fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("%s/%s", namespace, podName)))) // #nosec G401
-	return []byte(fmt.Sprintf(tpl, nodeId, shardId))
+	nodeId := fmt.Sprintf("%x", sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", namespace, podName))) // #nosec G401
+	return fmt.Appendf([]byte{}, tpl, nodeId, shardId)
 }
 
 func getPodsOfShard(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) (pods []corev1.Pod, err error) {
@@ -395,7 +395,7 @@ const (
 )
 
 func doValkeyFailover(ctx context.Context, cli valkey.ValkeyClient, action FailoverAction, logger logr.Logger) (err error) {
-	args := []interface{}{"FAILOVER"}
+	args := []any{"FAILOVER"}
 	if action != "" {
 		args = append(args, action)
 	}
@@ -404,7 +404,7 @@ func doValkeyFailover(ctx context.Context, cli valkey.ValkeyClient, action Failo
 		return err
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		logger.Info("check failover in 5s")
 		time.Sleep(time.Second * 5)
 
