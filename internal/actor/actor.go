@@ -18,6 +18,7 @@ package actor
 
 import (
 	"context"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -26,14 +27,14 @@ import (
 // ActorResult
 type ActorResult struct {
 	next   Command
-	result interface{}
+	result any
 }
 
 func NewResult(cmd Command) *ActorResult {
 	return &ActorResult{next: cmd}
 }
 
-func NewResultWithValue(cmd Command, val interface{}) *ActorResult {
+func NewResultWithValue(cmd Command, val any) *ActorResult {
 	return &ActorResult{next: cmd, result: val}
 }
 
@@ -43,6 +44,11 @@ func NewResultWithError(cmd Command, err error) *ActorResult {
 
 func Requeue() *ActorResult {
 	return &ActorResult{next: CommandRequeue}
+}
+
+func RequeueAfter(t time.Duration) *ActorResult {
+	time.Sleep(t)
+	return &ActorResult{next: CommandRequeue, result: t}
 }
 
 func RequeueWithError(err error) *ActorResult {
@@ -66,7 +72,7 @@ func (c *ActorResult) NextCommand() Command {
 }
 
 // Result
-func (c *ActorResult) Result() interface{} {
+func (c *ActorResult) Result() any {
 	if c == nil {
 		return nil
 	}

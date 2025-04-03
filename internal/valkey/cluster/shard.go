@@ -249,16 +249,16 @@ func (s *ValkeyClusterShard) Restart(ctx context.Context, annotationKeyVal ...st
 	logger := s.logger.WithName("Restart")
 
 	kv := map[string]string{
-		"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339Nano),
+		builder.RestartAnnotationKey: time.Now().Format(time.RFC3339Nano),
 	}
 	for i := 0; i < len(annotationKeyVal)-1; i += 2 {
 		kv[annotationKeyVal[i]] = annotationKeyVal[i+1]
 	}
 
-	data, _ := json.Marshal(map[string]interface{}{
-		"spec": map[string]interface{}{
-			"template": map[string]interface{}{
-				"metadata": map[string]interface{}{
+	data, _ := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
 					"annotations": kv,
 				},
 			},

@@ -17,10 +17,10 @@ limitations under the License.
 package version
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseValkeyVersion(t *testing.T) {
@@ -112,7 +112,38 @@ func TestParseValkeyVersionFromImage(t *testing.T) {
 	}
 }
 
-func TestCustomConfigs(t *testing.T) {
+func TestValkeyVersion_String(t *testing.T) {
+	tests := []struct {
+		name string
+		v    ValkeyVersion
+		want string
+	}{
+		{
+			name: "empty",
+			v:    "",
+			want: "",
+		},
+		{
+			name: "version",
+			v:    "8.0",
+			want: "8.0",
+		},
+		{
+			name: "default",
+			v:    DefaultValKeyVersion,
+			want: "8.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.v.String(); got != tt.want {
+				t.Errorf("ValkeyVersion.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValkeyVersion_CustomConfigs(t *testing.T) {
 	tests := []struct {
 		name string
 		v    ValkeyVersion
@@ -120,8 +151,14 @@ func TestCustomConfigs(t *testing.T) {
 		want map[string]string
 	}{
 		{
-			name: "Valkey 7.4 with ARM64",
-			v:    ValkeyVersion("7.4"),
+			name: "empty version",
+			v:    "",
+			arch: core.ValkeyCluster,
+			want: nil,
+		},
+		{
+			name: "cluster arch",
+			v:    "8.0",
 			arch: core.ValkeyCluster,
 			want: map[string]string{
 				"ignore-warnings":                 "ARM64-COW-BUG",
@@ -130,20 +167,85 @@ func TestCustomConfigs(t *testing.T) {
 			},
 		},
 		{
-			name: "Valkey 8.0 with ARM64",
-			v:    ValkeyVersion("8.0"),
-			arch: core.ValkeyCluster,
+			name: "non-cluster arch",
+			v:    "8.0",
+			arch: core.ValkeySentinel,
 			want: map[string]string{
-				"ignore-warnings":                 "ARM64-COW-BUG",
-				"cluster-allow-replica-migration": "no",
-				"cluster-migration-barrier":       "10",
+				"ignore-warnings": "ARM64-COW-BUG",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.CustomConfigs(tt.arch); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("CustomConfigs() = %v, want %v", got, tt.want)
+			got := tt.v.CustomConfigs(tt.arch)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValkeyVersion_Compare(t *testing.T) {
+	tests := []struct {
+		name    string
+		v       ValkeyVersion
+		other   ValkeyVersion
+		want    int
+		wantErr bool
+	}{
+		{
+			name:    "equal versions",
+			v:       "8.0",
+			other:   "8.0",
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "greater version",
+			v:       "8.1",
+			other:   "8.0",
+			want:    1,
+			wantErr: false,
+		},
+		{
+			name:    "lesser version",
+			v:       "7.0",
+			other:   "8.0",
+			want:    -1,
+			wantErr: false,
+		},
+		{
+			name:    "empty versions",
+			v:       "",
+			other:   "",
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "empty vs version",
+			v:       "",
+			other:   "8.0",
+			want:    -1,
+			wantErr: false,
+		},
+		{
+			name:    "version vs empty",
+			v:       "8.0",
+			other:   "",
+			want:    1,
+			wantErr: false,
+		},
+		{
+			name:    "invalid version",
+			v:       "invalid",
+			other:   "8.0",
+			want:    -2,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.v.Compare(tt.other)
+			if got != tt.want {
+				t.Errorf("ValkeyVersion.Compare() = %v, want %v", got, tt.want)
 			}
 		})
 	}

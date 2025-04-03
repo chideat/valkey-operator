@@ -44,7 +44,7 @@ func mapSigGenerator[T SignaturableObject](obj map[string]T, salt string) (strin
 	return fmt.Sprintf("%x", sha256.Sum256(append([]byte(salt), []byte(strings.Join(data, "\n"))...))), nil
 }
 
-func GenerateObjectSig(data interface{}, salt string) (string, error) {
+func GenerateObjectSig(data any, salt string) (string, error) {
 	if data == nil {
 		return "", nil
 	}

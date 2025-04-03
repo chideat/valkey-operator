@@ -36,11 +36,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Shutdown 在退出时做 failover
-//
-// NOTE: 在4.0, 5.0中，在更新密码时，会重启实例。但是由于密码在重启前已经热更新，导致其他脚本无法连接到实例，包括shutdown脚本
-// 为了解决这个问题，针对4,5 版本，会在重启前，先做failover，将master failover 到-0 节点。
-// 由于重启是逆序的，最后一个pod启动成功之后，会使用新密码连接到 master，从而确保服务一直可用,切数据不会丢失
+// Shutdown shutdown the node and do failover before complete shutdown.
 func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) error {
 	var (
 		podName = c.String("pod-name")

@@ -1,3 +1,19 @@
+/*
+Copyright 2024 chideat.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package user
 
 import (
@@ -75,7 +91,7 @@ func (r *UserHandler) Delete(ctx context.Context, inst v1alpha1.User, logger log
 		}
 
 		for _, node := range rcm.Nodes() {
-			err := node.Setup(ctx, []interface{}{"ACL", "DELUSER", inst.Spec.Username})
+			err := node.Setup(ctx, []any{"ACL", "DELUSER", inst.Spec.Username})
 			if err != nil {
 				logger.Error(err, "acl del user failed", "node", node.GetName())
 				return err
@@ -100,7 +116,7 @@ func (r *UserHandler) Delete(ctx context.Context, inst v1alpha1.User, logger log
 			return fmt.Errorf("instance is not ready")
 		}
 		for _, node := range rfm.Nodes() {
-			err := node.Setup(ctx, []interface{}{"ACL", "DELUSER", inst.Spec.Username})
+			err := node.Setup(ctx, []any{"ACL", "DELUSER", inst.Spec.Username})
 			if err != nil {
 				logger.Error(err, "acl del user failed", "node", node.GetName())
 				return err
@@ -174,7 +190,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		}
 		configmap.Data[inst.Spec.Username] = string(info)
 
-		if inst.Spec.AccountType != v1alpha1.System {
+		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rcm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, aclRules)
 				if err != nil {
@@ -219,7 +235,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		}
 		configmap.Data[inst.Spec.Username] = string(info)
 
-		if inst.Spec.AccountType != v1alpha1.System {
+		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rfm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, inst.Spec.AclRules)
 				if err != nil {

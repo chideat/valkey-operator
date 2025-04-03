@@ -21,6 +21,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -52,6 +53,9 @@ var _ = Describe("Cluster Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
+						Annotations: map[string]string{
+							builder.CRVersionKey: "0.1.0",
+						},
 					},
 					Spec: valkeybufredv1alpha1.ClusterSpec{
 						Image: "valkey/valkey:8.0",
@@ -59,7 +63,7 @@ var _ = Describe("Cluster Controller", func() {
 							Shards:          3,
 							ReplicasOfShard: 1,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: &corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
 								corev1.ResourceMemory: resource.MustParse("256Mi"),
