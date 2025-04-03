@@ -27,12 +27,12 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/core/helper"
 	clusterv1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
 	"github.com/chideat/valkey-operator/pkg/slot"
@@ -80,7 +80,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	}
 	cr := cluster.Definition()
 
-	if cr.Spec.PodAnnotations[config.PauseAnnotationKey] != "" {
+	if cr.Spec.PodAnnotations[builder.PauseAnnotationKey] != "" {
 		return actor.NewResult(CommandEnsureResource)
 	}
 

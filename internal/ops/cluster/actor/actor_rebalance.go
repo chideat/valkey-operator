@@ -23,8 +23,8 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -63,11 +63,11 @@ func (a *actorRebalance) SupportedCommands() []actor.Command {
 func (a *actorRebalance) moveSlot(ctx context.Context, destNode, srcNode types.ValkeyNode, slot int) *actor.ActorResult {
 	destId := destNode.ID()
 	sourceId := srcNode.ID()
-	if err := destNode.Setup(ctx, []interface{}{"CLUSTER", "SETSLOT", slot, "IMPORTING", sourceId}); err != nil {
+	if err := destNode.Setup(ctx, []any{"CLUSTER", "SETSLOT", slot, "IMPORTING", sourceId}); err != nil {
 		a.logger.Error(err, "setup importing failed", "slot", slot, "source", sourceId, "dest", destId)
 		return actor.NewResultWithError(cops.CommandRequeue, err)
 	}
-	if err := srcNode.Setup(ctx, []interface{}{"CLUSTER", "SETSLOT", slot, "MIGRATING", destId}); err != nil {
+	if err := srcNode.Setup(ctx, []any{"CLUSTER", "SETSLOT", slot, "MIGRATING", destId}); err != nil {
 		a.logger.Error(err, "setup migrating failed", "slot", slot, "source", sourceId, "dest", destId)
 		return actor.NewResultWithError(cops.CommandRequeue, err)
 	}

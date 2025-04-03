@@ -145,11 +145,11 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 
 	switch st {
 	case types.OK:
-		status.Phase = databasesv1.Ready
+		status.Phase = databasesv1.FailoverPhaseReady
 	case types.Fail:
-		status.Phase = databasesv1.Fail
+		status.Phase = databasesv1.FailoverPhaseFailed
 	case types.Paused:
-		status.Phase = databasesv1.Paused
+		status.Phase = databasesv1.FailoverPhasePaused
 	default:
 		status.Phase = ""
 	}
@@ -181,25 +181,25 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 		}
 	}
 
-	phase, msg := func() (databasesv1.Phase, string) {
+	phase, msg := func() (databasesv1.FailoverPhase, string) {
 		// use passed status if provided
-		if status.Phase == databasesv1.Fail || status.Phase == databasesv1.Paused {
+		if status.Phase == databasesv1.FailoverPhaseFailed || status.Phase == databasesv1.FailoverPhasePaused {
 			return status.Phase, status.Message
 		}
 
 		if sentinel != nil {
 			switch sentinel.Status.Phase {
 			case databasesv1.SentinelCreating:
-				return databasesv1.Creating, sentinel.Status.Message
-			case databasesv1.SentinelFail:
-				return databasesv1.Fail, sentinel.Status.Message
+				return databasesv1.FailoverPhaseCreating, sentinel.Status.Message
+			case databasesv1.SentinelFailed:
+				return databasesv1.FailoverPhaseFailed, sentinel.Status.Message
 			}
 		}
 
 		// check creating
 		if rs == nil || rs.CurrentReplicas != s.Definition().Spec.Replicas ||
 			rs.Replicas != s.Definition().Spec.Replicas {
-			return databasesv1.Creating, ""
+			return databasesv1.FailoverPhaseCreating, ""
 		}
 
 		var pendingPods []string
@@ -212,7 +212,7 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 			}
 		}
 		if len(pendingPods) > 0 {
-			return databasesv1.Pending, fmt.Sprintf("pods %s pending", strings.Join(pendingPods, ","))
+			return databasesv1.FailoverPhaseCreating, fmt.Sprintf("pods %s pending", strings.Join(pendingPods, ","))
 		}
 
 		// check nodeport applied
@@ -227,7 +227,7 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 				}
 			}
 			if len(notAppliedPorts) > 0 {
-				return databasesv1.WaitingPodReady, fmt.Sprintf("nodeport %s not applied", strings.Join(notAppliedPorts, ","))
+				return databasesv1.FailoverPhaseCreating, fmt.Sprintf("nodeport %s not applied", strings.Join(notAppliedPorts, ","))
 			}
 		}
 
@@ -238,11 +238,11 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 			}
 		}
 		if len(notReadyPods) > 0 {
-			return databasesv1.WaitingPodReady, fmt.Sprintf("pods %s not ready", strings.Join(notReadyPods, ","))
+			return databasesv1.FailoverPhaseCreating, fmt.Sprintf("pods %s not ready", strings.Join(notReadyPods, ","))
 		}
 
 		if isAllMonitored, _ := s.Monitor().AllNodeMonitored(ctx); !isAllMonitored {
-			return databasesv1.Creating, "not all nodes monitored"
+			return databasesv1.FailoverPhaseCreating, "not all nodes monitored"
 		}
 
 		// make sure all is ready
@@ -253,9 +253,9 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 			// sentinel
 			(sentinel == nil || sentinel.Status.Phase == databasesv1.SentinelReady) {
 
-			return databasesv1.Ready, ""
+			return databasesv1.FailoverPhaseReady, ""
 		}
-		return databasesv1.WaitingPodReady, ""
+		return databasesv1.FailoverPhaseCreating, ""
 	}()
 	status.Phase, status.Message = phase, lo.If(msg == "", status.Message).Else(msg)
 
@@ -351,7 +351,7 @@ func (s *Failover) IsReady() bool {
 	if s == nil {
 		return false
 	}
-	if s.Failover.Status.Phase == databasesv1.Ready {
+	if s.Failover.Status.Phase == databasesv1.FailoverPhaseReady {
 		return true
 	}
 	return false
@@ -745,7 +745,7 @@ func (c *Failover) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *Failover) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *Failover) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}

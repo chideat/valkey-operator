@@ -23,9 +23,9 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/config"
 	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -204,7 +204,7 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 		for _, slotIndex := range missingSlotsIndex {
 			if importShard := importingSlotTarget[slotIndex]; importShard != nil && importShard.Master() != nil && importShard.Master().ID() != "" {
 				// set the slot to importing
-				args := []interface{}{"CLUSTER", "SETSLOT", slotIndex, "NODE", shard.Master().ID()}
+				args := []any{"CLUSTER", "SETSLOT", slotIndex, "NODE", shard.Master().ID()}
 				if err := importShard.Master().Setup(ctx, args); err == nil {
 					_ = missingSlots.Set(slotIndex, slot.SlotUnassigned)
 					for _, shard := range cluster.Shards() {
@@ -230,7 +230,7 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 				logger.Info("WARNING: as if the slots have been moved unexpectedly, this may case the cluster run in an unbalance state")
 			}
 			var (
-				args          = []interface{}{"CLUSTER", "ADDSLOTS"}
+				args          = []any{"CLUSTER", "ADDSLOTS"}
 				assginedSlots = slot.NewSlots()
 			)
 			for _, s := range missingSlotsIndex {
@@ -260,7 +260,7 @@ func (a *actorEnsureSlots) doFailover(ctx context.Context, node types.ValkeyNode
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
-	args := []interface{}{"CLUSTER", "FAILOVER", "FORCE"}
+	args := []any{"CLUSTER", "FAILOVER", "FORCE"}
 	for i := 0; i < retry+1; i++ {
 		logger.Info("do shard failover", "node", node.GetName(), "action", args[2])
 		if err := node.Setup(ctx, args); err != nil {

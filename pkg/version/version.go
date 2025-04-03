@@ -56,6 +56,43 @@ func (v ValkeyVersion) CustomConfigs(arch core.Arch) map[string]string {
 	return ret
 }
 
+// Compare conpare two version
+//
+// if v > other, return 1
+// if v < other, return -1
+// if v == other, return 0
+// if error occurred, return -2
+func (v ValkeyVersion) Compare(other ValkeyVersion) int {
+	if v == "" {
+		if other == "" {
+			return 0
+		}
+		return -1
+	} else if other == "" {
+		return 1
+	}
+
+	v1, err := semver.NewVersion(string(v))
+	if err != nil {
+		return -2
+	}
+	v2, err := semver.NewVersion(string(other))
+	if err != nil {
+		return -2
+	}
+	if v1.Major() > v2.Major() {
+		return 1
+	} else if v1.Major() < v2.Major() {
+		return -1
+	}
+	if v1.Minor() > v2.Minor() {
+		return 1
+	} else if v1.Minor() < v2.Minor() {
+		return -1
+	}
+	return 0
+}
+
 // ParseVersion
 func ParseValkeyVersion(v string) (ValkeyVersion, error) {
 	ver, err := semver.NewVersion(v)

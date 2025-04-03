@@ -460,7 +460,7 @@ func TestSlots_Sub(t *testing.T) {
 func TestSlots_Load(t *testing.T) {
 	slots := NewSlots()
 	type args struct {
-		v interface{}
+		v any
 	}
 	tests := []struct {
 		name    string

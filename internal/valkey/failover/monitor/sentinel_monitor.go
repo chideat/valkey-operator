@@ -20,16 +20,19 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
 	"strings"
 
-	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/util"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	vkcli "github.com/chideat/valkey-operator/pkg/valkey"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -158,16 +161,16 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 				continue
 			}
 			// NOTE: here ignored any error, for the node may be offline forever
-			s.logger.Error(err, "check monitor status of sentinel failed", "addr", node.addr)
 			s.logger.Error(err, "check monitoring master status of sentinel failed", "addr", node.addr)
 			return nil, err
 		} else if n.IsFailovering() {
-			s.logger.Error(ErrDoFailover, "sentinel is doing failover", "node", n.Address())
+			s.logger.Error(ErrDoFailover, "valkey sentinel is doing failover", "node", n.Address())
 			return nil, ErrDoFailover
 		} else if !IsMonitoringNodeOnline(n) {
 			s.logger.Error(fmt.Errorf("master node offline"), "master node offline", "node", n.Address(), "flags", n.Flags)
 			continue
 		}
+
 		registeredNodes += 1
 		if i := slices.IndexFunc(masterStat, func(s *Stat) bool {
 			// NOTE: here cannot use runid to identify the node,
@@ -196,26 +199,89 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 
 	if len(masterStat) > 1 {
 		if len(masterIds) == 1 {
+			// sentinel not update node info in time, which caused one node has multiple id in sentinel
 			return nil, ErrAddressConflict
 		}
 	}
+	// masterStat[0].Count == registeredNodes used to check if all nodes are consistent no matter how many sentinel nodes
 	if masterStat[0].Count >= 1+len(s.nodes)/2 || masterStat[0].Count == registeredNodes {
 		return masterStat[0].Node, nil
 	}
 
 	if len(flags) > 0 && flags[0] {
-		// NOTE: force to return the master node with the oldest role reported time
-		stat := masterStat[0]
+		var nodes []*vkcli.SentinelMonitorNode
 		for _, ms := range masterStat {
-			if ms.Node.RoleReportedTime > stat.Node.RoleReportedTime {
-				stat = ms
-			}
+			nodes = append(nodes, ms.Node)
 		}
-		if stat.Count >= len(s.nodes)/2 {
-			return stat.Node, nil
+		// select proper master node
+		if mn := s.masterPicking(ctx, s.failover, nodes); mn != nil {
+			return mn, nil
 		}
 	}
 	return nil, ErrMultipleMaster
+}
+
+func (s *SentinelMonitor) masterPicking(ctx context.Context, inst types.FailoverInstance,
+	mnodes []*vkcli.SentinelMonitorNode) *vkcli.SentinelMonitorNode {
+	var (
+		maxVersionNode *vkcli.SentinelMonitorNode
+		maxVersion     version.ValkeyVersion
+		versions       int
+		mostDataNode   *vkcli.SentinelMonitorNode
+		mostDataSize   int64
+		onlineTime     int64
+	)
+	for _, node := range inst.Nodes() {
+		if err := node.Refresh(ctx); err != nil {
+			s.logger.Error(err, "refresh node failed", "node", node.GetName())
+			continue
+		}
+		if !node.IsReady() || node.Role() != core.NodeRoleMaster || node.Config()["replica-priority"] == "0" {
+			continue
+		}
+
+		mnode := func(node types.ValkeyNode) *vkcli.SentinelMonitorNode {
+			addr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
+			addr2 := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalIPort()))
+			for _, mnode := range mnodes {
+				if mnode.Address() == addr || mnode.Address() == addr2 {
+					return mnode
+				}
+			}
+			return nil
+		}(node)
+		if mnode == nil {
+			continue
+		}
+
+		if maxVersion == "" {
+			maxVersion = node.CurrentVersion()
+			maxVersionNode = mnode
+			versions = 1
+		} else if comp := node.CurrentVersion().Compare(maxVersion); comp != 0 {
+			versions++
+			if comp > 0 {
+				maxVersion = node.CurrentVersion()
+				maxVersionNode = mnode
+			}
+		}
+
+		if node.Info().Dbsize > mostDataSize {
+			mostDataSize = node.Info().Dbsize
+			mostDataNode = mnode
+			onlineTime = node.Info().UptimeInSeconds
+		} else if mostDataSize != 0 && node.Info().Dbsize == mostDataSize {
+			// TODO: this many not be the best way to select the most data node
+			if node.Info().UptimeInSeconds > onlineTime {
+				mostDataNode = mnode
+				onlineTime = node.Info().UptimeInSeconds
+			}
+		}
+	}
+	if versions > 0 {
+		return maxVersionNode
+	}
+	return mostDataNode
 }
 
 func (s *SentinelMonitor) Replicas(ctx context.Context) ([]*vkcli.SentinelMonitorNode, error) {
@@ -229,7 +295,7 @@ func (s *SentinelMonitor) Replicas(ctx context.Context) ([]*vkcli.SentinelMonito
 		if err == ErrNoMaster {
 			continue
 		} else if err != nil {
-			s.logger.Error(err, "check monitor status of sentinel failed", "addr", node.addr)
+			s.logger.Error(err, "check monitoring replica status of sentinel failed", "addr", node.addr)
 			continue
 		}
 		for _, n := range ns {
@@ -273,7 +339,7 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 	var (
 		registeredNodes = map[string]struct{}{}
 		masters         = map[string]int{}
-		masterIds       = map[string]int{}
+		idAddrMap       = map[string][]string{}
 		mastersOffline  []string
 	)
 	for _, node := range s.nodes {
@@ -286,8 +352,8 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 		} else if IsMonitoringNodeOnline(master) {
 			registeredNodes[master.Address()] = struct{}{}
 			masters[master.Address()] += 1
-			if master.RunId != "" {
-				masterIds[master.RunId] += 1
+			if master.RunId != "" && !slices.Contains(idAddrMap[master.RunId], master.Address()) {
+				idAddrMap[master.RunId] = append(idAddrMap[master.RunId], master.Address())
 			}
 		} else {
 			mastersOffline = append(mastersOffline, master.Address())
@@ -303,6 +369,9 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 				if IsMonitoringNodeOnline(replica) {
 					registeredNodes[replica.Address()] = struct{}{}
 				}
+				if replica.RunId != "" && !slices.Contains(idAddrMap[replica.RunId], replica.Address()) {
+					idAddrMap[replica.RunId] = append(idAddrMap[replica.RunId], replica.Address())
+				}
 			}
 		}
 	}
@@ -316,8 +385,15 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 			s.logger.Info("node not ready, ignored", "node", node.GetName())
 			continue
 		}
+		registeredAddrs := idAddrMap[node.Info().RunId]
 		addr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
 		addr2 := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalPort()))
+		// same runid registered with different addr
+		// TODO: limit service InternalTrafficPolicy to Local
+		if (len(registeredAddrs) == 1 && registeredAddrs[0] != addr && registeredAddrs[0] != addr2) ||
+			len(registeredAddrs) > 1 {
+			return false, ErrAddressConflict
+		}
 		_, ok := registeredNodes[addr]
 		_, ok2 := registeredNodes[addr2]
 		if !ok && !ok2 {
@@ -326,9 +402,6 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 	}
 
 	if len(masters) > 1 {
-		if len(masterIds) == 1 {
-			return false, ErrAddressConflict
-		}
 		return false, ErrMultipleMaster
 	}
 	return true, nil
@@ -404,7 +477,7 @@ func (s *SentinelMonitor) Failover(ctx context.Context) error {
 	return nil
 }
 
-// Monitor monitors the master node on the sentinel nodes
+// Monitor monitors the valkey master node on the sentinel nodes
 func (s *SentinelMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNode) error {
 	if s == nil || len(s.nodes) == 0 {
 		return fmt.Errorf("no monitor")
@@ -421,9 +494,7 @@ func (s *SentinelMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNo
 		"failover-timeout":        "180000",
 		"parallel-syncs":          "1",
 	}
-	for k, v := range s.failover.Definition().Spec.Sentinel.MonitorConfig {
-		configs[k] = v
-	}
+	maps.Copy(configs, s.failover.Definition().Spec.Sentinel.MonitorConfig)
 
 	opUser := s.failover.Users().GetOpUser()
 	configs["auth-pass"] = opUser.Password.String()
@@ -459,6 +530,15 @@ func (s *SentinelMonitor) Monitor(ctx context.Context, masterNode types.ValkeyNo
 					logger.Error(err, "update config failed on node", "addr", net.JoinHostPort(masterIP, masterPort))
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (s *SentinelMonitor) Reset(ctx context.Context) error {
+	for _, node := range s.nodes {
+		if err := node.Reset(ctx, s.groupName); err != nil {
+			s.logger.Error(err, "reset sentinel monitor failed", "addr", node)
 		}
 	}
 	return nil

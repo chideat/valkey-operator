@@ -114,7 +114,7 @@ func GetSecret(ctx context.Context, client *kubernetes.Clientset, namespace, nam
 		err    error
 		secret *corev1.Secret
 	)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if secret, err = func() (*corev1.Secret, error) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 			defer cancel()
@@ -134,7 +134,7 @@ func GetConfigmap(ctx context.Context, client *kubernetes.Clientset, namespace, 
 		err error
 		cm  *corev1.ConfigMap
 	)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if cm, err = func() (*corev1.ConfigMap, error) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 			defer cancel()

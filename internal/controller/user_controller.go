@@ -56,9 +56,9 @@ type UserReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	K8sClient kubernetes.ClientSet
-	Record    record.EventRecorder
-	Handler   *user.UserHandler
+	K8sClient     kubernetes.ClientSet
+	EventRecorder record.EventRecorder
+	Handler       *user.UserHandler
 }
 
 // +kubebuilder:rbac:groups=valkey.buf.red,resources=users,verbs=get;list;watch;create;update;patch;delete
@@ -73,7 +73,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	instance := v1alpha1.User{}
 	err := r.Client.Get(ctx, req.NamespacedName, &instance)
 	if err != nil {
-		logger.Error(err, "get redis user failed")
+		logger.Error(err, "get valkey user failed")
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
@@ -132,7 +132,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 			return ctrl.Result{}, err
 		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
-			if instance.Spec.AccountType != v1alpha1.System {
+			if instance.Spec.AccountType != v1alpha1.SystemAccount {
 				instance.Status.Message = err.Error()
 				instance.Status.Phase = v1alpha1.UserFail
 				if e := r.Client.Status().Update(ctx, &instance); e != nil {

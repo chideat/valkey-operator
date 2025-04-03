@@ -619,7 +619,7 @@ func (n *ValkeyNode) Setup(ctx context.Context, margs ...[]any) (err error) {
 	return
 }
 
-func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (interface{}, error) {
+func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (any, error) {
 	if n == nil {
 		return nil, nil
 	}
@@ -635,25 +635,25 @@ func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords 
 		return nil, fmt.Errorf("user not operator")
 	}
 
-	cmds := [][]interface{}{{"ACL", "SETUSER", username, "reset"}}
+	cmds := [][]any{{"ACL", "SETUSER", username, "reset"}}
 	for _, password := range passwords {
-		cmds = append(cmds, []interface{}{"ACL", "SETUSER", username, ">" + password})
+		cmds = append(cmds, []any{"ACL", "SETUSER", username, ">" + password})
 	}
 	if len(passwords) == 0 {
-		cmds = append(cmds, []interface{}{"ACL", "SETUSER", username, "nopass"})
+		cmds = append(cmds, []any{"ACL", "SETUSER", username, "nopass"})
 	}
 
 	rule_slice := []string{"ACL", "SETUSER", username}
 	rule_slice = append(rule_slice, strings.Split(rules, " ")...)
-	interfaceSlice := make([]interface{}, len(rule_slice))
+	interfaceSlice := make([]any, len(rule_slice))
 	for i, v := range rule_slice {
 		interfaceSlice[i] = v
 	}
 	cmds = append(cmds, interfaceSlice)
-	cmds = append(cmds, []interface{}{"ACL", "SETUSER", username, "on"})
-	cmds = append(cmds, []interface{}{"ACL", "LIST"})
+	cmds = append(cmds, []any{"ACL", "SETUSER", username, "on"})
+	cmds = append(cmds, []any{"ACL", "LIST"})
 	cmd_list := []string{}
-	args_list := [][]interface{}{}
+	args_list := [][]any{}
 	for _, cmd := range cmds {
 		_cmd, _ := cmd[0].(string)
 		cmd_list = append(cmd_list, _cmd)
@@ -672,8 +672,8 @@ func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords 
 	}
 	acl_list := result_list[len(result_list)-1]
 	switch acls := acl_list.(type) {
-	case []interface{}:
-		interfaceSlice := []interface{}{}
+	case []any:
+		interfaceSlice := []any{}
 		for _, v := range acls {
 			r, _err := vkcli.String(v, err)
 			if _err != nil {
@@ -843,7 +843,7 @@ func (n *ValkeyNode) ReplicaOf(ctx context.Context, ip, port string) error {
 	if n.Info().MasterHost == ip && n.Info().MasterPort == port && n.Info().MasterLinkStatus == "up" {
 		return nil
 	}
-	if err := n.Setup(ctx, []interface{}{"slaveof", ip, port}); err != nil {
+	if err := n.Setup(ctx, []any{"slaveof", ip, port}); err != nil {
 		return err
 	}
 	return nil

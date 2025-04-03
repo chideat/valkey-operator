@@ -31,6 +31,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 )
 
 var _ = Describe("Sentinel Controller", func() {
@@ -41,7 +42,7 @@ var _ = Describe("Sentinel Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		sentinel := &valkeybufredv1alpha1.Sentinel{}
 
@@ -53,6 +54,9 @@ var _ = Describe("Sentinel Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
+						Annotations: map[string]string{
+							builder.CRVersionKey: "0.1.0",
+						},
 					},
 					Spec: valkeybufredv1alpha1.SentinelSpec{
 						Image:    "valkey/valkey:8.0",

@@ -22,11 +22,11 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
-	"github.com/chideat/valkey-operator/pkg/actor"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
@@ -101,10 +101,10 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 	} else {
-		var margs [][]interface{}
+		var margs [][]any
 		for key, vals := range changed {
 			logger.V(2).Info("hot config ", "key", key, "value", vals.String())
-			margs = append(margs, []interface{}{"config", "set", key, vals.String()})
+			margs = append(margs, []any{"config", "set", key, vals.String()})
 		}
 		var (
 			isUpdateFailed = false

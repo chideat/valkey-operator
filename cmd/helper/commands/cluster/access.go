@@ -165,6 +165,9 @@ func ExposeNodePort(ctx context.Context, client *kubernetes.Clientset, namespace
 	}
 
 	format_announceIp := strings.Replace(announceIp, ":", "-", -1)
+	if strings.HasSuffix(format_announceIp, "-") {
+		format_announceIp = fmt.Sprintf("%s0", format_announceIp)
+	}
 	labelPatch := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"add","path":"/metadata/labels/%s","value":"%s"}]`,
 		strings.Replace("middleware.alauda.io/announce_ip", "/", "~1", -1), format_announceIp,
 		strings.Replace("middleware.alauda.io/announce_port", "/", "~1", -1), strconv.Itoa(int(announcePort)),

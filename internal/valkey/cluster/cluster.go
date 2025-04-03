@@ -227,9 +227,9 @@ func (c *ValkeyCluster) UpdateStatus(ctx context.Context, st types.InstanceStatu
 	)
 	switch st {
 	case types.OK:
-		status = v1alpha1.ClusterPhaseOK
+		status = v1alpha1.ClusterPhaseReady
 	case types.Fail:
-		status = v1alpha1.ClusterPhaseKO
+		status = v1alpha1.ClusterPhaseFailed
 	case types.Paused:
 		status = v1alpha1.ClusterPhasePaused
 	}
@@ -299,10 +299,8 @@ __end_slot_migrating__:
 			cr.Status.Phase = v1alpha1.ClusterPhaseRebalancing
 		} else if isResourceReady {
 			if cr.Status.ServiceStatus == v1alpha1.ClusterInService {
-				cr.Status.Phase = v1alpha1.ClusterPhaseKO
-			} else {
-				cr.Status.Phase = v1alpha1.ClusterPhaseOK
-				cr.Status.Message = "OK"
+				cr.Status.Phase = v1alpha1.ClusterPhaseReady
+				cr.Status.Message = ""
 			}
 		} else {
 			cr.Status.Phase = v1alpha1.ClusterPhaseCreating
@@ -324,7 +322,7 @@ __end_slot_migrating__:
 	}
 	cr.Status.Message = strings.Join(messages, "; ")
 
-	if cr.Status.Phase == v1alpha1.ClusterPhaseOK &&
+	if cr.Status.Phase == v1alpha1.ClusterPhaseReady &&
 		c.Spec.Access.ServiceType == corev1.ServiceTypeNodePort &&
 		c.Spec.Access.Ports != "" {
 
@@ -716,7 +714,7 @@ func (c *ValkeyCluster) Logger() logr.Logger {
 	return c.logger
 }
 
-func (c *ValkeyCluster) SendEventf(eventtype, reason, messageFmt string, args ...interface{}) {
+func (c *ValkeyCluster) SendEventf(eventtype, reason, messageFmt string, args ...any) {
 	if c == nil {
 		return
 	}
