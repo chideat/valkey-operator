@@ -64,7 +64,7 @@ func NewCommand(ctx context.Context) *cli.Command {
 
 							client, err := commands.NewClient()
 							if err != nil {
-								logger.Error(err, "create k8s client failed, error=%s", err)
+								logger.Error(err, "create k8s client failed")
 								return cli.Exit(err, 1)
 							}
 							ret, err := GenerateACL(ctx, client, namespace, cmName)
