@@ -27,6 +27,10 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func ChecksumKey(typ string) string {
+	return fmt.Sprintf("%s-%s", ChecksumLabelKey, strings.ToLower(typ))
+}
+
 func ResourcePrefix(arch core.Arch) string {
 	// NOTE: compatibility with redis-operator
 	switch arch {

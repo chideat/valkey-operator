@@ -41,10 +41,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-const (
-	ConfigReplBacklogSizeKey = "repl-backlog-size"
-)
-
 // nolint:unused
 // log is for logging in this package.
 var logger = logf.Log.WithName("inst-resource")
@@ -85,33 +81,15 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, obj runtime.Object)
 		inst.Spec.PodAnnotations = make(map[string]string)
 	}
 
-	if inst.Spec.CustomConfigs[ConfigReplBacklogSizeKey] == "" {
-		// https://raw.githubusercontent.com/antirez/redis/7.0/redis.conf
-		// https://docs.redis.com/latest/rs/databases/active-active/manage/#replication-backlog
-		if inst.Spec.Resources != nil {
-			for _, resource := range []*resource.Quantity{inst.Spec.Resources.Limits.Memory(), inst.Spec.Resources.Requests.Memory()} {
-				if resource == nil {
-					continue
-				}
-				if val, ok := resource.AsInt64(); ok {
-					val = int64(0.01 * float64(val))
-					if val > 256*1024*1024 {
-						val = 256 * 1024 * 1024
-					} else if val < 1024*1024 {
-						val = 1024 * 1024
-					}
-					inst.Spec.CustomConfigs[ConfigReplBacklogSizeKey] = fmt.Sprintf("%d", val)
-				}
-			}
-		}
-	}
-
 	// init exporter settings
 	if inst.Spec.Exporter == nil {
 		inst.Spec.Exporter = &rdsv1alpha1.ValkeyExporter{}
 	}
-	if inst.Spec.Exporter.Resources.Limits.Cpu().IsZero() ||
-		inst.Spec.Exporter.Resources.Limits.Memory().IsZero() {
+	if !inst.Spec.Exporter.Disable &&
+		(inst.Spec.Exporter.Resources == nil ||
+			inst.Spec.Exporter.Resources.Limits == nil ||
+			inst.Spec.Exporter.Resources.Limits.Cpu().IsZero() ||
+			inst.Spec.Exporter.Resources.Limits.Memory().IsZero()) {
 		inst.Spec.Exporter.Resources = &corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("50m"),

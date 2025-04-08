@@ -82,7 +82,7 @@ type ValkeySpec struct {
 	Replicas *ValkeyReplicas `json:"replicas"`
 
 	// Resources for setting resource requirements for the Pod Resources *v1.ResourceRequirements
-	Resources *corev1.ResourceRequirements `json:"resources"`
+	Resources corev1.ResourceRequirements `json:"resources"`
 
 	// CustomConfigs defines the configuration settings for Valkey
 	// for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf

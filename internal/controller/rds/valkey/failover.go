@@ -100,8 +100,8 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 		},
 		Spec: v1alpha1.FailoverSpec{
 			Image:          image,
-			Replicas:       int32(*&instance.Spec.Replicas.ReplicasOfShard),
-			Resources:      *instance.Spec.Resources,
+			Replicas:       instance.Spec.Replicas.ReplicasOfShard,
+			Resources:      instance.Spec.Resources,
 			CustomConfigs:  instance.Spec.CustomConfigs,
 			PodAnnotations: lo.Assign(instance.Spec.PodAnnotations),
 			Exporter:       exporter,

@@ -51,6 +51,62 @@ func TestParseNodeFromClusterNode(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "with aux fields",
+			args: args{line: "343eca6406a48f95388682965bc19e37fcd300ca 192.168.130.82:31397@32669,nodename=node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038 master - 0 1743648449265 2 connected 5462-10922"},
+			want: &ClusterNode{
+				Id:      "343eca6406a48f95388682965bc19e37fcd300ca",
+				Addr:    "192.168.130.82:31397",
+				RawFlag: "master",
+				BusPort: "32669",
+				AuxFields: ClusterNodeAuxFields{
+					ShardID:  "a300430f8783c8a604dede6b8afabdc36230f038",
+					NodeName: "node1",
+					TCPPort:  6379,
+					TLSPort:  0,
+					raw:      "192.168.130.82:31397@32669,nodename=node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038",
+				},
+				Role:      "master",
+				MasterId:  "",
+				PingSend:  0,
+				PongRecv:  1743648449265,
+				Epoch:     2,
+				LinkState: "connected",
+				slots:     []string{"5462-10922"},
+				rawInfo:   "343eca6406a48f95388682965bc19e37fcd300ca 192.168.130.82:31397@32669,nodename=node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038 master - 0 1743648449265 2 connected 5462-10922",
+			},
+			wantErr: false,
+		},
+		{
+			name: "with invalid aux fields",
+			args: args{line: "343eca6406a48f95388682965bc19e37fcd300ca 192.168.130.82:31397@32669,node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038 master - 0 1743648449265 2 connected 5462-10922"},
+			want: &ClusterNode{
+				Id:      "343eca6406a48f95388682965bc19e37fcd300ca",
+				Addr:    "192.168.130.82:31397",
+				RawFlag: "master",
+				BusPort: "32669",
+				AuxFields: ClusterNodeAuxFields{
+					ShardID: "a300430f8783c8a604dede6b8afabdc36230f038",
+					TCPPort: 6379,
+					TLSPort: 0,
+					raw:     "192.168.130.82:31397@32669,node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038",
+				},
+				Role:      "master",
+				MasterId:  "",
+				PingSend:  0,
+				PongRecv:  1743648449265,
+				Epoch:     2,
+				LinkState: "connected",
+				slots:     []string{"5462-10922"},
+				rawInfo:   "343eca6406a48f95388682965bc19e37fcd300ca 192.168.130.82:31397@32669,node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038 master - 0 1743648449265 2 connected 5462-10922",
+			},
+			wantErr: false,
+		},
+		{
+			name:    "with error addr",
+			args:    args{line: "343eca6406a48f95388682965bc19e37fcd300ca 192.168.130.82:31397,nodename=node1,tcp-port=6379,tls-port=0,shard-id=a300430f8783c8a604dede6b8afabdc36230f038 master - 0 1743648449265 2 connected 5462-10922"},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,6 +117,10 @@ func TestParseNodeFromClusterNode(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseNodeFromClusterNode() = %v, want %v", got, tt.want)
+				return
+			}
+			if !tt.wantErr && got.AuxFields.Raw() != tt.want.AuxFields.Raw() {
+				t.Errorf("ClusterNodeAuxFields.Raw() = %v, want %v", got.AuxFields.Raw(), tt.want.AuxFields.Raw())
 			}
 		})
 	}
@@ -69,12 +129,12 @@ func TestParseNodeFromClusterNode(t *testing.T) {
 func TestClusterNode_IsSelf(t *testing.T) {
 	tests := []struct {
 		name   string
-		fields ClusterNode
+		fields *ClusterNode
 		want   bool
 	}{
 		{
 			name: "isSelf",
-			fields: ClusterNode{
+			fields: &ClusterNode{
 				Id:        "33b1262d41a4d9c27a78eef522c84999b064ce7f",
 				Addr:      "",
 				RawFlag:   "myself,master",
@@ -86,20 +146,28 @@ func TestClusterNode_IsSelf(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name:   "nil",
+			fields: nil,
+			want:   false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := &ClusterNode{
-				Id:        tt.fields.Id,
-				Addr:      tt.fields.Addr,
-				RawFlag:   tt.fields.RawFlag,
-				MasterId:  tt.fields.MasterId,
-				PingSend:  tt.fields.PingSend,
-				PongRecv:  tt.fields.PongRecv,
-				Epoch:     tt.fields.Epoch,
-				LinkState: tt.fields.LinkState,
-				slots:     tt.fields.slots,
-				Role:      tt.fields.Role,
+			var n *ClusterNode
+			if tt.fields != nil {
+				n = &ClusterNode{
+					Id:        tt.fields.Id,
+					Addr:      tt.fields.Addr,
+					RawFlag:   tt.fields.RawFlag,
+					MasterId:  tt.fields.MasterId,
+					PingSend:  tt.fields.PingSend,
+					PongRecv:  tt.fields.PongRecv,
+					Epoch:     tt.fields.Epoch,
+					LinkState: tt.fields.LinkState,
+					slots:     tt.fields.slots,
+					Role:      tt.fields.Role,
+				}
 			}
 			if got := n.IsSelf(); got != tt.want {
 				t.Errorf("ClusterNode.IsSelf() = %v, want %v", got, tt.want)
@@ -128,6 +196,22 @@ func TestClusterNodes_Self(t *testing.T) {
 			name: "self",
 			ns:   []*ClusterNode{&node},
 			want: &node,
+		},
+		{
+			name: "no self",
+			ns: []*ClusterNode{
+				{
+					Id:        "33b1262d41a4d9c27a78eef522c84999b064ce7f",
+					Addr:      "",
+					RawFlag:   "master",
+					MasterId:  "",
+					PingSend:  0,
+					PongRecv:  0,
+					Epoch:     0,
+					LinkState: "connected",
+				},
+			},
+			want: nil,
 		},
 	}
 	for _, tt := range tests {
@@ -526,7 +610,8 @@ func TestParseNodes(t *testing.T) {
 		{
 			name: "valid nodes",
 			data: `33b1262d41a4d9c27a78eef522c84999b064ce7f :6379@16379 myself,master - 0 0 0 connected
-44c1262d41a4d9c27a78eef522c84999b064ce7f :6380@16380 slave 33b1262d41a4d9c27a78eef522c84999b064ce7f 0 0 0 connected`,
+44c1262d41a4d9c27a78eef522c84999b064ce7f :6380@16380 slave 33b1262d41a4d9c27a78eef522c84999b064ce7f 0 0 0 connected
+vars currentEpoch 5 lastVoteEpoch 0`,
 			want:    2,
 			wantErr: false,
 		},

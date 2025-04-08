@@ -19,12 +19,12 @@ package actor
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -74,8 +74,8 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	} else if err != nil {
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
 		// NOTE: update configmap first may cause the hot config fail for it will not retry again
@@ -84,12 +84,11 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 	}
-	for k, v := range added {
-		changed[k] = v
-	}
+	maps.Copy(changed, added)
+
 	foundRestartApplyConfig := false
 	for key := range changed {
-		if policy := clusterbuilder.ValkeyConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
+		if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
 			foundRestartApplyConfig = true
 			break
 		}

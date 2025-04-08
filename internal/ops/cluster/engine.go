@@ -544,8 +544,8 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return true, nil
@@ -555,13 +555,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 
 func buildStatusOfShards(cluster types.ClusterInstance, slots []*slot.Slots) (ret []*clusterv1.ClusterShards) {
 	statusShards := cluster.Definition().Status.Shards
-	maxShards := len(cluster.Shards())
-	if int(cluster.Definition().Spec.Replicas.Shards) > maxShards {
-		maxShards = int(cluster.Definition().Spec.Replicas.Shards)
-	}
-	if len(statusShards) > maxShards {
-		maxShards = len(statusShards)
-	}
+	maxShards := max(len(cluster.Shards()), int(cluster.Definition().Spec.Replicas.Shards), len(statusShards))
 
 	var (
 		isNewAssign    = (len(cluster.Definition().Status.Shards) == 0)
