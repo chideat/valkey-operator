@@ -192,13 +192,11 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 	in.Access.DeepCopyInto(&out.Access)
 	if in.Storage != nil {
 		in, out := &in.Storage, &out.Storage
-		*out = new(core.Storage)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	if in.Exporter != nil {
 		in, out := &in.Exporter, &out.Exporter
-		*out = new(core.Exporter)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	if in.PodAnnotations != nil {
 		in, out := &in.PodAnnotations, &out.PodAnnotations
@@ -261,7 +259,9 @@ func (in *ClusterStatus) DeepCopyInto(out *ClusterStatus) {
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]core.ValkeyNode, len(*in))
-		copy(*out, *in)
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.Shards != nil {
 		in, out := &in.Shards, &out.Shards
@@ -363,13 +363,11 @@ func (in *FailoverSpec) DeepCopyInto(out *FailoverSpec) {
 	}
 	if in.Storage != nil {
 		in, out := &in.Storage, &out.Storage
-		*out = new(core.Storage)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	if in.Exporter != nil {
 		in, out := &in.Exporter, &out.Exporter
-		*out = new(core.Exporter)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	in.Access.DeepCopyInto(&out.Access)
 	if in.PodAnnotations != nil {
@@ -433,7 +431,9 @@ func (in *FailoverStatus) DeepCopyInto(out *FailoverStatus) {
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]core.ValkeyNode, len(*in))
-		copy(*out, *in)
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	in.Monitor.DeepCopyInto(&out.Monitor)
 }
@@ -630,8 +630,7 @@ func (in *SentinelSpec) DeepCopyInto(out *SentinelSpec) {
 	}
 	if in.Exporter != nil {
 		in, out := &in.Exporter, &out.Exporter
-		*out = new(core.Exporter)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	in.Access.DeepCopyInto(&out.Access)
 	if in.Affinity != nil {
@@ -683,7 +682,9 @@ func (in *SentinelStatus) DeepCopyInto(out *SentinelStatus) {
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]core.ValkeyNode, len(*in))
-		copy(*out, *in)
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 }
 
