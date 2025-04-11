@@ -68,7 +68,7 @@ func GeneratePassword(size int) (string, error) {
 	for i := 4; i < size; i++ {
 		buf[i] = all[MustRandInt(len(all))]
 	}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		j := MustRandInt(size)
 		buf[i], buf[j] = buf[j], buf[i]
 	}

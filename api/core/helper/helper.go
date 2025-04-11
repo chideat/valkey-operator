@@ -28,8 +28,10 @@ import (
 
 // ParsePorts
 func ParsePorts(portSequence string) ([]int32, error) {
-	portRanges := strings.Split(portSequence, ",")
-	portMap := make(map[int32]struct{})
+	var (
+		portRanges = strings.Split(portSequence, ",")
+		portMap    = make(map[int32]int)
+	)
 
 	for _, portRange := range portRanges {
 		portRangeParts := strings.Split(portRange, "-")
@@ -39,7 +41,10 @@ func ParsePorts(portSequence string) ([]int32, error) {
 			if err != nil {
 				return nil, err
 			}
-			portMap[int32(port)] = struct{}{}
+			if port <= 0 {
+				return nil, fmt.Errorf("port must be greater than 0")
+			}
+			portMap[int32(port)] += 1
 		} else if len(portRangeParts) == 2 {
 			start, err := strconv.Atoi(portRangeParts[0])
 			if err != nil {
@@ -51,26 +56,24 @@ func ParsePorts(portSequence string) ([]int32, error) {
 			}
 
 			for i := start; i <= end; i++ {
-				portMap[int32(i)] = struct{}{}
+				if i <= 0 {
+					return nil, fmt.Errorf("port must be greater than 0")
+				}
+				portMap[int32(i)] += 1
 			}
 		} else {
 			return nil, fmt.Errorf("invalid port range format: %s", portRange)
 		}
 	}
 
-	ports := make([]int32, 0, len(portMap))
-	for port := range portMap {
+	var ports []int32
+	for port, count := range portMap {
+		if count > 1 {
+			return nil, fmt.Errorf("duplicate port %d found", port)
+		}
 		ports = append(ports, port)
 	}
-	slices.SortStableFunc(ports, func(a, b int32) int {
-		if a == b {
-			return 0
-		}
-		if a < b {
-			return -1
-		}
-		return 1
-	})
+	slices.Sort(ports)
 	return ports, nil
 }
 

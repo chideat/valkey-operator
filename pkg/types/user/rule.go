@@ -118,7 +118,8 @@ func NewRule(val string) (*Rule, error) {
 			return nil, fmt.Errorf("unsupported rule %s", v)
 		}
 	}
-	for _, cate := range append(append([]string{}, r.Categories...), r.DisallowedCategories...) {
+
+	for _, cate := range slices.Concat(r.Categories, r.DisallowedCategories) {
 		if !slices.Contains(allowedCategories, cate) {
 			return nil, fmt.Errorf("unsupported category %s", cate)
 		}

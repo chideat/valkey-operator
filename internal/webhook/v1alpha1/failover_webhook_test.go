@@ -20,6 +20,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	// TODO (user): Add any additional imports if needed
 )
@@ -27,45 +30,39 @@ import (
 var _ = Describe("Failover Webhook", func() {
 	var (
 		obj       *valkeybufredv1alpha1.Failover
-		oldObj    *valkeybufredv1alpha1.Failover
 		validator FailoverCustomValidator
 	)
 
 	BeforeEach(func() {
 		obj = &valkeybufredv1alpha1.Failover{}
-		oldObj = &valkeybufredv1alpha1.Failover{}
 		validator = FailoverCustomValidator{}
-		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
-		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
 	})
 
 	Context("When creating or updating Failover under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should deny creation if no valkey ownerer specified", func() {
+			By("simulating an invalid creation scenario")
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please use Valkey API to create Failover resources"))
+		})
+
+		It("Should allow creation if valkey ownerer specified", func() {
+			By("simulating an invalid creation scenario")
+			obj.OwnerReferences = []metav1.OwnerReference{
+				{
+					APIVersion: valkeybufredv1alpha1.GroupVersion.String(),
+					Kind:       "Valkey",
+					Name:       "valkey",
+					UID:        "valkey-uid",
+					Controller: ptr.To(true),
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 })

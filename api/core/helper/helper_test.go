@@ -57,9 +57,15 @@ func TestParseSequencePorts(t *testing.T) {
 		},
 		{
 			name:          "Unsorted and overlapping",
-			portSequence:  "9-10,7,4-6,3,5-8",
-			expectedPorts: []int32{3, 4, 5, 6, 7, 8, 9, 10},
+			portSequence:  "9-10,4-6,3",
+			expectedPorts: []int32{3, 4, 5, 6, 9, 10},
 			expectedError: nil,
+		},
+		{
+			name:          "Duplicate port",
+			portSequence:  "9-10,4-6,5",
+			expectedPorts: nil,
+			expectedError: fmt.Errorf("duplicate port 5 found"),
 		},
 	}
 	for _, tc := range testCases {
