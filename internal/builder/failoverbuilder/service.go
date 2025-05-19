@@ -158,7 +158,7 @@ func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
 				{
 					Name:       "metrics",
 					Port:       builder.ExporterPortNumber,
-					TargetPort: intstr.FromInt(builder.ExporterPortNumber),
+					TargetPort: intstr.FromInt32(builder.ExporterPortNumber),
 					Protocol:   "TCP",
 				},
 			},

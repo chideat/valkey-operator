@@ -177,7 +177,7 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 
 	inst.Status.LastShardCount = 1
 	inst.Status.LastVersion = inst.Spec.Version
-	inst.Status.ClusterNodes = failover.Status.Nodes
+	inst.Status.Nodes = failover.Status.Nodes
 	inst.Status.Message = failover.Status.Message
 	if failover.Status.Phase == v1alpha1.FailoverPhaseFailed {
 		logger.V(3).Info("instance is fail")
@@ -257,7 +257,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 
 	inst.Status.LastShardCount = cluster.Spec.Replicas.Shards
 	inst.Status.LastVersion = inst.Spec.Version
-	inst.Status.ClusterNodes = cluster.Status.Nodes
+	inst.Status.Nodes = cluster.Status.Nodes
 	inst.Status.Message = cluster.Status.Message
 	if vkHandler.ClusterIsUp(cluster) {
 		logger.V(3).Info("instance is ready")

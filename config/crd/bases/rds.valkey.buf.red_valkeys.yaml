@@ -3451,7 +3451,25 @@ spec:
           status:
             description: ValkeyStatus defines the observed state of Valkey
             properties:
-              clusterNodes:
+              lastShardCount:
+                description: LastShardCount indicates the last number of shards in
+                  the Valkey Cluster.
+                format: int32
+                type: integer
+              lastVersion:
+                description: LastVersion indicates the last version of the Valkey
+                  instance.
+                type: string
+              matchLabels:
+                additionalProperties:
+                  type: string
+                description: Matching labels selector for Valkey
+                type: object
+              message:
+                description: This field contains an additional message for the instance's
+                  status
+                type: string
+              nodes:
                 description: ClusterNodes valkey nodes info
                 items:
                   description: ValkeyNode represent a ValkeyCluster Node
@@ -3498,46 +3516,15 @@ spec:
                   - statefulSet
                   type: object
                 type: array
-              lastShardCount:
-                description: LastShardCount indicates the last number of shards in
-                  the Valkey Cluster.
-                format: int32
-                type: integer
-              lastVersion:
-                description: LastVersion indicates the last version of the Valkey
-                  instance.
-                type: string
-              matchLabels:
-                additionalProperties:
-                  type: string
-                description: Matching labels selector for Valkey
-                type: object
-              message:
-                description: This field contains an additional message for the instance's
-                  status
-                type: string
-              passwordSecretName:
-                description: The name of the kubernetes Secret that contains Valkey
-                  password.
-                type: string
               phase:
                 description: |-
                   Phase indicates whether all the resource for the instance is ok.
                   Values are as below:
                     Initializing - Resource is in Initializing or Reconcile
                     Ready        - All resources is ok. In most cases, Ready means the cluster is ok to use
-                    Error        - Error found when do resource init
-                type: string
-              proxyMatchLabels:
-                additionalProperties:
-                  type: string
-                description: Matching label selector for Valkey proxy.
-                type: object
-              proxyServiceName:
-                description: The name of the kubernetes Service for Valkey Proxy
-                type: string
-              serviceName:
-                description: The name of the kubernetes Service for Valkey
+                    Rebalancing  - Cluster instance is rebalancing
+                    Failed       - Error found when do resource reconcile, which not recoverable
+                    Paused       - Instance paused which means workload replicas is set to 0
                 type: string
             type: object
         type: object

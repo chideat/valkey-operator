@@ -244,15 +244,8 @@ func (in *ValkeyStatus) DeepCopyInto(out *ValkeyStatus) {
 			(*out)[key] = val
 		}
 	}
-	if in.ProxyMatchLabels != nil {
-		in, out := &in.ProxyMatchLabels, &out.ProxyMatchLabels
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
-	}
-	if in.ClusterNodes != nil {
-		in, out := &in.ClusterNodes, &out.ClusterNodes
+	if in.Nodes != nil {
+		in, out := &in.Nodes, &out.Nodes
 		*out = make([]core.ValkeyNode, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])

@@ -155,22 +155,16 @@ type ValkeyStatus struct {
 	// Values are as below:
 	//   Initializing - Resource is in Initializing or Reconcile
 	//   Ready        - All resources is ok. In most cases, Ready means the cluster is ok to use
-	//   Error        - Error found when do resource init
+	//   Rebalancing  - Cluster instance is rebalancing
+	//   Failed       - Error found when do resource reconcile, which not recoverable
+	//   Paused       - Instance paused which means workload replicas is set to 0
 	Phase ValkeyPhase `json:"phase,omitempty"`
 	// This field contains an additional message for the instance's status
 	Message string `json:"message,omitempty"`
-	// The name of the kubernetes Secret that contains Valkey password.
-	PasswordSecretName string `json:"passwordSecretName,omitempty"`
-	// The name of the kubernetes Service for Valkey
-	ServiceName string `json:"serviceName,omitempty"`
 	// Matching labels selector for Valkey
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-	// Matching label selector for Valkey proxy.
-	ProxyMatchLabels map[string]string `json:"proxyMatchLabels,omitempty"`
-	// The name of the kubernetes Service for Valkey Proxy
-	ProxyServiceName string `json:"proxyServiceName,omitempty"`
 	// ClusterNodes valkey nodes info
-	ClusterNodes []core.ValkeyNode `json:"clusterNodes,omitempty"`
+	Nodes []core.ValkeyNode `json:"nodes,omitempty"`
 	// LastShardCount indicates the last number of shards in the Valkey Cluster.
 	LastShardCount int32 `json:"lastShardCount,omitempty"`
 	// LastVersion indicates the last version of the Valkey instance.

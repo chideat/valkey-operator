@@ -474,7 +474,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			newPorts = append(newPorts, port)
 		}
 	}
-	for i := 0; i < int(cr.Spec.Replicas); i++ {
+	for i := range int(cr.Spec.Replicas) {
 		serviceName := failoverbuilder.NodePortServiceName(cr, i)
 		oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
 		if errors.IsNotFound(err) {
@@ -494,7 +494,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 		}
 
 		svc := failoverbuilder.GeneratePodNodePortService(cr, i, getClientPort(oldService))
-		// check old service for compability
+		// check old service for compatibility
 		if len(oldService.OwnerReferences) == 0 ||
 			oldService.OwnerReferences[0].Kind == "Pod" ||
 			!reflect.DeepEqual(oldService.Spec, svc.Spec) ||

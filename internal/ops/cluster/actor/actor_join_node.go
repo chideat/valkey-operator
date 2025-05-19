@@ -161,7 +161,7 @@ func (a *actorJoinNode) Do(ctx context.Context, val types.Instance) *actor.Actor
 		} else {
 			// NOTE: below cases will cause this branch:
 			// 1. instance is paused
-			// when this happends, nothing we can do, just requeue
+			// when this happens, nothing we can do, just requeue
 			logger.Info("no node found to setup as master,try to ensure resources")
 			return actor.NewResult(cops.CommandRequeue)
 		}

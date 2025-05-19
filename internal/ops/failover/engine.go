@@ -149,7 +149,7 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 		labelVal := labels[builder.RoleLabelKey]
 		if node == nil {
 			if labelVal != "" {
-				logger.V(3).Info("node not accessable", "name", pod.GetName(), "labels", labels)
+				logger.V(3).Info("node not accessible", "name", pod.GetName(), "labels", labels)
 				return actor.NewResult(CommandPatchLabels)
 			}
 			continue

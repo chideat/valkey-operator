@@ -29,6 +29,7 @@ bin/
 .DS_Store
 .vscode/*
 coverage.txt
+coverage.html
 cover.out
 bundle/*
 bundle.Dockerfile

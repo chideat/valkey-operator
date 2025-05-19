@@ -467,7 +467,7 @@ func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.ClusterIns
 		}
 	}
 
-	// TODO: do reshard to fix slot fragement
+	// TODO: do reshard to fix slot fragment
 
 	return nil
 }

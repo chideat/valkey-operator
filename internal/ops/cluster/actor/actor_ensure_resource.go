@@ -463,8 +463,8 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 			newPorts = append(newPorts, port)
 		}
 	}
-	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
-		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
+	for shard := range int(cr.Spec.Replicas.Shards) {
+		for replica := range int(cr.Spec.Replicas.ReplicasOfShard) + 1 {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
 			if errors.IsNotFound(err) {
@@ -483,7 +483,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 				return actor.RequeueWithError(err)
 			}
 
-			// check old service for compability
+			// check old service for compatibility
 			if len(oldService.OwnerReferences) == 0 || oldService.OwnerReferences[0].Kind == "Pod" {
 				oldService.OwnerReferences = util.BuildOwnerReferences(cr)
 				if err := a.client.UpdateService(ctx, oldService.Namespace, oldService); err != nil {
