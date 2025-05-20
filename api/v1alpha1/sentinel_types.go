@@ -27,6 +27,11 @@ import (
 type SentinelInstanceAccess struct {
 	core.InstanceAccess `json:",inline"`
 
+	// DefaultPasswordSecret referered to the secret which defined the password for default user
+	// The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
+	// +optional
+	DefaultPasswordSecret string `json:"defaultPasswordSecret,omitempty"`
+
 	// ExternalTLSSecret the external TLS secret to use, if not provided, the operator will issue one
 	ExternalTLSSecret string `json:"externalTLSSecret,omitempty"`
 }

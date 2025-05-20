@@ -184,7 +184,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		return reconcile.Result{RequeueAfter: time.Second * 10}, nil
 	}
-	instance.Status.Phase = v1alpha1.UserSuccess
+	instance.Status.Phase = v1alpha1.UserReady
 	instance.Status.Message = ""
 	logger.V(3).Info("user reconcile success")
 	if err := r.updateUserStatus(ctx, &instance); err != nil {

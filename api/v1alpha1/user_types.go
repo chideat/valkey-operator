@@ -52,7 +52,7 @@ type UserPhase string
 
 const (
 	UserFail    UserPhase = "Fail"
-	UserSuccess UserPhase = "Success"
+	UserReady   UserPhase = "Ready"
 	UserPending UserPhase = "Pending"
 )
 

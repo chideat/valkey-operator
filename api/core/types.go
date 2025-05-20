@@ -110,10 +110,6 @@ type Exporter struct {
 
 // InstanceAccess
 type InstanceAccess struct {
-	// DefaultPasswordSecret referered to the secret which defined the password for default user
-	// The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
-	// +optional
-	DefaultPasswordSecret string `json:"defaultPasswordSecret,omitempty"`
 
 	// ServiceType defines the type of the all related services
 	// +kubebuilder:default:=ClusterIP

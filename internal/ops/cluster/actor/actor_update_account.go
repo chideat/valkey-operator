@@ -18,6 +18,7 @@ package actor
 
 import (
 	"context"
+	"maps"
 	"reflect"
 	"time"
 
@@ -139,9 +140,8 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	}
 
 	if isUpdated {
-		for k, v := range users.Encode(true) {
-			oldCm.Data[k] = v
-		}
+		maps.Copy(oldCm.Data, users.Encode(true))
+
 		if err := a.client.CreateOrUpdateConfigMap(ctx, cluster.GetNamespace(), oldCm); err != nil {
 			logger.Error(err, "update acl configmap failed", "target", oldCm.Name)
 			return actor.NewResultWithError(cops.CommandRequeue, err)

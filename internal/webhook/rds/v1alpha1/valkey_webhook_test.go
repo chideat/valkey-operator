@@ -48,8 +48,7 @@ var _ = Describe("Valkey Webhook", func() {
 			Spec: rdsv1alpha1.ValkeySpec{
 				Arch: core.ValkeyFailover,
 				Access: core.InstanceAccess{
-					DefaultPasswordSecret: "valkey-secret",
-					ServiceType:           corev1.ServiceTypeClusterIP,
+					ServiceType: corev1.ServiceTypeClusterIP,
 				},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
@@ -508,25 +507,6 @@ var _ = Describe("Valkey Webhook", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.resources.limits.cpu is required"))
 		})
-
-		It("Should validate password", func() {
-			By("Creating a Valkey object with invalid password")
-			obj.Spec.Arch = core.ValkeyCluster
-			obj.Spec.Replicas = &rdsv1alpha1.ValkeyReplicas{
-				Shards:          3,
-				ReplicasOfShard: 1,
-			}
-			obj.Spec.Access = core.InstanceAccess{
-				DefaultPasswordSecret: "valkey-secret-nosec",
-			}
-
-			By("Validating creation with invalid password")
-			_, err := validator.ValidateCreate(ctx, obj)
-
-			By("Verifying validation error")
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("password should consists of"))
-		})
 	})
 
 	Context("When creating Valkey Failover under Validating Webhook", func() {
@@ -651,9 +631,7 @@ var _ = Describe("Valkey Webhook", func() {
 				SentinelSpec: v1alpha1.SentinelSpec{
 					Replicas: 3,
 					Access: v1alpha1.SentinelInstanceAccess{
-						InstanceAccess: core.InstanceAccess{
-							DefaultPasswordSecret: "valkey-secret-nosec",
-						},
+						DefaultPasswordSecret: "valkey-secret-nosec",
 					},
 				},
 			}

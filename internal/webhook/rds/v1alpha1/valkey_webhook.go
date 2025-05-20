@@ -197,9 +197,9 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 		warns = append(warns, "spec.resources.limits.memory and spec.resources.requests.memory should be the same")
 	}
 
-	if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
-		return warns, err
-	}
+	// if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
+	// 	return warns, err
+	// }
 
 	if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
 		helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),

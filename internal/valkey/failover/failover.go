@@ -460,7 +460,6 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 	}
 	for _, name := range []string{
 		aclbuilder.GenerateOperatorUserResourceName(s.Arch(), s.GetName()),
-		aclbuilder.GenerateDefaultUserResourceName(s.Arch(), s.GetName()),
 	} {
 		if ru, err := s.client.GetUser(ctx, s.GetNamespace(), name); err != nil {
 			s.logger.Error(err, "load operator user failed")
@@ -486,7 +485,6 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 	if len(users) == 0 {
 		if cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name); errors.IsNotFound(err) {
 			var (
-				username       string
 				passwordSecret string
 				secret         *corev1.Secret
 			)
@@ -495,78 +493,33 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			if err != nil {
 				if !errors.IsNotFound(err) {
 					s.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(s.GetNamespace(), s.GetName()))
+				} else {
+					return nil, err
 				}
-				passwordSecret = aclbuilder.GenerateACLOperatorSecretName(s.Arch(), s.GetName())
-				username = user.DefaultOperatorUserName
 			} else {
 				spec := sts.Spec.Template.Spec
 				if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
 					for _, env := range container.Env {
-						if env.Name == builder.PasswordEnvName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
-							passwordSecret = env.ValueFrom.SecretKeyRef.LocalObjectReference.Name
-						} else if env.Name == builder.OperatorSecretName && env.Value != "" {
+						if env.Name == builder.OperatorSecretName && env.Value != "" {
 							passwordSecret = env.Value
-						} else if env.Name == builder.OperatorUsername {
-							username = env.Value
-						}
-					}
-				}
-				if passwordSecret == "" {
-					// COMPAT: for old sentinel version, the secret is mounted to the pod
-					for _, vol := range spec.Volumes {
-						if vol.Name == "valkey-auth" && vol.Secret != nil {
-							passwordSecret = vol.Secret.SecretName
-							break
 						}
 					}
 				}
 			}
-
-			if passwordSecret != "" {
-				objKey := client.ObjectKey{Namespace: s.GetNamespace(), Name: passwordSecret}
-				if secret, err = s.loadUserSecret(ctx, objKey); err != nil {
-					s.logger.Error(err, "load user secret failed", "target", objKey)
-					return nil, err
-				}
-			} else if passwordSecret := s.Spec.Access.DefaultPasswordSecret; passwordSecret != "" {
-				secret, err = s.client.GetSecret(ctx, s.GetNamespace(), passwordSecret)
-				if err != nil {
-					return nil, err
-				}
+			if passwordSecret == "" {
+				passwordSecret = aclbuilder.GenerateACLOperatorSecretName(s.Arch(), s.GetName())
 			}
-			role := user.RoleDeveloper
-			if username == user.DefaultOperatorUserName {
-				role = user.RoleOperator
-			} else if username == "" {
-				username = user.DefaultUserName
+			objKey := client.ObjectKey{Namespace: s.GetNamespace(), Name: passwordSecret}
+			if secret, err = s.loadUserSecret(ctx, objKey); err != nil {
+				s.logger.Error(err, "load user secret failed", "target", objKey)
+				return nil, err
 			}
 
-			if role == user.RoleOperator {
-				if u, err := types.NewOperatorUser(secret); err != nil {
-					s.logger.Error(err, "init users failed")
-					return nil, err
-				} else {
-					users = append(users, u)
-				}
-
-				if passwordSecret := s.Spec.Access.DefaultPasswordSecret; passwordSecret != "" {
-					secret, err = s.client.GetSecret(ctx, s.GetNamespace(), passwordSecret)
-					if err != nil {
-						return nil, err
-					}
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, secret)
-					users = append(users, u)
-				} else {
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil)
-					users = append(users, u)
-				}
+			if u, err := types.NewOperatorUser(secret); err != nil {
+				s.logger.Error(err, "init users failed")
+				return nil, err
 			} else {
-				if u, err := user.NewUser(username, role, secret); err != nil {
-					s.logger.Error(err, "init users failed")
-					return nil, err
-				} else {
-					users = append(users, u)
-				}
+				users = append(users, u)
 			}
 		} else if err != nil {
 			s.logger.Error(err, "load default users's password secret failed", "target", util.ObjectKey(s.GetNamespace(), name))

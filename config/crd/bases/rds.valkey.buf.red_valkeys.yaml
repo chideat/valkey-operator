@@ -1303,11 +1303,6 @@ spec:
                     - ClusterIssuer
                     - Issuer
                     type: string
-                  defaultPasswordSecret:
-                    description: |-
-                      DefaultPasswordSecret referered to the secret which defined the password for default user
-                      The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
-                    type: string
                   enableTLS:
                     description: EnableTLS enable TLS for external access
                     type: boolean
