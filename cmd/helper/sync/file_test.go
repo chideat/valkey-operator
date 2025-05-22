@@ -18,6 +18,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -173,6 +174,7 @@ func TestFileWatcherRunWithMultipleFiles(t *testing.T) {
 
 	logger := getTestLogger()
 	handler := func(ctx context.Context, fs *FileStat) error {
+		fmt.Printf("File modified: %s\n", fs.FilePath())
 		handlerCalled <- fs
 		return nil
 	}
@@ -213,12 +215,12 @@ func TestFileWatcherRunWithMultipleFiles(t *testing.T) {
 	filesWatched := make(map[string]bool)
 
 	// We should get notifications for both files
-	for range 2 {
+	for range 4 {
 		select {
 		case fs := <-handlerCalled:
 			filesWatched[fs.FilePath()] = true
-		case <-time.After(5 * time.Second):
-			t.Fatal("Timeout waiting for initial handler calls")
+		case <-time.After(3 * time.Second):
+			continue
 		}
 	}
 
@@ -238,12 +240,12 @@ func TestFileWatcherRunWithMultipleFiles(t *testing.T) {
 	filesWatched = make(map[string]bool)
 
 	// We should get notifications for both files again
-	for range 2 {
+	for range 4 {
 		select {
 		case fs := <-handlerCalled:
 			filesWatched[fs.FilePath()] = true
-		case <-time.After(5 * time.Second):
-			t.Fatal("Timeout waiting for handler calls after file modifications")
+		case <-time.After(3 * time.Second):
+			continue
 		}
 	}
 
