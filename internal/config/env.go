@@ -17,12 +17,29 @@ limitations under the License.
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func init() {
+	if _, err := LoadValkeyVersionMap(); err != nil {
+		panic(err)
+	}
+}
+
+func LoadValkeyVersionMap() (map[string]string, error) {
+	versionMap := map[string]string{}
+	if mapVal := os.Getenv("VALKEY_VERSION_MAP"); mapVal != "" {
+		if err := json.Unmarshal([]byte(mapVal), &versionMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal VALKEY_VERSION_MAP: %w", err)
+		}
+	}
+	return versionMap, nil
+}
 
 func GetValkeyVersion(image string) string {
 	if image == "" {
@@ -62,6 +79,13 @@ func GetValkeyImageByVersion(version string) string {
 	imageName := os.Getenv("VALKEY_IMAGE_NAME")
 	if imageName == "" {
 		imageName = "valkey/valkey"
+	}
+
+	versionMap, _ := LoadValkeyVersionMap()
+	if versionMap != nil {
+		if val, _ := versionMap[version]; val != "" {
+			version = val
+		}
 	}
 	return GetFullImageURL(imageName, version)
 }

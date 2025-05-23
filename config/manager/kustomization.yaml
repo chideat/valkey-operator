@@ -13,3 +13,4 @@ commonAnnotations:
   operatorImageName: chideat/valkey-operator
   operatorVersion: v0.1.0-alpha
   valkeyImageName: valkey/valkey
+  valkeyVersionMap: '{}'
