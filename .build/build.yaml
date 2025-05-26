@@ -1,0 +1,335 @@
+apiVersion: builds.katanomi.dev/v1alpha1
+kind: Build
+spec:
+  workspaces:
+    - description: |
+        This workspace is shared among all the pipeline tasks to read/write common resources
+      name: source
+    - name: config
+  runTemplate:
+    spec:
+      workspaces:
+        - name: config
+          configmap:
+            name: buildkitd-config
+      taskRunSpecs:
+        - pipelineTaskName: build-operator
+          stepOverrides:
+            - name: build
+              resources:
+                requests:
+                  cpu: 2000m
+                  memory: 4000Mi
+                limits:
+                  cpu: 3000m
+                  memory: 6000Mi
+        - pipelineTaskName: build-bundle
+          stepOverrides:
+            - name: build
+              resources:
+                requests:
+                  cpu: 2000m
+                  memory: 2048Mi
+                limits:
+                  cpu: 2000m
+                  memory: 2048Mi
+        - pipelineTaskName: generate-bundle
+          stepOverrides:
+            - name: update-version-data
+              resources:
+                requests:
+                  cpu: 666m
+                  memory: 1333Mi
+                limits:
+                  cpu: 2000m
+                  memory: 4000Mi
+            - name: generate-related-images
+              resources:
+                requests:
+                  cpu: 666m
+                  memory: 1333Mi
+                limits:
+                  cpu: 2000m
+                  memory: 4000Mi
+            - name: operator-bundle
+              resources:
+                requests:
+                  cpu: 2000m
+                  memory: 2048Mi
+                limits:
+                  cpu: 4000m
+                  memory: 4096Mi
+        - pipelineTaskName: go-lint
+          stepOverrides:
+            - name: scan
+              resources:
+                requests:
+                  cpu: 4000m
+                  memory: 6000Mi
+                limits:
+                  cpu: 6000m
+                  memory: 8000Mi
+        - pipelineTaskName: go-test
+          stepOverrides:
+            - name: prepare
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 1000Mi
+                limits:
+                  cpu: 1500m
+                  memory: 3000Mi
+            - name: test
+              resources:
+                requests:
+                  cpu: 2000m
+                  memory: 2000Mi
+                limits:
+                  cpu: 3000m
+                  memory: 4000Mi
+            - name: analysis
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1000Mi
+                limits:
+                  cpu: 1500m
+                  memory: 3000Mi
+  tasks:
+    - name: go-lint
+      timeout: 30m
+      retries: 0
+      taskRef:
+        kind: ClusterTask
+        name: golangci-lint
+      workspaces:
+        - name: source
+          workspace: source
+        - name: cache
+          workspace: source
+      params:
+        - name: tool-image
+          value: registry.alauda.cn:60080/devops/builder-go:1.23
+        - name: command
+          value: >
+            export GOPROXY=https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct
+
+            golangci-lint run --concurrency 4 -c .local-golangci.yaml --verbose ./...
+        - name: quality-gate
+          value: "false"
+        - name: quality-gate-rules
+          value:
+          - issues-count=0
+    - name: go-test
+      runAfter:
+        - go-lint
+      timeout: 30m
+      retries: 0
+      taskRef:
+        kind: ClusterTask
+        name: go-unit-test
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: command
+          value: |-
+            export GOPROXY="https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct"
+            export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*"
+            make test
+        - name: coverage-report-path
+          value: ./coverage.txt
+        - name: quality-gate
+          value: "false"
+        - name: tool-image
+          value: docker-mirrors.alauda.cn/library/golang:1.23
+    - name: code-scan
+      runAfter:
+        - go-test
+      timeout: 30m
+      retries: 0
+      taskRef:
+        kind: ClusterTask
+        name: sonarqube-analysis
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: server
+          value: https://build-sonar.alauda.cn
+        - name: quality-gate
+          value: "false"
+    - name: build-operator
+      timeout: 30m
+      retries: 3
+      taskRef:
+        kind: ClusterTask
+        name: alauda-build-image
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: container-image
+          value: build-harbor.alauda.cn/middleware/valkey-operator
+        - name: container-image-tag
+          value: $(build.git.version.docker)
+        - name: labels
+          value:
+            - branch=$(build.git.branch.name)
+            - commit=$(build.git.lastCommit.id)
+
+    ########## build bundle ##########
+    - name: generate-bundle
+      timeout: 30m
+      retries: 3
+      taskRef:
+        kind: ClusterTask
+        name: alauda-operator-bundle
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: tools-image
+          value: registry.alauda.cn:60080/fundamentals/operator-builder:master-1.24
+        - name: set-skip-range
+          value: ">=0.0.0 <$(build.git.version.clean)"
+        - name: build-command
+          value: |
+            export GONOSUMDB="gopkg.in/*"
+            rm -rf /usr/local/bin/operator-sdk /go/bin/operator-sdk $(pwd)/bin/operator-sdk && make operator-sdk && chmod +x $(pwd)/bin/operator-sdk && make bundle
+        - name: controller-version
+          value: $(build.git.version.docker)
+        - name: bundle-version
+          value: $(build.git.version.clean)
+        - name: csv-file-path
+          value: config/manifests/bases/valkey-operator.clusterserviceversion.yaml
+        - name: bundle-csv-file-path
+          value: bundle/manifests/valkey-operator.clusterserviceversion.yaml
+        - name: controller-values-filepath
+          value: values.yaml
+        - name: controller-values-jsonpath
+          value: global.images.valkey-operator.tag
+    - name: build-bundle
+      runAfter:
+        - generate-bundle
+      timeout: 30m
+      retries: 3
+      taskRef:
+        kind: ClusterTask
+        name: alauda-build-image
+      workspaces:
+        - name: source
+          workspace: source
+      when: [ ]
+      params:
+        - name: container-image
+          value: build-harbor.alauda.cn/middleware/valkey-operator-bundle
+        - name: container-image-tag
+          value: $(build.git.version.docker)
+        - name: dockerfile
+          value: bundle.Dockerfile
+        - name: labels
+          value:
+            - app_version=$(build.git.branch.name)
+            - branch=$(build.git.branch.name)
+            - commit=$(build.git.lastCommit.id)
+        - name: set-skip-range
+          value: ">=0.0.0 <$(build.git.version.clean)"
+        - name: controller-version
+          value: $(build.git.version.docker)
+        - name: bundle-version
+          value: $(build.git.version.clean)
+        - name: csv-file-path
+          value: config/manifests/bases/valkey-operator.clusterserviceversion.yaml
+        - name: bundle-csv-file-path
+          value: bundle/manifests/valkey-operator.clusterserviceversion.yaml
+        - name: controller-values-filepath
+          value: values.yaml
+
+    ########## violet ##########
+    - name: violet-base
+      timeout: 30m
+      retries: 0
+      taskRef:
+        resolver: katanomi.hub
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: build-image-buildkit
+      workspaces:
+        - name: source
+          workspace: source
+        - name: cache
+          workspace: source
+      when: [ ]
+      params:
+        - name: reuse-image
+          value: "true"
+        - name: cache-major-branches
+          value: "false"
+        - name: container-images
+          value:
+            - build-harbor.alauda.cn/middleware/valkey-operator-violet-base:latest
+        - name: context
+          value: violet
+        - name: dockerfile
+          value: violet/base.Dockerfile
+    - name: violet-package
+      timeout: 30m
+      retries: 3
+      taskRef:
+        resolver: katanomi.hub
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: build-image-buildkit
+      workspaces:
+        - name: source
+          workspace: source
+        - name: cache
+        - name: config
+      runAfter:
+        - violet-base
+        - build-operator
+        - build-bundle
+      when: [ ]
+      params:
+        - name: container-images
+          value:
+            - build-harbor.alauda.cn/middleware/valkey-operator-violet:$(build.git.version.docker)
+        - name: cache-major-branches
+          value: "false"
+        - name: context
+          value: violet
+        - name: extra-args
+          value: >
+            --opt build-arg:TAG=$(build.git.version.docker)
+            --opt build-arg:LEVEL=s3
+        - name: dockerfile
+          value: violet/violet.Dockerfile
+  finally:
+    - name: release-tag
+      when:
+        - input: "$(build.git.versionPhase)"
+          operator: in
+          values:
+            - custom
+            - ga
+        - input: $(tasks.status)
+          operator: in
+          values:
+            - Succeeded
+            - Completed
+      timeout: 30m
+      retries: 0
+      taskRef:
+        kind: ClusterTask
+        name: alauda-release-tag
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: version
+          value: $(build.git.version.docker)

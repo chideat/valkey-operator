@@ -3,13 +3,19 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= $(shell cat version)
-NAMESPACE ?= chideat
+YQ="yq"
 
-REDIS_EXPORTER_IMAGE_NAME ?= "oliver006/redis_exporter"
-REDIS_EXPORTER_IMAGE_VERSION ?= "v1.67.0-alpine"
-VALKEY_IMAGE_NAME ?= "valkey/valkey"
-VALKEY_VERSION_MAP ?= {}
+REGISTRY ?= $(shell $(YQ) r values.yaml global.registry.address)
+VERSION ?= $(shell $(YQ) r values.yaml global.images.valkey-operator.tag)
+
+REDIS_EXPORTER_IMAGE_NAME ?= $(shell $(YQ) r values.yaml global.images.redis-exporter.repository)
+REDIS_EXPORTER_IMAGE_VERSION ?= $(shell $(YQ) r values.yaml global.images.redis-exporter.tag)
+
+VALKEY_IMAGE_NAME ?= $(shell $(YQ) r values.yaml global.images.valkey-v72.repository)
+VALKEY_IMAGE_TAG_72 ?= $(shell $(YQ) r values.yaml global.images.valkey-v72.tag)
+VALKEY_IMAGE_TAG_8 ?= $(shell $(YQ) r values.yaml global.images.valkey-v8.tag)
+VALKEY_IMAGE_TAG_81 ?= $(shell $(YQ) r values.yaml global.images.valkey-v81.tag)
+VALKEY_VERSION_MAP ?= {\"7.2\": \"$(VALKEY_IMAGE_TAG_72)\", \"8.0\": \"$(VALKEY_IMAGE_TAG_8)\", \"8.1\": \"$(VALKEY_IMAGE_TAG_81)\"}
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -38,14 +44,14 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # valkey.buf.red/valkey-operator-bundle:$VERSION and valkey.buf.red/valkey-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= $(NAMESPACE)/valkey-operator
+IMAGE_TAG_BASE ?= $(REGISTRY)/$(shell $(YQ) r values.yaml global.images.valkey-operator.repository)
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
+BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
-BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(patsubst v%,%,$(VERSION)) $(BUNDLE_METADATA_OPTS)
 
 # USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
 # You can enable this value if you would like to use SHA Based Digests
@@ -59,7 +65,7 @@ endif
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
 OPERATOR_SDK_VERSION ?= v1.38.0
 # Image URL to use all building/pushing image targets
-IMG ?= $(IMAGE_TAG_BASE):v$(VERSION)
+IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
 
@@ -278,16 +284,16 @@ endif
 endif
 
 .PHONY: bundle
-bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	@cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultRegistry:""
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultRegistry:"$(REGISTRY)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultExporterImageName:"$(REDIS_EXPORTER_IMAGE_NAME)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f defaultExporterVersion:"$(REDIS_EXPORTER_IMAGE_VERSION)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f valkeyImageName:"$(VALKEY_IMAGE_NAME)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f valkeyVersionMap:"$(VALKEY_VERSION_MAP)"
 	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorImageName:"$(IMAGE_TAG_BASE)"
-	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorVersion:"v$(VERSION)"
+	@cd config/manager && $(KUSTOMIZE) edit add annotation -f operatorVersion:"$(VERSION)"
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	@sed -i "s#__OPERATOR_IMAGE__#$(IMAGE_TAG_BASE):v$(VERSION)#g" ./bundle/manifests/valkey-operator.clusterserviceversion.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle

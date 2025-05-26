@@ -171,7 +171,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventRecorder := mgr.GetEventRecorderFor("redis-operator")
+	eventRecorder := mgr.GetEventRecorderFor("valkey-operator")
 	// init actor
 	clientset := clientset.NewWithConfig(noCacheCli, mgr.GetConfig(), mgr.GetLogger())
 	actorManager := actor.NewActorManager(clientset, setupLog.WithName("ActorManager"))

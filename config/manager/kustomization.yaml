@@ -4,13 +4,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: chideat/valkey-operator
-  newTag: v0.1.0-alpha
+  newName: build-harbor.alauda.cn/middleware/valkey-operator
+  newTag: v3.15.0-beta.20.g274dbf5f
 commonAnnotations:
-  defaultExporterImageName: oliver006/redis_exporter
-  defaultExporterVersion: v1.67.0-alpine
-  defaultRegistry: ""
-  operatorImageName: chideat/valkey-operator
-  operatorVersion: v0.1.0-alpha
-  valkeyImageName: valkey/valkey
-  valkeyVersionMap: '{}'
+  defaultExporterImageName: middleware/oliver006/redis_exporter
+  defaultExporterVersion: v1.65-5cd7b3eb
+  defaultRegistry: build-harbor.alauda.cn
+  operatorImageName: build-harbor.alauda.cn/middleware/valkey-operator
+  operatorVersion: v3.15.0-beta.20.g274dbf5f
+  valkeyImageName: middleware/valkey
+  valkeyVersionMap: '{"7.2": "7.2-alpine.7d6ea3e7", "8.0": "8.0-alpine.7d6ea3e7",
+    "8.1": "8.1-alpine.7d6ea3e7"}'
