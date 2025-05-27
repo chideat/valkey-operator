@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM alpine:latest
+FROM build-harbor.alauda.cn/ops/alpine:3.21
 
 LABEL org.opencontainers.image.source=https://github.com/chideat/valkey-operator
 
@@ -41,6 +41,6 @@ COPY --link --from=builder --chmod=555 /workspace/cmd/*.sh /opt/
 
 ENV PATH="/opt:$PATH"
 
-USER nobody:nobody
+USER 65534:65534
 
 ENTRYPOINT ["/manager"]
