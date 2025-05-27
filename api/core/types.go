@@ -114,7 +114,7 @@ type InstanceAccess struct {
 	// ServiceType defines the type of the all related services
 	// +kubebuilder:default:=ClusterIP
 	// +kubebuilder:validation:Enum=NodePort;LoadBalancer;ClusterIP
-	ServiceType corev1.ServiceType `json:"type,omitempty"`
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 
 	// The annnotations of the service which will be attached to services
 	Annotations map[string]string `json:"annotations,omitempty"`

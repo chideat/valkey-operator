@@ -98,7 +98,7 @@ spec:
                     description: Ports defines the nodeports of NodePort service
                     pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
                     type: string
-                  type:
+                  serviceType:
                     default: ClusterIP
                     description: ServiceType defines the type of the all related services
                     enum:
@@ -1694,7 +1694,7 @@ spec:
                         description: Ports defines the nodeports of NodePort service
                         pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
                         type: string
-                      type:
+                      serviceType:
                         default: ClusterIP
                         description: ServiceType defines the type of the all related
                           services

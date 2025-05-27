@@ -72,6 +72,49 @@ spec:
           spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
+              access:
+                description: Access defines information for Valkey nodePorts settings
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
+                  certIssuer:
+                    description: Cert Issuer for external access TLS certificate
+                    type: string
+                  certIssuerType:
+                    default: ClusterIssuer
+                    description: Cert Issuer Type for external access TLS certificate
+                    enum:
+                    - ClusterIssuer
+                    - Issuer
+                    type: string
+                  enableTLS:
+                    description: EnableTLS enable TLS for external access
+                    type: boolean
+                  ipFamilyPrefer:
+                    description: |-
+                      IPFamily represents the IP Family (IPv4 or IPv6).
+                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
+                    enum:
+                    - IPv4
+                    - IPv6
+                    type: string
+                  ports:
+                    description: Ports defines the nodeports of NodePort service
+                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                    type: string
+                  serviceType:
+                    default: ClusterIP
+                    description: ServiceType defines the type of the all related services
+                    enum:
+                    - NodePort
+                    - LoadBalancer
+                    - ClusterIP
+                    type: string
+                type: object
               affinityPolicy:
                 description: AffinityPolicy specifies the affinity policy for the
                   Pod
@@ -85,8 +128,8 @@ spec:
                 description: Arch supports cluster, sentinel
                 enum:
                 - cluster
-                - sentinel
-                - standalone
+                - failover
+                - replica
                 type: string
               customAffinity:
                 description: |-
@@ -1283,50 +1326,6 @@ spec:
                         type: object
                     type: object
                 type: object
-              instanceAccess:
-                description: ' ExternalAccess defines information for Valkey nodePorts
-                  settings'
-                properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: The annnotations of the service which will be attached
-                      to services
-                    type: object
-                  certIssuer:
-                    description: Cert Issuer for external access TLS certificate
-                    type: string
-                  certIssuerType:
-                    default: ClusterIssuer
-                    description: Cert Issuer Type for external access TLS certificate
-                    enum:
-                    - ClusterIssuer
-                    - Issuer
-                    type: string
-                  enableTLS:
-                    description: EnableTLS enable TLS for external access
-                    type: boolean
-                  ipFamilyPrefer:
-                    description: |-
-                      IPFamily represents the IP Family (IPv4 or IPv6).
-                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
-                    enum:
-                    - IPv4
-                    - IPv6
-                    type: string
-                  ports:
-                    description: Ports defines the nodeports of NodePort service
-                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
-                    type: string
-                  type:
-                    default: ClusterIP
-                    description: ServiceType defines the type of the all related services
-                    enum:
-                    - NodePort
-                    - LoadBalancer
-                    - ClusterIP
-                    type: string
-                type: object
               modules:
                 description: Modules defines the module settings for Valkey
                 items:
@@ -1732,7 +1731,7 @@ spec:
                         description: Ports defines the nodeports of NodePort service
                         pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
                         type: string
-                      type:
+                      serviceType:
                         default: ClusterIP
                         description: ServiceType defines the type of the all related
                           services

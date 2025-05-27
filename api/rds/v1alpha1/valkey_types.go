@@ -59,7 +59,7 @@ type ValkeySpec struct {
 	Version string `json:"version"`
 
 	// Arch supports cluster, sentinel
-	// +kubebuilder:validation:Enum="cluster";"sentinel";"standalone"
+	// +kubebuilder:validation:Enum="cluster";"failover";"replica"
 	Arch core.Arch `json:"arch"`
 
 	// Replicas defines desired number of replicas for Valkey
@@ -78,9 +78,9 @@ type ValkeySpec struct {
 	// Storage defines the storage settings for Valkey
 	Storage *core.Storage `json:"storage,omitempty"`
 
-	//  ExternalAccess defines information for Valkey nodePorts settings
+	// Access defines information for Valkey nodePorts settings
 	// +optional
-	Access core.InstanceAccess `json:"instanceAccess,omitempty"`
+	Access core.InstanceAccess `json:"access,omitempty"`
 
 	// PodAnnotations holds Kubernetes Pod annotations PodAnnotations
 	// +optional
