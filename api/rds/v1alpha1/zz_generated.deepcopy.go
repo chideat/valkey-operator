@@ -153,7 +153,8 @@ func (in *ValkeySpec) DeepCopyInto(out *ValkeySpec) {
 	}
 	if in.Storage != nil {
 		in, out := &in.Storage, &out.Storage
-		*out = (*in).DeepCopy()
+		*out = new(core.Storage)
+		(*in).DeepCopyInto(*out)
 	}
 	in.Access.DeepCopyInto(&out.Access)
 	if in.PodAnnotations != nil {
@@ -227,9 +228,7 @@ func (in *ValkeyStatus) DeepCopyInto(out *ValkeyStatus) {
 	if in.Nodes != nil {
 		in, out := &in.Nodes, &out.Nodes
 		*out = make([]core.ValkeyNode, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
+		copy(*out, *in)
 	}
 }
 
