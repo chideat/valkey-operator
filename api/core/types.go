@@ -163,3 +163,19 @@ type ValkeyNode struct {
 	// NodeName is the node name of the node where holds the pod
 	NodeName string `json:"nodeName"`
 }
+
+// ValkeyModule defines the module for Valkey
+type ValkeyModule struct {
+	// Path path of valkey module.
+	//
+	// .so suffix will be appended if path not suffixed provided
+	// if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+	// +required
+	Path string `json:"path"`
+
+	// Args args for module
+	//
+	// Supported for valkey 8.0+
+	// +optional
+	Args []string `json:"args,omitempty"`
+}

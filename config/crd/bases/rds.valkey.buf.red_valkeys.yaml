@@ -1340,15 +1340,15 @@ spec:
                       items:
                         type: string
                       type: array
-                    name:
+                    path:
                       description: |-
-                        Name name of valkey module.
+                        Path path of valkey module.
 
-                        .so suffix will be appended if name not suffixed provided
-                        if name is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+                        .so suffix will be appended if path not suffixed provided
+                        if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
                       type: string
                   required:
-                  - name
+                  - path
                   type: object
                 type: array
               nodeSelector:

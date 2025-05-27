@@ -89,6 +89,9 @@ type ClusterSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// SecurityContext
 	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+
+	// Modules defines the module settings for Valkey
+	Modules []core.ValkeyModule `json:"modules,omitempty"`
 }
 
 // ClusterPhase Valkey Cluster status

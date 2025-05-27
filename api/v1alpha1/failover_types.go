@@ -96,6 +96,9 @@ type FailoverSpec struct {
 
 	// Sentinel
 	Sentinel *SentinelSettings `json:"sentinel,omitempty"`
+
+	// Modules defines the module settings for Valkey
+	Modules []core.ValkeyModule `json:"modules,omitempty"`
 }
 
 type FailoverPhase string
