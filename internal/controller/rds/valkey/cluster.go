@@ -65,11 +65,16 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 		exporter *core.Exporter
 	)
 
-	if instance.Spec.Exporter == nil || !instance.Spec.Exporter.Disable {
-		exporter = &core.Exporter{
-			Image: config.GetValkeyExporterImage(nil),
+	if exp := instance.Spec.Exporter; exp == nil || !exp.Disable {
+		if instance.Spec.Exporter != nil {
+			exporter = &exp.Exporter
+		} else {
+			exporter = &core.Exporter{}
 		}
-		if exporter.Resources == nil {
+		if exporter.Image == "" {
+			exporter.Image = config.GetValkeyExporterImage(nil)
+		}
+		if exporter.Resources == nil || exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
 			exporter.Resources = &corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
 					corev1.ResourceCPU:    resource.MustParse("100m"),

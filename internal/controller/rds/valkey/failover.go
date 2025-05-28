@@ -53,11 +53,15 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 	)
 
 	if exp := instance.Spec.Exporter; exp == nil || !exp.Disable {
-		exporter = &exp.Exporter
+		if exp != nil {
+			exporter = &exp.Exporter
+		} else {
+			exporter = &core.Exporter{}
+		}
 		if exporter.Image == "" {
 			exporter.Image = config.GetValkeyExporterImage(nil)
 		}
-		if exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
+		if exporter.Resources == nil || exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
 			exporter.Resources = &corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
 					corev1.ResourceCPU:    resource.MustParse("50m"),
