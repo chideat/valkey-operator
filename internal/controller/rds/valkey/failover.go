@@ -22,6 +22,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -49,7 +50,9 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 		exporter *core.Exporter
 		sentinel = instance.Spec.Sentinel.DeepCopy()
 
-		annotations = map[string]string{}
+		annotations = map[string]string{
+			builder.CRVersionKey: config.GetOperatorVersion(),
+		}
 	)
 
 	if exp := instance.Spec.Exporter; exp == nil || !exp.Disable {

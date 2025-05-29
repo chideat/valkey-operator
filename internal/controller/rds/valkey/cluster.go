@@ -22,6 +22,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -61,7 +62,10 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 
 	image := config.GetValkeyImageByVersion(instance.Spec.Version)
 	var (
-		labels   = clusterbuilder.GenerateClusterLabels(instance.Name, instance.Labels)
+		labels      = clusterbuilder.GenerateClusterLabels(instance.Name, instance.Labels)
+		annotations = map[string]string{
+			builder.CRVersionKey: config.GetOperatorVersion(),
+		}
 		exporter *core.Exporter
 	)
 
@@ -98,6 +102,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Name:            instance.Name,
 			Namespace:       instance.Namespace,
 			Labels:          labels,
+			Annotations:     annotations,
 			OwnerReferences: util.BuildOwnerReferences(instance),
 		},
 		Spec: v1alpha1.ClusterSpec{
