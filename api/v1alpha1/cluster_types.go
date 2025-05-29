@@ -142,7 +142,7 @@ type ClusterShards struct {
 // ClusterStatus defines the observed state of Cluster
 type ClusterStatus struct {
 	// Status the status of the cluster
-	Phase ClusterPhase `json:"status"`
+	Phase ClusterPhase `json:"phase"`
 	// Message the message of the status
 	Message string `json:"message,omitempty"`
 	// Nodes the cluster nodes
@@ -155,11 +155,12 @@ type ClusterStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".status.numberOfMaster",description="Current Shards"
-// +kubebuilder:printcolumn:name="Service Status",type="string",JSONPath=".status.serviceStatus",description="Service status"
-// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.type",description="Instance access type"
+// +kubebuilder:resource:path=clusters,scope=Namespaced,shortName=cvk
+// +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".spec.replicas.shards",description="Current Shards"
+// +kubebuilder:printcolumn:name="Service Status",type="string",JSONPath=".status.clusterStatus",description="Cluster status"
+// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Instance phase"
-// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.reason",description="Status message"
+// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Status message"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
 // Cluster is the Schema for the clusters API

@@ -36,11 +36,11 @@ func NodePortServiceName(rf *v1alpha1.Failover, index int) string {
 }
 
 func RWServiceName(failoverName string) string {
-	return fmt.Sprintf("rfr-%s-read-write", failoverName)
+	return fmt.Sprintf("rfr-%s-readwrite", failoverName)
 }
 
 func ROServiceName(failoverName string) string {
-	return fmt.Sprintf("rfr-%s-read-only", failoverName)
+	return fmt.Sprintf("rfr-%s-readonly", failoverName)
 }
 
 func GenerateReadWriteService(rf *v1alpha1.Failover) *corev1.Service {

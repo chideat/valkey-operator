@@ -157,13 +157,13 @@ type ValkeyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=valkeys,scope=Namespaced,shortName=vk
 // +kubebuilder:printcolumn:name="Arch",type="string",JSONPath=".spec.arch",description="Instance arch"
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Valkey version"
-// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.type",description="Instance access type"
+// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"
+// +kubebuilder:printcolumn:name="Storage Class",type="string",JSONPath=".spec.storage.storageClassName",description="Storage class name"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.phase",description="Instance phase"
 // +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Instance status message"
-// +kubebuilder:printcolumn:name="Bundle Version",type="string",JSONPath=".status.upgradeStatus.crVersion",description="Bundle Version"
-// +kubebuilder:printcolumn:name="AutoUpgrade",type="boolean",JSONPath=".spec.upgradeOption.autoUpgrade",description="Enable instance auto upgrade"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
 // Valkey is the Schema for the valkeys API

@@ -254,8 +254,8 @@ __end_slot_migrating__:
 	// check if all resources fullfilled
 	for i, shard := range c.shards {
 		if i != shard.Index() ||
-			shard.Status().ReadyReplicas != cr.Spec.Replicas.ReplicasOfShard+1 ||
-			len(shard.Replicas()) != int(cr.Spec.Replicas.ReplicasOfShard+1) {
+			shard.Status().ReadyReplicas != cr.Spec.Replicas.ReplicasOfShard ||
+			len(shard.Nodes()) != int(cr.Spec.Replicas.ReplicasOfShard) {
 			isResourceReady = false
 		}
 
@@ -302,10 +302,12 @@ __end_slot_migrating__:
 				cr.Status.Phase = v1alpha1.ClusterPhaseReady
 				cr.Status.Message = ""
 			}
+			// else keep old status
 		} else {
 			cr.Status.Phase = v1alpha1.ClusterPhaseCreating
 		}
 	}
+
 	if cr.Status.Phase == v1alpha1.ClusterPhaseRebalancing {
 		var migratingSlots []string
 		for _, shards := range cr.Status.Shards {
@@ -625,7 +627,7 @@ func (c *ValkeyCluster) IsResourceFullfilled(ctx context.Context) (bool, error) 
 	if c.Spec.Access.ServiceType == corev1.ServiceTypeLoadBalancer || c.Spec.Access.ServiceType == corev1.ServiceTypeNodePort {
 		for i := 0; i < int(c.Spec.Replicas.Shards); i++ {
 			stsName := clusterbuilder.ClusterStatefulSetName(c.GetName(), i)
-			for j := 0; j < int(c.Spec.Replicas.ReplicasOfShard+1); j++ {
+			for j := 0; j < int(c.Spec.Replicas.ReplicasOfShard); j++ {
 				resources[serviceKey] = append(resources[serviceKey], fmt.Sprintf("%s-%d", stsName, j))
 			}
 		}
@@ -658,7 +660,7 @@ func (c *ValkeyCluster) IsResourceFullfilled(ctx context.Context) (bool, error) 
 			c.logger.Error(err, "get statefulset failed", "target", util.ObjectKey(c.GetNamespace(), stsName))
 			return false, err
 		}
-		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != c.Spec.Replicas.ReplicasOfShard+1 {
+		if sts.Spec.Replicas == nil || *sts.Spec.Replicas != c.Spec.Replicas.ReplicasOfShard {
 			return false, nil
 		}
 	}

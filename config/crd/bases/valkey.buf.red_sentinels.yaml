@@ -11,6 +11,8 @@ spec:
     kind: Sentinel
     listKind: SentinelList
     plural: sentinels
+    shortNames:
+    - svk
     singular: sentinel
   scope: Namespaced
   versions:
@@ -20,7 +22,7 @@ spec:
       name: Replicas
       type: integer
     - description: Instance access type
-      jsonPath: .spec.access.type
+      jsonPath: .spec.access.serviceType
       name: Access
       type: string
     - description: Instance phase

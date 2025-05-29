@@ -11,6 +11,8 @@ spec:
     kind: Valkey
     listKind: ValkeyList
     plural: valkeys
+    shortNames:
+    - vk
     singular: valkey
   scope: Namespaced
   versions:
@@ -24,8 +26,12 @@ spec:
       name: Version
       type: string
     - description: Instance access type
-      jsonPath: .spec.access.type
+      jsonPath: .spec.access.serviceType
       name: Access
+      type: string
+    - description: Storage class name
+      jsonPath: .spec.storage.storageClassName
+      name: Storage Class
       type: string
     - description: Instance phase
       jsonPath: .status.phase
@@ -35,14 +41,6 @@ spec:
       jsonPath: .status.message
       name: Message
       type: string
-    - description: Bundle Version
-      jsonPath: .status.upgradeStatus.crVersion
-      name: Bundle Version
-      type: string
-    - description: Enable instance auto upgrade
-      jsonPath: .spec.upgradeOption.autoUpgrade
-      name: AutoUpgrade
-      type: boolean
     - description: Time since creation
       jsonPath: .metadata.creationTimestamp
       name: Age

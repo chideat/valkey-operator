@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# Configuration file paths
 VALKEY_DEFAULT_CONFIG_FILE="/etc/valkey/valkey.conf"
 VALKEY_CONFIG_FILE="/tmp/valkey.conf"
 ACL_CONFIG_FILE="/tmp/acl.conf"

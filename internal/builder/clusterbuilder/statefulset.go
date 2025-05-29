@@ -263,7 +263,7 @@ func buildPersistentClaims(cluster *v1alpha1.Cluster, labels map[string]string) 
 }
 
 func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []corev1.EnvVar, index int) corev1.Container {
-	startArgs := []string{"sh", "/opt/run.sh"}
+	startArgs := []string{"sh", "/opt/run_cluster.sh"}
 
 	container := corev1.Container{
 		Name:            builder.ServerContainerName,

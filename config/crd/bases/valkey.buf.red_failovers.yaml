@@ -11,12 +11,14 @@ spec:
     kind: Failover
     listKind: FailoverList
     plural: failovers
+    shortNames:
+    - fvk
     singular: failover
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - description: Valkey replicas
-      jsonPath: .spec.valkey.replicas
+      jsonPath: .spec.replicas
       name: Replicas
       type: integer
     - description: Valkey failover replicas
@@ -24,7 +26,7 @@ spec:
       name: Sentinels
       type: integer
     - description: Instance access type
-      jsonPath: .spec.valkey.access.type
+      jsonPath: .spec.access.serviceType
       name: Access
       type: string
     - description: Instance phase
