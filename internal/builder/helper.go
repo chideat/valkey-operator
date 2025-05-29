@@ -50,7 +50,7 @@ func LocalhostAlias(family corev1.IPFamily) corev1.HostAlias {
 	}
 	return corev1.HostAlias{
 		IP:        localhost,
-		Hostnames: []string{"localhost", "localhost.localdomain"},
+		Hostnames: []string{"local.inject"},
 	}
 }
 

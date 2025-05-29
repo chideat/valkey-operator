@@ -28,7 +28,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/controller/user"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
 
 	corev1 "k8s.io/api/core/v1"
@@ -56,7 +55,6 @@ type UserReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	K8sClient     kubernetes.ClientSet
 	EventRecorder record.EventRecorder
 	Handler       *user.UserHandler
 }
@@ -152,7 +150,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			secret.Labels[builder.InstanceNameLabelKey] = vkName
 			secret.OwnerReferences = util.BuildOwnerReferences(&instance)
 			if err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				return r.K8sClient.UpdateSecret(ctx, instance.Namespace, secret)
+				return r.Update(ctx, secret)
 			}); err != nil {
 				logger.Error(err, "update secret owner failed", "secret", secret.Name)
 				instance.Status.Message = err.Error()

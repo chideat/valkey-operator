@@ -82,9 +82,9 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 	}
 
 	// NOTE: checked if resource is fullfilled
-	if isFullfilled, _ := inst.IsResourceFullfilled(ctx); !isFullfilled {
-		return actor.NewResult(CommandEnsureResource)
-	}
+	// if isFullfilled, _ := inst.IsResourceFullfilled(ctx); !isFullfilled {
+	// 	return actor.NewResult(CommandEnsureResource)
+	// }
 
 	// check password
 	if ret := g.isPasswordChanged(ctx, inst, logger); ret != nil {

@@ -72,6 +72,9 @@ func GetFullImageURL(path string, tag string) string {
 	if registry == "" {
 		return fmt.Sprintf("%s:%s", path, tag)
 	}
+	if strings.HasPrefix(path, registry) {
+		return fmt.Sprintf("%s:%s", path, tag)
+	}
 	return fmt.Sprintf("%s/%s:%s", registry, path, tag)
 }
 

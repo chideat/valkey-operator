@@ -20,7 +20,6 @@ import (
 	"context"
 	"maps"
 	"reflect"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
@@ -70,10 +69,11 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	logger := val.Logger().WithValues("actor", ops.CommandUpdateAccount.String())
 
 	var (
-		inst    = val.(types.FailoverInstance)
-		users   = inst.Users()
-		opUser  = users.GetOpUser()
-		ownRefs = util.BuildOwnerReferences(inst.Definition())
+		inst      = val.(types.FailoverInstance)
+		users     = inst.Users()
+		opUser    = users.GetOpUser()
+		ownRefs   = util.BuildOwnerReferences(inst.Definition())
+		isUpdated = false
 	)
 
 	name := aclbuilder.GenerateACLConfigMapName(inst.Arch(), inst.GetName())
@@ -92,26 +92,28 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 			},
 			Data: users.Encode(true),
 		}
+		isUpdated = true
 
-		// create acl with old password
-		// create acl file, after restart, the password is updated
-		if err := a.client.CreateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
-			logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
-			return actor.NewResultWithError(ops.CommandRequeue, err)
-		}
+		// // create acl with old password
+		// // create acl file, after restart, the password is updated
+		// if err := a.client.CreateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
+		// 	logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
+		// 	return actor.NewResultWithError(ops.CommandRequeue, err)
+		// }
 
-		// wait for resource sync
-		time.Sleep(time.Second * 1)
-		if oldCm, err = a.client.GetConfigMap(ctx, inst.GetNamespace(), name); err != nil {
-			logger.Error(err, "get configmap failed", "target", name)
-			return actor.NewResultWithError(ops.CommandRequeue, err)
-		}
+		// // wait for resource sync
+		// time.Sleep(time.Second * 1)
+		// if oldCm, err = a.client.GetConfigMap(ctx, inst.GetNamespace(), name); err != nil {
+		// 	logger.Error(err, "get configmap failed", "target", name)
+		// 	return actor.NewResultWithError(ops.CommandRequeue, err)
+		// }
 	}
 
-	isUpdated := false
+	logger.Info("update account", "namespace", inst.GetNamespace(), "name", inst.GetName(), "aclConfigMap", oldCm.Name, "opUser", opUser == nil)
+
 	if opUser == nil {
 		secretName := aclbuilder.GenerateACLOperatorSecretName(inst.Arch(), inst.GetName())
-		opUser, err := acl.NewOperatorUser(ctx, a.client, secretName, inst.GetNamespace(), ownRefs)
+		opUser, err = acl.NewOperatorUser(ctx, a.client, secretName, inst.GetNamespace(), ownRefs)
 		if err != nil {
 			logger.Error(err, "create operator user failed")
 			return actor.NewResult(ops.CommandRequeue)

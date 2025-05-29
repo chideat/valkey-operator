@@ -111,7 +111,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return r.updateInstanceStatus(ctx, inst, err, logger)
 		}
 	default:
-		err = fmt.Errorf("this arch isn't valid, must be cluster, sentinel or standalone")
+		err = fmt.Errorf("this arch isn't valid, must be cluster, failover or replica")
 		return ctrl.Result{}, err
 	}
 	return r.updateInstanceStatus(ctx, inst, err, logger)

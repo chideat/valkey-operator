@@ -58,7 +58,6 @@ spec:
                 enum:
                 - system
                 - custom
-                - default
                 type: string
               aclRules:
                 description: AclRules acl rules  string
@@ -66,9 +65,9 @@ spec:
               arch:
                 description: user account type
                 enum:
-                - sentinel
+                - failover
                 - cluster
-                - standalone
+                - replica
                 type: string
               instanceName:
                 description: InstanceName instance  Name (required)

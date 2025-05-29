@@ -127,7 +127,6 @@ var _ = Describe("User Controller", func() {
 			controllerReconciler := &UserReconciler{
 				Client:        k8sClient,
 				Scheme:        k8sClient.Scheme(),
-				K8sClient:     k8sClientSet,
 				EventRecorder: eventRecorder,
 				Handler:       userHandler.NewUserHandler(k8sClientSet, eventRecorder, ctrl.Log.WithName("UserHandler")),
 			}

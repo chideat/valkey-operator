@@ -90,8 +90,6 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 			}
 			sentinel.PodAnnotations = lo.Assign(sentinel.PodAnnotations, instance.Spec.PodAnnotations)
 		}
-	} else {
-		annotations["standalone"] = "true"
 	}
 
 	failover := &v1alpha1.Failover{

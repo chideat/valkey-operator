@@ -31,10 +31,10 @@ const (
 // UserSpec defines the desired state of User
 type UserSpec struct {
 	// user account type
-	// +kubebuilder:validation:Enum=system;custom;default
+	// +kubebuilder:validation:Enum=system;custom
 	AccountType AccountType `json:"accountType,omitempty"`
 	// user account type
-	// +kubebuilder:validation:Enum=sentinel;cluster;standalone
+	// +kubebuilder:validation:Enum=failover;cluster;replica
 	Arch core.Arch `json:"arch,omitempty"`
 	// Username (required)
 	Username string `json:"username"`

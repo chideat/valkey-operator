@@ -49,8 +49,8 @@ var logger = logf.Log.WithName("user-resource")
 // SetupUserWebhookWithManager registers the webhook for User in the manager.
 func SetupUserWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&valkeybufredv1alpha1.User{}).
-		WithValidator(&UserCustomValidator{}).
-		WithDefaulter(&UserCustomDefaulter{}).
+		WithValidator(&UserCustomValidator{mgrClient: mgr.GetClient()}).
+		WithDefaulter(&UserCustomDefaulter{mgrClient: mgr.GetClient()}).
 		Complete()
 }
 
@@ -189,29 +189,6 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Ob
 			return nil, err
 		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
 			return nil, err
-		}
-	}
-
-	switch inst.Spec.Arch {
-	case core.ValkeyFailover, core.ValkeyReplica:
-		rf := &v1alpha1.Failover{}
-		if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
-			Namespace: inst.Namespace,
-			Name:      inst.Spec.InstanceName}, rf); err != nil {
-			return nil, err
-		}
-		if rf.Status.Phase != v1alpha1.FailoverPhaseReady {
-			return nil, fmt.Errorf("instance %s is not ready", inst.Spec.InstanceName)
-		}
-	case core.ValkeyCluster:
-		cluster := v1alpha1.Cluster{}
-		if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
-			Namespace: inst.Namespace,
-			Name:      inst.Spec.InstanceName}, &cluster); err != nil {
-			return nil, err
-		}
-		if cluster.Status.Phase != v1alpha1.ClusterPhaseReady {
-			return nil, fmt.Errorf("instance %s is not ready", inst.Spec.InstanceName)
 		}
 	}
 	return
