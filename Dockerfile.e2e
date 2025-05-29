@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for E2E tests
 # Stage 1: Build the test binary
-FROM golang:1.24-alpine AS builder
+FROM docker-mirrors.alauda.cn/library/golang:1.24-alpine as builder
 
 WORKDIR /workspace
 
@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 go test -c -o e2e-tests ./test/e2e/
 
 # Stage 2: Runtime image with only the test binary
-FROM alpine:3.21
+FROM build-harbor.alauda.cn/ops/alpine:3.21
 
 # Install necessary tools for e2e tests
 RUN apk add --no-cache \
