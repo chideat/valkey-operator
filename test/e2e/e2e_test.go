@@ -187,7 +187,6 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	Context("create and test cluster instance", func() {
-		fmt.Println("Starting the cluster tests...")
 		BeforeEach(func() {
 			if skipClusterTests {
 				Skip("skipping the cluster tests")
