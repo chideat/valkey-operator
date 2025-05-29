@@ -45,7 +45,7 @@ if [ "${LISTEN}" != "${POD_IP}" ]; then
     LISTEN="${LISTEN} ${POD_IP}"
 fi
 
-# Construct arguments for redis-server
+# Construct arguments for valkey-server
 ARGS="--sentinel --protected-mode no --bind ${LISTEN} ${LOCALHOST}"
 
 # Add TLS arguments if TLS is enabled
@@ -56,5 +56,5 @@ fi
 # Set permissions for sentinel configuration
 chmod 0600 ${VALKEY_SENTINEL_CONFIG_FILE}
 
-# Start redis-server with the constructed arguments
+# Start valkey-server with the constructed arguments
 exec valkey-server ${VALKEY_SENTINEL_CONFIG_FILE} ${ARGS} $@ | sed 's/auth-pass .*/auth-pass ******/'

@@ -126,6 +126,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 				port := util.GetServicePortByName(svc, "client")
 				if port != nil {
 					if int(port.NodePort) != announcePort {
+						logger.V(3).Info("node port not match", "name", node.GetName(), "announcePort", announcePort, "nodePort", port.NodePort)
 						if err := a.client.DeletePod(ctx, cluster.GetNamespace(), node.GetName()); err != nil {
 							logger.Error(err, "delete pod failed", "name", node.GetName())
 							return actor.RequeueWithError(err)
@@ -142,6 +143,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 				if index := slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(ing corev1.LoadBalancerIngress) bool {
 					return ing.IP == announceIP || ing.Hostname == announceIP
 				}); index < 0 {
+					logger.V(3).Info("lb ip not match", "name", node.GetName(), "lbip", announceIP)
 					if err := a.client.DeletePod(ctx, cluster.GetNamespace(), node.GetName()); err != nil {
 						logger.Error(err, "delete pod failed", "name", node.GetName())
 						return actor.RequeueWithError(err)
