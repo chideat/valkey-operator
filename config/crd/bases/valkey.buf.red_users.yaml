@@ -11,6 +11,8 @@ spec:
     kind: User
     listKind: UserList
     plural: users
+    shortNames:
+    - vku
     singular: user
   scope: Namespaced
   versions:

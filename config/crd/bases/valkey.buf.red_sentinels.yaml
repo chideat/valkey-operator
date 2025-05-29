@@ -12,7 +12,7 @@ spec:
     listKind: SentinelList
     plural: sentinels
     shortNames:
-    - svk
+    - vks
     singular: sentinel
   scope: Namespaced
   versions:

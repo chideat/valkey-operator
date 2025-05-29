@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/test/utils"
@@ -40,7 +41,6 @@ var (
 	skipClusterTests      = (utils.GetEnv("SKIP_CLUSTER_TESTS") != "")
 	skipFailoverTests     = (utils.GetEnv("SKIP_FAILOVER_TESTS") != "")
 	skipReplicationTests  = (utils.GetEnv("SKIP_REPLICATION_TESTS") != "")
-	skipSentinelTests     = (utils.GetEnv("SKIP_SENTINEL_TESTS") != "")
 	skipVersions          = strings.Split(utils.GetEnv("SKIP_VERSIONS"), ",")
 
 	namespace = utils.GetEnv("NAMESPACE", "valkey-system")
@@ -49,6 +49,17 @@ var (
 var (
 	supportedVersions = []string{"7.2", "8.0", "8.1"}
 )
+
+func init() {
+	// Filter out skipped versions
+	filteredVersions := []string{}
+	for _, v := range supportedVersions {
+		if !slices.Contains(skipVersions, v) {
+			filteredVersions = append(filteredVersions, v)
+		}
+	}
+	supportedVersions = filteredVersions
+}
 
 type TestParameter struct {
 	Version     string
@@ -73,6 +84,24 @@ var _ = Describe("controller", Ordered, func() {
 				Name: namespace,
 			},
 		})
+
+		By("creating test namespace")
+		_ = k8sClient.Create(context.Background(), &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: testNamespace,
+			},
+		})
+
+		// clean all valkey instances in the test namespace
+		By("cleaning all valkey instances in the test namespace")
+		valkeyList := &rdsv1alpha1.ValkeyList{}
+		err := k8sClient.List(context.Background(), valkeyList, &client.ListOptions{
+			Namespace: testNamespace,
+		})
+		Expect(err).To(Succeed())
+		for _, item := range valkeyList.Items {
+			Expect(k8sClient.Delete(context.Background(), &item)).To(Succeed())
+		}
 	})
 
 	AfterAll(func() {
@@ -88,10 +117,11 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	Context("Operator", func() {
-		if skipDeployOperator {
-			Skip("skipping the operator deployment")
-			return
-		}
+		BeforeEach(func() {
+			if skipDeployOperator {
+				Skip("skipping the operator deployment")
+			}
+		})
 
 		It("should run successfully", func() {
 			var controllerPodName string
@@ -157,21 +187,27 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	Context("create and test cluster instance", func() {
-		if skipClusterTests {
-			Skip("skipping the cluster tests")
-		}
+		fmt.Println("Starting the cluster tests...")
+		BeforeEach(func() {
+			if skipClusterTests {
+				Skip("skipping the cluster tests")
+			}
+		})
 
 		var (
-			inst        *rdsv1alpha1.Valkey
-			ctx, cancel = context.WithTimeout(context.Background(), time.Hour)
+			inst *rdsv1alpha1.Valkey
 		)
-		defer cancel()
 
-		for _, param := range []TestParameter{} {
-			if slices.Contains(skipVersions, param.Version) {
-				continue
-			}
+		// Generate test parameters for all supported versions with ClusterIP service type
+		testParameters := []TestParameter{}
+		for _, version := range supportedVersions {
+			testParameters = append(testParameters, TestParameter{
+				Version:     version,
+				ServiceType: corev1.ServiceTypeNodePort,
+			})
+		}
 
+		for _, param := range testParameters {
 			for _, cases := range clusterTestCases {
 				Context(cases.When, func() {
 					if cases.BeforeEach != nil {
@@ -180,7 +216,7 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func() {
+						It(spec.Name, func(ctx context.Context) {
 							spec.Func(ctx, inst)
 						}, SpecTimeout(time.Minute*30))
 					}
@@ -196,22 +232,27 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	Context("create and test failover instance", func() {
-		if skipFailoverTests {
-			Skip("skipping the failover tests")
-		}
+		BeforeEach(func() {
+			if skipFailoverTests {
+				Skip("skipping the failover tests")
+			}
+		})
 
 		var (
-			inst        *rdsv1alpha1.Valkey
-			ctx, cancel = context.WithTimeout(context.Background(), time.Hour)
+			inst *rdsv1alpha1.Valkey
 		)
-		defer cancel()
 
-		for _, param := range []TestParameter{} {
-			if slices.Contains(skipVersions, param.Version) {
-				continue
-			}
+		// Generate test parameters for all supported versions with ClusterIP service type
+		testParameters := []TestParameter{}
+		for _, version := range supportedVersions {
+			testParameters = append(testParameters, TestParameter{
+				Version:     version,
+				ServiceType: corev1.ServiceTypeNodePort,
+			})
+		}
 
-			for _, cases := range clusterTestCases {
+		for _, param := range testParameters {
+			for _, cases := range failoverTestCases {
 				Context(cases.When, func() {
 					if cases.BeforeEach != nil {
 						BeforeEach(func() {
@@ -219,7 +260,7 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func() {
+						It(spec.Name, func(ctx context.Context) {
 							spec.Func(ctx, inst)
 						}, SpecTimeout(time.Minute*30))
 					}
@@ -235,22 +276,27 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	Context("create and test replica instance", func() {
-		if skipFailoverTests {
-			Skip("skipping the replica tests")
-		}
+		BeforeEach(func() {
+			if skipReplicationTests {
+				Skip("skipping the replica tests")
+			}
+		})
 
 		var (
-			inst        *rdsv1alpha1.Valkey
-			ctx, cancel = context.WithTimeout(context.Background(), time.Hour)
+			inst *rdsv1alpha1.Valkey
 		)
-		defer cancel()
 
-		for _, param := range []TestParameter{} {
-			if slices.Contains(skipVersions, param.Version) {
-				continue
-			}
+		// Generate test parameters for all supported versions with ClusterIP service type
+		testParameters := []TestParameter{}
+		for _, version := range supportedVersions {
+			testParameters = append(testParameters, TestParameter{
+				Version:     version,
+				ServiceType: corev1.ServiceTypeNodePort,
+			})
+		}
 
-			for _, cases := range clusterTestCases {
+		for _, param := range testParameters {
+			for _, cases := range replicationTestCases {
 				Context(cases.When, func() {
 					if cases.BeforeEach != nil {
 						BeforeEach(func() {
@@ -258,7 +304,7 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func() {
+						It(spec.Name, func(ctx context.Context) {
 							spec.Func(ctx, inst)
 						}, SpecTimeout(time.Minute*30))
 					}

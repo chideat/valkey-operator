@@ -12,7 +12,7 @@ spec:
     listKind: FailoverList
     plural: failovers
     shortNames:
-    - fvk
+    - vkf
     singular: failover
   scope: Namespaced
   versions:

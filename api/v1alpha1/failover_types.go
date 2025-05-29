@@ -150,7 +150,7 @@ type FailoverStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=failovers,scope=Namespaced,shortName=fvk
+// +kubebuilder:resource:path=failovers,scope=Namespaced,shortName=vkf
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas",description="Valkey replicas"
 // +kubebuilder:printcolumn:name="Sentinels",type="integer",JSONPath=".spec.sentinel.replicas",description="Valkey failover replicas"
 // +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"

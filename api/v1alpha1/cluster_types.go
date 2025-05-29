@@ -155,7 +155,7 @@ type ClusterStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=clusters,scope=Namespaced,shortName=cvk
+// +kubebuilder:resource:path=clusters,scope=Namespaced,shortName=vkc
 // +kubebuilder:printcolumn:name="Shards",type="integer",JSONPath=".spec.replicas.shards",description="Current Shards"
 // +kubebuilder:printcolumn:name="Service Status",type="string",JSONPath=".status.clusterStatus",description="Cluster status"
 // +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"

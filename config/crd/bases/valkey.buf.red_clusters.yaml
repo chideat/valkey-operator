@@ -12,7 +12,7 @@ spec:
     listKind: ClusterList
     plural: clusters
     shortNames:
-    - cvk
+    - vkc
     singular: cluster
   scope: Namespaced
   versions:

@@ -70,6 +70,7 @@ type UserStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=users,scope=Namespaced,shortName=vku
 // +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.spec.instanceName`
 // +kubebuilder:printcolumn:name="username",type=string,JSONPath=`.spec.username`
 // +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.Phase`
