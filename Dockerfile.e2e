@@ -36,9 +36,6 @@ WORKDIR /e2e
 # Copy only the test binary from builder stage
 COPY --from=builder /workspace/e2e-tests .
 
-# Copy any test configuration files if needed
-COPY --from=builder /workspace/test/e2e/testdata/ ./testdata/ 2>/dev/null || true
-
 # Change ownership
 RUN chown -R e2e:e2e /e2e
 
