@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the e2e test binary
-RUN CGO_ENABLED=0 GOOS=linux test -c -o e2e-tests ./test/e2e/
+RUN CGO_ENABLED=0 go test -c -o e2e-tests ./test/e2e/
 
 # Stage 2: Runtime image with only the test binary
 FROM alpine:3.21
