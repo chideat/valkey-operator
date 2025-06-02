@@ -208,7 +208,7 @@ func (v *UserCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Ob
 	}
 	logger.Info("Validation for User upon deletion", "name", inst.GetName())
 
-	if inst.Spec.Username == user.DefaultUserName || inst.Spec.Username == user.DefaultOperatorUserName {
+	if inst.Spec.Username == user.DefaultOperatorUserName {
 		switch inst.Spec.Arch {
 		case core.ValkeyFailover, core.ValkeyReplica:
 			rf := v1alpha1.Failover{}

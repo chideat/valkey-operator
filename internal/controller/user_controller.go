@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -80,10 +81,21 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	isMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
 	if isMarkedToBeDeleted {
-		logger.Info("remove finalizer")
-		controllerutil.RemoveFinalizer(&instance, UserFinalizer)
-		if err := r.Update(ctx, &instance); err != nil {
-			return ctrl.Result{}, err
+		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
+			if instance.Status.Message != err.Error() {
+				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.Message = fmt.Sprintf("clean user failed with error %s", err.Error())
+				if err := r.Client.Status().Update(ctx, &instance); err != nil {
+					logger.Error(err, "update user status failed", "instance", req.NamespacedName)
+					return ctrl.Result{}, err
+				}
+			}
+			return ctrl.Result{RequeueAfter: time.Second * 10}, err
+		} else {
+			controllerutil.RemoveFinalizer(&instance, UserFinalizer)
+			if err := r.Update(ctx, &instance); err != nil {
+				return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+			}
 		}
 		return ctrl.Result{}, nil
 	}
