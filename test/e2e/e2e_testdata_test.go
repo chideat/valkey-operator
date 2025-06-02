@@ -36,7 +36,7 @@ var (
 )
 
 func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password, aclRules string) {
-	secretName := fmt.Sprintf("valkey-user-%s-%s", inst.Name, username)
+	secretName := fmt.Sprintf("valkey-user-%s-%s-%d", inst.Name, username, time.Now().Unix())
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -55,7 +55,7 @@ func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username,
 
 	user := v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      username,
+			Name:      fmt.Sprintf("cluster-acl-%s-%s", inst.GetName(), username),
 			Namespace: inst.GetNamespace(),
 		},
 		Spec: v1alpha1.UserSpec{

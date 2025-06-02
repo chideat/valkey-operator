@@ -518,58 +518,93 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 		name  = aclbuilder.GenerateACLConfigMapName(c.Arch(), c.GetName())
 		users types.Users
 	)
-	// NOTE: load acl config first. if acl config not exists, then this may be
-	// an old instance(upgrade from old valkey or operator version).
-	// migrate old password account to acl
-	if cm, err := c.client.GetConfigMap(ctx, c.GetNamespace(), name); errors.IsNotFound(err) {
-		var (
-			passwordSecret string
-			secret         *corev1.Secret
-		)
 
-		for i := 0; i < int(c.Spec.Replicas.Shards); i += 2 {
-			statefulsetName := clusterbuilder.ClusterStatefulSetName(c.GetName(), i)
-			sts, err := c.client.GetStatefulSet(ctx, c.GetNamespace(), statefulsetName)
-			if err != nil {
-				if !errors.IsNotFound(err) {
-					c.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(c.GetNamespace(), c.GetName()))
-				}
-				continue
-			}
-			spec := sts.Spec.Template.Spec
-			if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
-				for _, env := range container.Env {
-					if env.Name == builder.OperatorSecretName && env.Value != "" {
-						passwordSecret = env.Value
-					}
-				}
-			}
-			if passwordSecret != "" {
-				break
+	getPassword := func(secretName string) (*user.Password, error) {
+		if secret, err := c.loadUserSecret(ctx, client.ObjectKey{
+			Namespace: c.GetNamespace(),
+			Name:      secretName,
+		}); err != nil {
+			return nil, err
+		} else {
+			if password, err := user.NewPassword(secret); err != nil {
+				return nil, err
+			} else {
+				return password, nil
 			}
 		}
-		if passwordSecret == "" {
-			passwordSecret = aclbuilder.GenerateACLOperatorSecretName(c.Arch(), c.GetName())
-		}
+	}
 
-		objKey := client.ObjectKey{Namespace: c.GetNamespace(), Name: passwordSecret}
-		if secret, err = c.loadUserSecret(ctx, objKey); err != nil {
-			c.logger.Error(err, "load user secret failed", "target", objKey)
+	opUserName := aclbuilder.GenerateOperatorUserResourceName(c.Arch(), c.GetName())
+	if ru, err := c.client.GetUser(ctx, c.GetNamespace(), opUserName); err != nil {
+		if !errors.IsNotFound(err) {
+			c.logger.Error(err, "load operator user failed")
 			return nil, err
 		}
-
-		if u, err := types.NewOperatorUser(secret); err != nil {
-			c.logger.Error(err, "init users failed")
+	} else {
+		var password *user.Password
+		if len(ru.Spec.PasswordSecrets) > 0 {
+			if password, err = getPassword(ru.Spec.PasswordSecrets[0]); err != nil {
+				c.logger.Error(err, "load operator user password failed")
+				return nil, err
+			}
+		}
+		if u, err := types.NewUserFromValkeyUser(ru.Spec.Username, ru.Spec.AclRules, password); err != nil {
+			c.logger.Error(err, "load operator user failed")
 			return nil, err
 		} else {
 			users = append(users, u)
 		}
-	} else if err != nil {
-		c.logger.Error(err, "get acl configmap failed", "name", name)
-		return nil, err
-	} else if users, err = acl.LoadACLUsers(ctx, c.client, cm); err != nil {
-		c.logger.Error(err, "load acl failed")
-		return nil, err
+	}
+
+	if len(users) == 0 {
+		if cm, err := c.client.GetConfigMap(ctx, c.GetNamespace(), name); errors.IsNotFound(err) {
+			var (
+				passwordSecret string
+				secret         *corev1.Secret
+			)
+
+			for i := 0; i < int(c.Spec.Replicas.Shards); i += 2 {
+				statefulsetName := clusterbuilder.ClusterStatefulSetName(c.GetName(), i)
+				sts, err := c.client.GetStatefulSet(ctx, c.GetNamespace(), statefulsetName)
+				if err != nil {
+					if !errors.IsNotFound(err) {
+						c.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(c.GetNamespace(), c.GetName()))
+					}
+					continue
+				}
+				spec := sts.Spec.Template.Spec
+				if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
+					for _, env := range container.Env {
+						if env.Name == builder.OperatorSecretName && env.Value != "" {
+							passwordSecret = env.Value
+						}
+					}
+				}
+				if passwordSecret != "" {
+					break
+				}
+			}
+			if passwordSecret != "" {
+				objKey := client.ObjectKey{Namespace: c.GetNamespace(), Name: passwordSecret}
+				if secret, err = c.loadUserSecret(ctx, objKey); err != nil {
+					c.logger.Error(err, "load user secret failed", "target", objKey)
+					return nil, err
+				}
+
+				if u, err := types.NewOperatorUser(secret); err != nil {
+					c.logger.Error(err, "init users failed")
+					return nil, err
+				} else {
+					users = append(users, u)
+				}
+			}
+		} else if err != nil {
+			c.logger.Error(err, "get acl configmap failed", "name", name)
+			return nil, err
+		} else if users, err = acl.LoadACLUsers(ctx, c.client, cm); err != nil {
+			c.logger.Error(err, "load acl failed")
+			return nil, err
+		}
 	}
 	return users, nil
 }
@@ -577,17 +612,9 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 // loadUserSecret
 func (c *ValkeyCluster) loadUserSecret(ctx context.Context, objKey client.ObjectKey) (*corev1.Secret, error) {
 	secret, err := c.client.GetSecret(ctx, objKey.Namespace, objKey.Name)
-	if err != nil && !errors.IsNotFound(err) {
+	if err != nil {
 		c.logger.Error(err, "load default users's password secret failed", "target", objKey.String())
 		return nil, err
-	} else if errors.IsNotFound(err) {
-		if objKey.Name == aclbuilder.GenerateACLOperatorSecretName(c.Arch(), c.GetName()) {
-			secret = aclbuilder.GenerateOperatorSecret(c)
-			err := c.client.CreateSecret(ctx, objKey.Namespace, secret)
-			if err != nil {
-				return nil, err
-			}
-		}
 	} else if _, ok := secret.Data[user.PasswordSecretKey]; !ok {
 		return nil, fmt.Errorf("no password found")
 	}

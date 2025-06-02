@@ -519,7 +519,7 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 				}
 			}
 		} else if err != nil {
-			s.logger.Error(err, "load default users's password secret failed", "target", util.ObjectKey(s.GetNamespace(), name))
+			s.logger.Error(err, "get acl configmap failed", "name", name)
 			return nil, err
 		} else if users, err = acl.LoadACLUsers(ctx, s.client, cm); err != nil {
 			s.logger.Error(err, "load acl failed")
