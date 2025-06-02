@@ -35,6 +35,14 @@ var (
 	valkeyDefaultPassword string
 )
 
+func generateValkeyUserInstanceName(inst *rdsv1alpha1.Valkey, username string) string {
+	switch inst.Spec.Arch {
+	case core.ValkeyCluster:
+		return fmt.Sprintf("cluster-acl-%s-%s", inst.GetName(), username)
+	}
+	return fmt.Sprintf("failover-acl-%s-%s", inst.GetName(), username)
+}
+
 func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password, aclRules string) {
 	secretName := fmt.Sprintf("valkey-user-%s-%s-%d", inst.Name, username, time.Now().Unix())
 	secret := &corev1.Secret{
@@ -55,7 +63,7 @@ func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username,
 
 	user := v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("cluster-acl-%s-%s", inst.GetName(), username),
+			Name:      generateValkeyUserInstanceName(inst, username),
 			Namespace: inst.GetNamespace(),
 		},
 		Spec: v1alpha1.UserSpec{
@@ -283,7 +291,7 @@ var clusterTestCases = []TestData{
 						By("delete user")
 						Expect(k8sClient.Delete(ctx, &v1alpha1.User{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							},
 						})).To(Succeed())
@@ -292,7 +300,7 @@ var clusterTestCases = []TestData{
 						Eventually(func() bool {
 							var user v1alpha1.User
 							if err := k8sClient.Get(ctx, client.ObjectKey{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							}, &user); err != nil {
 								if errors.IsNotFound(err) {
@@ -491,7 +499,7 @@ var failoverTestCases = []TestData{
 						By("delete user")
 						Expect(k8sClient.Delete(ctx, &v1alpha1.User{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							},
 						})).To(Succeed())
@@ -500,7 +508,7 @@ var failoverTestCases = []TestData{
 						Eventually(func() bool {
 							var user v1alpha1.User
 							if err := k8sClient.Get(ctx, client.ObjectKey{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							}, &user); err != nil {
 								if errors.IsNotFound(err) {
@@ -695,7 +703,7 @@ var replicationTestCases = []TestData{
 						By("delete user")
 						Expect(k8sClient.Delete(ctx, &v1alpha1.User{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							},
 						})).To(Succeed())
@@ -704,7 +712,7 @@ var replicationTestCases = []TestData{
 						Eventually(func() bool {
 							var user v1alpha1.User
 							if err := k8sClient.Get(ctx, client.ObjectKey{
-								Name:      username,
+								Name:      generateValkeyUserInstanceName(inst, username),
 								Namespace: inst.GetNamespace(),
 							}, &user); err != nil {
 								if errors.IsNotFound(err) {

@@ -102,6 +102,9 @@ var _ = Describe("controller", Ordered, func() {
 		for _, item := range valkeyList.Items {
 			Expect(k8sClient.Delete(context.Background(), &item)).To(Succeed())
 		}
+		if len(valkeyList.Items) > 0 {
+			time.Sleep(time.Second * 5)
+		}
 	})
 
 	AfterAll(func() {

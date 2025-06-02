@@ -85,7 +85,10 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	if err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "load configmap failed", "target", name)
 		return actor.NewResultWithError(cops.CommandRequeue, err)
-	} else if oldCm == nil {
+	} else if oldCm != nil && oldCm.GetDeletionTimestamp() != nil {
+		logger.Info("configmap is being deleted, skip update", "target", name)
+		return actor.NewResult(cops.CommandRequeue)
+	} else {
 		// sync acl configmap
 		oldCm = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{

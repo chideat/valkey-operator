@@ -482,7 +482,8 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 	}
 
 	if len(users) == 0 {
-		if cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name); errors.IsNotFound(err) {
+		cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name)
+		if errors.IsNotFound(err) || (cm != nil && cm.GetDeletionTimestamp() != nil) {
 			var (
 				passwordSecret string
 				secret         *corev1.Secret

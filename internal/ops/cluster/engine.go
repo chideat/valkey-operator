@@ -482,7 +482,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.Cluste
 	logger := g.logger.WithName("isPasswordChanged")
 
 	name := aclbuilder.GenerateACLConfigMapName(cluster.Arch(), cluster.GetName())
-	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); errors.IsNotFound(err) {
+	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); errors.IsNotFound(err) || (cm != nil && cm.GetDeletionTimestamp() != nil) {
 		return true, nil
 	} else if err != nil {
 		g.logger.Error(err, "failed to get configmap", "configmap", name)

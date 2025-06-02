@@ -557,7 +557,8 @@ func (c *ValkeyCluster) loadUsers(ctx context.Context) (types.Users, error) {
 	}
 
 	if len(users) == 0 {
-		if cm, err := c.client.GetConfigMap(ctx, c.GetNamespace(), name); errors.IsNotFound(err) {
+		cm, err := c.client.GetConfigMap(ctx, c.GetNamespace(), name)
+		if errors.IsNotFound(err) || (cm != nil && cm.GetDeletionTimestamp() != nil) {
 			var (
 				passwordSecret string
 				secret         *corev1.Secret
