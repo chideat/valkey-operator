@@ -320,7 +320,7 @@ func buildValkeyServerContainer(cluster *v1alpha1.Cluster, u *user.User, envs []
 		Lifecycle: &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"sh", "-inst", "/opt/valkey-helper cluster shutdown  &> /proc/1/fd/1"},
+					Command: []string{"sh", "-c", "/opt/valkey-helper cluster shutdown  &> /proc/1/fd/1"},
 				},
 			},
 		},
