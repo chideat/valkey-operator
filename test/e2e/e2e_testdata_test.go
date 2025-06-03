@@ -32,6 +32,7 @@ import (
 
 var (
 	testNamespace               = utils.GetEnv("NAMESPACE", "valkey-test")
+	defaltStorageClass          = utils.GetEnv("STORAGE_CLASS")
 	valkeyDefaultUsername       = "default"
 	valkeyDefaultPassword, _    = security.GeneratePassword(12)
 	valkeyDefaultSenPassword, _ = security.GeneratePassword(12)
@@ -88,6 +89,19 @@ func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username,
 	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 10).Should(BeTrue())
 }
 
+func deleteInstance(ctx context.Context, inst *rdsv1alpha1.Valkey) {
+	if inst.Spec.Storage != nil && inst.Spec.Storage.StorageClassName != nil {
+		By("update instance with delete pvc")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+		inst.Finalizers = []string{"delete-pvc"}
+		Expect(k8sClient.Update(ctx, inst)).To(Succeed())
+		waitInstanceStatusReady(ctx, inst, time.Second*30)
+	}
+
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+	Expect(k8sClient.Delete(ctx, inst)).To(Succeed())
+}
+
 func waitInstanceStatusReady(ctx context.Context, inst *rdsv1alpha1.Valkey, timeout time.Duration) {
 	const defaultStatusCheckThreshold = 3
 	threshold := defaultStatusCheckThreshold
@@ -111,7 +125,9 @@ func waitInstanceStatusReady(ctx context.Context, inst *rdsv1alpha1.Valkey, time
 	}
 	var stsList appsv1.StatefulSetList
 	Expect(k8sClient.List(ctx, &stsList, client.InNamespace(testNamespace), client.MatchingLabels(labels))).To(Succeed())
-	Expect(stsList.Items).To(HaveLen(int(inst.Spec.Replicas.Shards)))
+	if inst.Spec.Arch == core.ValkeyCluster {
+		Expect(stsList.Items).To(HaveLen(int(inst.Spec.Replicas.Shards)))
+	}
 	for _, sts := range stsList.Items {
 		Expect(sts.Status.ReadyReplicas).To(Equal(*sts.Spec.Replicas))
 		Expect(sts.Status.ReadyReplicas).To(Equal(inst.Spec.Replicas.ReplicasOfShard))
@@ -146,7 +162,7 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 			addrs = append(addrs, net.JoinHostPort(node.IP, node.Port))
 		}
 	} else if inst.Spec.Arch == core.ValkeyReplica {
-		addrs = []string{fmt.Sprintf("rfr-%s-read-write:6379", inst.GetName())}
+		addrs = []string{fmt.Sprintf("rfr-%s-readwrite.%s:6379", inst.GetName(), testNamespace)}
 	}
 	GinkgoWriter.Printf("valkey instance %s address: %v, username: %s, password: %s", inst.GetName(), addrs, username, password)
 
@@ -193,8 +209,11 @@ func checkInstanceWrite(ctx context.Context, inst *rdsv1alpha1.Valkey, username,
 }
 
 type Spec struct {
-	Name string
-	Func func(context.Context, *rdsv1alpha1.Valkey)
+	Name    string
+	Labels  []string
+	Timeout time.Duration
+	Skip    bool
+	Func    func(context.Context, *rdsv1alpha1.Valkey)
 }
 
 type TestData struct {
@@ -238,6 +257,13 @@ var clusterTestCases = []TestData{
 				},
 			}
 
+			if defaltStorageClass != "" {
+				inst.Spec.Storage = &core.Storage{
+					StorageClassName: ptr.To(defaltStorageClass),
+					Capacity:         ptr.To(resource.MustParse("1Gi")),
+				}
+			}
+
 			var tmpInst rdsv1alpha1.Valkey
 			if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(inst), &tmpInst); err == nil {
 				return &tmpInst
@@ -248,7 +274,8 @@ var clusterTestCases = []TestData{
 		},
 		Specs: []Spec{
 			{
-				Name: "deploy valkey",
+				Name:   "deploy valkey",
+				Labels: []string{"cluster", "deploy"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create valkey instance")
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
@@ -260,7 +287,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "read/write data",
+				Name:   "read/write data",
+				Labels: []string{"cluster", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -268,7 +296,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create default user with password",
+				Name:   "create default user with password",
+				Labels: []string{"cluster", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create default user")
 					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
@@ -279,7 +308,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create and delete users",
+				Name:   "create and delete users",
+				Labels: []string{"cluster", "user"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					for _, username := range []string{"user1", "user2", "user3"} {
 						password, _ := security.GeneratePassword(12)
@@ -315,7 +345,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "scale up to 5 shards",
+				Name:   "scale up to 5 shards",
+				Labels: []string{"cluster", "scale", "up"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to 5 shards")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -331,7 +362,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "scale down to 3 shards",
+				Name:   "scale down to 3 shards",
+				Labels: []string{"cluster", "scale", "down"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to 3 shards")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -347,7 +379,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "restart valkey",
+				Name:   "restart valkey",
+				Labels: []string{"cluster", "restart"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to restart")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -365,7 +398,8 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "update valkey",
+				Name:   "update valkey",
+				Labels: []string{"cluster", "update"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -390,18 +424,10 @@ var clusterTestCases = []TestData{
 				},
 			},
 			{
-				Name: "delete valkey",
+				Name:   "delete valkey",
+				Labels: []string{"cluster", "delete"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					if inst.Spec.Storage != nil && inst.Spec.Storage.StorageClassName != nil && *inst.Spec.Storage.StorageClassName != "" {
-						By("update instance with delete pvc")
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						inst.Finalizers = []string{"delete-pvc"}
-						Expect(k8sClient.Update(ctx, inst)).To(Succeed())
-						waitInstanceStatusReady(ctx, inst, time.Second*30)
-					}
-
-					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					Expect(k8sClient.Delete(ctx, inst)).To(Succeed())
+					deleteInstance(ctx, inst)
 				},
 			},
 		},
@@ -444,6 +470,12 @@ var failoverTestCases = []TestData{
 					},
 				},
 			}
+			if defaltStorageClass != "" {
+				inst.Spec.Storage = &core.Storage{
+					StorageClassName: ptr.To(defaltStorageClass),
+					Capacity:         ptr.To(resource.MustParse("1Gi")),
+				}
+			}
 
 			var tmpInst rdsv1alpha1.Valkey
 			if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(inst), &tmpInst); err == nil {
@@ -455,7 +487,8 @@ var failoverTestCases = []TestData{
 		},
 		Specs: []Spec{
 			{
-				Name: "deploy valkey",
+				Name:   "deploy valkey",
+				Labels: []string{"failover", "deploy"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create valkey instance")
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
@@ -467,7 +500,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "read/write data",
+				Name:   "read/write data",
+				Labels: []string{"failover", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -475,7 +509,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create default user with password",
+				Name:   "create default user with password",
+				Labels: []string{"failover", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create default user")
 					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
@@ -486,7 +521,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create and delete users",
+				Name:   "create and delete users",
+				Labels: []string{"failover", "user"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					for _, username := range []string{"user1", "user2", "user3"} {
 						password, _ := security.GeneratePassword(12)
@@ -522,7 +558,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "scale up to 3 replicas",
+				Name:   "scale up to 3 replicas",
+				Labels: []string{"failover", "scale", "up"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to 3 replicas")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -538,7 +575,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "scale down to 1 replicas",
+				Name:   "scale down to 2 replicas",
+				Labels: []string{"failover", "scale", "down"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to 1 replicas")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -572,7 +610,8 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "update valkey",
+				Name:   "update valkey",
+				Labels: []string{"failover", "update"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -597,18 +636,10 @@ var failoverTestCases = []TestData{
 				},
 			},
 			{
-				Name: "delete valkey",
+				Name:   "delete valkey",
+				Labels: []string{"failover", "delete"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					if inst.Spec.Storage != nil && inst.Spec.Storage.StorageClassName != nil && *inst.Spec.Storage.StorageClassName != "" {
-						By("update valkey instance with delete pvc")
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						inst.Finalizers = []string{"delete-pvc"}
-						Expect(k8sClient.Update(ctx, inst)).To(Succeed())
-						waitInstanceStatusReady(ctx, inst, time.Second*30)
-					}
-
-					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					Expect(k8sClient.Delete(ctx, inst)).To(Succeed())
+					deleteInstance(ctx, inst)
 				},
 			},
 		},
@@ -646,6 +677,12 @@ var replicationTestCases = []TestData{
 					Exporter: &rdsv1alpha1.ValkeyExporter{},
 				},
 			}
+			if defaltStorageClass != "" {
+				inst.Spec.Storage = &core.Storage{
+					StorageClassName: ptr.To(defaltStorageClass),
+					Capacity:         ptr.To(resource.MustParse("1Gi")),
+				}
+			}
 
 			var tmpInst rdsv1alpha1.Valkey
 			if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(inst), &tmpInst); err == nil {
@@ -657,7 +694,8 @@ var replicationTestCases = []TestData{
 		},
 		Specs: []Spec{
 			{
-				Name: "deploy valkey",
+				Name:   "deploy valkey",
+				Labels: []string{"replica", "deploy"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create valkey instance")
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
@@ -669,7 +707,8 @@ var replicationTestCases = []TestData{
 				},
 			},
 			{
-				Name: "read/write data",
+				Name:   "read/write data",
+				Labels: []string{"replica", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -677,7 +716,8 @@ var replicationTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create default user with password",
+				Name:   "create default user with password",
+				Labels: []string{"replica", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("create default user")
 					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
@@ -688,7 +728,8 @@ var replicationTestCases = []TestData{
 				},
 			},
 			{
-				Name: "create and delete users",
+				Name:   "create and delete users",
+				Labels: []string{"replica", "user"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					for _, username := range []string{"user1", "user2", "user3"} {
 						password, _ := security.GeneratePassword(12)
@@ -724,7 +765,8 @@ var replicationTestCases = []TestData{
 				},
 			},
 			{
-				Name: "restart valkey",
+				Name:   "restart valkey",
+				Labels: []string{"replica", "restart"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("restart valkey instance to restart")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -737,12 +779,13 @@ var replicationTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 				},
 			},
 			{
-				Name: "update valkey",
+				Name:   "update valkey",
+				Labels: []string{"replica", "update"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
@@ -762,23 +805,15 @@ var replicationTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*5)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 				},
 			},
 			{
-				Name: "delete instance",
+				Name:   "delete instance",
+				Labels: []string{"replica", "delete"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					if inst.Spec.Storage != nil && inst.Spec.Storage.StorageClassName != nil && *inst.Spec.Storage.StorageClassName != "" {
-						By("update instance with delete pvc")
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						inst.Finalizers = []string{"delete-pvc"}
-						Expect(k8sClient.Update(ctx, inst)).To(Succeed())
-						waitInstanceStatusReady(ctx, inst, time.Second*30)
-					}
-
-					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					Expect(k8sClient.Delete(ctx, inst)).To(Succeed())
+					deleteInstance(ctx, inst)
 				},
 			},
 		},

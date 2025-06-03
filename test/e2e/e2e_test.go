@@ -119,7 +119,7 @@ var _ = Describe("controller", Ordered, func() {
 		}
 	})
 
-	Context("Operator", func() {
+	Context("Operator", Label("operator"), func() {
 		BeforeEach(func() {
 			if skipDeployOperator {
 				Skip("skipping the operator deployment")
@@ -189,7 +189,7 @@ var _ = Describe("controller", Ordered, func() {
 		})
 	})
 
-	Context("create and test cluster instance", func() {
+	Context("create and test cluster instance", Label("cluster"), func() {
 		BeforeEach(func() {
 			if skipClusterTests {
 				Skip("skipping the cluster tests")
@@ -218,9 +218,23 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func(ctx context.Context) {
-							spec.Func(ctx, inst)
-						}, SpecTimeout(time.Minute*30))
+						if spec.Skip {
+							continue
+						}
+						opts := []any{
+							func(ctx context.Context) {
+								spec.Func(ctx, inst)
+							},
+						}
+						if len(spec.Labels) > 0 {
+							opts = append(opts, Label(spec.Labels...))
+						}
+						if spec.Timeout > 0 {
+							opts = append(opts, SpecTimeout(spec.Timeout))
+						} else {
+							opts = append(opts, SpecTimeout(time.Minute*30))
+						}
+						It(spec.Name, opts...)
 					}
 
 					if cases.AfterEach != nil {
@@ -233,7 +247,7 @@ var _ = Describe("controller", Ordered, func() {
 		}
 	})
 
-	Context("create and test failover instance", func() {
+	Context("create and test failover instance", Label("failover"), func() {
 		BeforeEach(func() {
 			if skipFailoverTests {
 				Skip("skipping the failover tests")
@@ -262,9 +276,23 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func(ctx context.Context) {
-							spec.Func(ctx, inst)
-						}, SpecTimeout(time.Minute*30))
+						if spec.Skip {
+							continue
+						}
+						opts := []any{
+							func(ctx context.Context) {
+								spec.Func(ctx, inst)
+							},
+						}
+						if len(spec.Labels) > 0 {
+							opts = append(opts, Label(spec.Labels...))
+						}
+						if spec.Timeout > 0 {
+							opts = append(opts, SpecTimeout(spec.Timeout))
+						} else {
+							opts = append(opts, SpecTimeout(time.Minute*30))
+						}
+						It(spec.Name, opts...)
 					}
 
 					if cases.AfterEach != nil {
@@ -277,7 +305,7 @@ var _ = Describe("controller", Ordered, func() {
 		}
 	})
 
-	Context("create and test replica instance", func() {
+	Context("create and test replica instance", Label("replica"), func() {
 		BeforeEach(func() {
 			if skipReplicationTests {
 				Skip("skipping the replica tests")
@@ -306,9 +334,23 @@ var _ = Describe("controller", Ordered, func() {
 						})
 					}
 					for _, spec := range cases.Specs {
-						It(spec.Name, func(ctx context.Context) {
-							spec.Func(ctx, inst)
-						}, SpecTimeout(time.Minute*30))
+						if spec.Skip {
+							continue
+						}
+						opts := []any{
+							func(ctx context.Context) {
+								spec.Func(ctx, inst)
+							},
+						}
+						if len(spec.Labels) > 0 {
+							opts = append(opts, Label(spec.Labels...))
+						}
+						if spec.Timeout > 0 {
+							opts = append(opts, SpecTimeout(spec.Timeout))
+						} else {
+							opts = append(opts, SpecTimeout(time.Minute*30))
+						}
+						It(spec.Name, opts...)
 					}
 
 					if cases.AfterEach != nil {

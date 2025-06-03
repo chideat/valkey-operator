@@ -149,6 +149,7 @@ func GetEnv(key string, vals ...string) string {
 	if value == "" && len(vals) > 0 {
 		return vals[0]
 	}
+	GinkgoWriter.Printf("Get ENV: %s=%s\n", key, value)
 	return value
 }
 

@@ -614,8 +614,8 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	resources := map[schema.GroupVersionKind][]string{
 		serviceKey: {
 			failoverbuilder.FailoverStatefulSetName(s.GetName()), // rfr-<name>
-			failoverbuilder.ROServiceName(s.GetName()),           // rfr-<name>-read-only
-			failoverbuilder.RWServiceName(s.GetName()),           // rfr-<name>-read-write
+			failoverbuilder.ROServiceName(s.GetName()),           // rfr-<name>-readonly
+			failoverbuilder.RWServiceName(s.GetName()),           // rfr-<name>-readwrite
 		},
 		stsKey: {
 			failoverbuilder.FailoverStatefulSetName(s.GetName()),
