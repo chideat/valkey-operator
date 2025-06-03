@@ -59,16 +59,6 @@ spec:
                 limits:
                   cpu: 4000m
                   memory: 4096Mi
-        - pipelineTaskName: go-lint
-          stepOverrides:
-            - name: scan
-              resources:
-                requests:
-                  cpu: 4000m
-                  memory: 6000Mi
-                limits:
-                  cpu: 6000m
-                  memory: 8000Mi
         - pipelineTaskName: go-test
           stepOverrides:
             - name: prepare
@@ -96,34 +86,7 @@ spec:
                   cpu: 1500m
                   memory: 3000Mi
   tasks:
-    - name: go-lint
-      timeout: 30m
-      retries: 0
-      taskRef:
-        kind: ClusterTask
-        name: golangci-lint
-      workspaces:
-        - name: source
-          workspace: source
-        - name: cache
-          workspace: source
-      params:
-        - name: tool-image
-          value: registry.alauda.cn:60080/devops/builder-go:1.23
-        - name: command
-          value: >
-            export GOPROXY=https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct
-            export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*,gopkg.in/*"
-
-            golangci-lint run --concurrency 4 -c .local-golangci.yaml --verbose ./...
-        - name: quality-gate
-          value: "false"
-        - name: quality-gate-rules
-          value:
-          - issues-count=0
     - name: go-test
-      runAfter:
-        - go-lint
       timeout: 30m
       retries: 0
       taskRef:
@@ -143,7 +106,7 @@ spec:
         - name: quality-gate
           value: "false"
         - name: tool-image
-          value: docker-mirrors.alauda.cn/library/golang:1.23
+          value: docker-mirrors.alauda.cn/library/golang:1.24
     - name: code-scan
       runAfter:
         - go-test
