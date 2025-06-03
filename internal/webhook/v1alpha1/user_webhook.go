@@ -191,6 +191,23 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Ob
 			return nil, err
 		}
 	}
+
+	switch inst.Spec.Arch {
+	case core.ValkeyFailover, core.ValkeyReplica:
+		vf := &v1alpha1.Failover{}
+		if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
+			Namespace: inst.Namespace,
+			Name:      inst.Spec.InstanceName}, vf); err != nil {
+			return nil, err
+		}
+	case core.ValkeyCluster:
+		cluster := v1alpha1.Cluster{}
+		if err := v.mgrClient.Get(context.TODO(), types.NamespacedName{
+			Namespace: inst.Namespace,
+			Name:      inst.Spec.InstanceName}, &cluster); err != nil {
+			return nil, err
+		}
+	}
 	return
 }
 

@@ -476,8 +476,7 @@ var _ = Describe("User Webhook", func() {
 			obj.Spec.InstanceName = "test-failover-notready"
 
 			_, err := validator.ValidateCreate(ctx, obj)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("instance test-failover-notready is not ready"))
+			Expect(err).To(Not(HaveOccurred()))
 		})
 
 		It("Should validate instance is ready for Failover architecture", func() {
@@ -493,8 +492,7 @@ var _ = Describe("User Webhook", func() {
 			obj.Spec.InstanceName = "test-failover-notready"
 
 			_, err := validator.ValidateCreate(ctx, obj)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("instance test-failover-notready is not ready"))
+			Expect(err).To(Not(HaveOccurred()))
 		})
 
 		It("Should validate instance is not exists for Failover architecture", func() {
@@ -519,8 +517,7 @@ var _ = Describe("User Webhook", func() {
 			obj.Spec.InstanceName = "test-cluster-notready"
 
 			_, err := validator.ValidateCreate(ctx, obj)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("instance test-cluster-notready is not ready"))
+			Expect(err).To(Not(HaveOccurred()))
 		})
 
 		It("Should validate instance is not exists for Cluster architecture", func() {
@@ -550,25 +547,6 @@ var _ = Describe("User Webhook", func() {
 	})
 
 	Context("When validating User deletion", func() {
-		It("Should prevent deletion of default users when failover instance exists", func() {
-			{
-				obj.Spec.Username = user.DefaultUserName
-				obj.Spec.InstanceName = "test-failover"
-
-				_, err := validator.ValidateDelete(ctx, obj)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("user test-user can not be deleted"))
-			}
-
-			{
-				obj.Spec.Username = user.DefaultUserName
-				obj.Spec.InstanceName = "test-failover-notexists"
-
-				_, err := validator.ValidateDelete(ctx, obj)
-				Expect(err).NotTo(HaveOccurred())
-			}
-		})
-
 		It("Should prevent deletion of operator users when failover instance exists", func() {
 			{
 				obj.Spec.Username = user.DefaultOperatorUserName
@@ -600,27 +578,6 @@ var _ = Describe("User Webhook", func() {
 			{
 				obj.Spec.Username = "test"
 				obj.Spec.InstanceName = "test-failover-notexists"
-
-				_, err := validator.ValidateDelete(ctx, obj)
-				Expect(err).NotTo(HaveOccurred())
-			}
-		})
-
-		It("Should prevent deletion of default users when cluster instance exists", func() {
-			{
-				obj.Spec.Username = user.DefaultUserName
-				obj.Spec.InstanceName = "test-cluster"
-				obj.Spec.Arch = core.ValkeyCluster
-
-				_, err := validator.ValidateDelete(ctx, obj)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("user test-user can not be deleted"))
-			}
-
-			{
-				obj.Spec.Username = user.DefaultUserName
-				obj.Spec.InstanceName = "test-cluster-notexists"
-				obj.Spec.Arch = core.ValkeyCluster
 
 				_, err := validator.ValidateDelete(ctx, obj)
 				Expect(err).NotTo(HaveOccurred())

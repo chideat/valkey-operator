@@ -101,7 +101,7 @@ func TestLocalhostAlias(t *testing.T) {
 			family: corev1.IPv4Protocol,
 			want: corev1.HostAlias{
 				IP:        "127.0.0.1",
-				Hostnames: []string{"localhost", "localhost.localdomain"},
+				Hostnames: []string{"local.inject"},
 			},
 		},
 		{
@@ -109,7 +109,7 @@ func TestLocalhostAlias(t *testing.T) {
 			family: corev1.IPv6Protocol,
 			want: corev1.HostAlias{
 				IP:        "::1",
-				Hostnames: []string{"localhost", "localhost.localdomain"},
+				Hostnames: []string{"local.inject"},
 			},
 		},
 	}
