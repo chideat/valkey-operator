@@ -247,7 +247,8 @@ func ParseNodeFromClusterNode(line string) (*ClusterNode, error) {
 func ParseNodes(data string) (nodes ClusterNodes, err error) {
 	lines := strings.Split(data, "\n")
 	for _, line := range lines {
-		if strings.HasPrefix(line, "vars") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "vars") || line == "" {
 			continue
 		}
 		if node, err := ParseNodeFromClusterNode(line); err != nil {

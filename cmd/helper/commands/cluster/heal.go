@@ -367,8 +367,9 @@ func getPodsOfShard(ctx context.Context, c *cli.Context, client *kubernetes.Clie
 	stsName := podName[0:splitIndex]
 
 	labels := map[string]string{
-		"middleware.instance/type": "distributed-valkey-cluster",
-		"statefulSet":              stsName,
+		"app.kubernetes.io/managed-by": "valkey-operator",
+		"buf.red/type":                 "cluster",
+		"statefulset":                  stsName,
 	}
 
 	if err = commands.RetryGet(func() error {

@@ -18,6 +18,7 @@ import (
 	"github.com/chideat/valkey-operator/test/utils"
 	"github.com/valkey-io/valkey-go"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -216,7 +217,7 @@ var clusterTestCases = []TestData{
 					Version: version,
 					Replicas: &rdsv1alpha1.ValkeyReplicas{
 						Shards:          3,
-						ReplicasOfShard: 1,
+						ReplicasOfShard: 2,
 					},
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -232,7 +233,8 @@ var clusterTestCases = []TestData{
 					Access: core.InstanceAccess{
 						ServiceType: accessType,
 					},
-					Exporter: &rdsv1alpha1.ValkeyExporter{},
+					Exporter:       &rdsv1alpha1.ValkeyExporter{},
+					AffinityPolicy: ptr.To(core.AntiAffinityInShard),
 				},
 			}
 
@@ -418,7 +420,7 @@ var failoverTestCases = []TestData{
 					Arch:    core.ValkeyFailover,
 					Version: version,
 					Replicas: &rdsv1alpha1.ValkeyReplicas{
-						ReplicasOfShard: 1,
+						ReplicasOfShard: 2,
 					},
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -540,7 +542,7 @@ var failoverTestCases = []TestData{
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					By("update valkey instance to 1 replicas")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					inst.Spec.Replicas.ReplicasOfShard = 1
+					inst.Spec.Replicas.ReplicasOfShard = 2
 					Expect(k8sClient.Update(ctx, inst)).To(Succeed())
 
 					time.Sleep(time.Minute)
@@ -625,7 +627,6 @@ var replicationTestCases = []TestData{
 					Arch:    core.ValkeyReplica,
 					Version: version,
 					Replicas: &rdsv1alpha1.ValkeyReplicas{
-						Shards:          1,
 						ReplicasOfShard: 1,
 					},
 					Resources: corev1.ResourceRequirements{
