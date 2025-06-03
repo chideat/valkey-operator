@@ -198,7 +198,7 @@ func TestAuthCheckRule(t *testing.T) {
 				t.Errorf("CheckRule() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if tt.wantErr && err != nil && err.Error() != fmt.Errorf(tt.errMsg).Error() {
+			if tt.wantErr && err != nil && err.Error() != fmt.Errorf("%s", tt.errMsg).Error() {
 				t.Errorf("CheckRule() error = %v, wantErr %v", err, tt.errMsg)
 			}
 		})
@@ -266,7 +266,7 @@ func TestAuthCheckUserRuleUpdate(t *testing.T) {
 				t.Errorf("CheckUserRuleUpdate() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if tt.wantErr && err != nil && err.Error() != fmt.Errorf(tt.errMsg).Error() {
+			if tt.wantErr && err != nil && err.Error() != fmt.Errorf("%s", tt.errMsg).Error() {
 				t.Errorf("CheckUserRuleUpdate() error = %v, wantErr %v", err, tt.errMsg)
 			}
 		})
