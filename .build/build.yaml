@@ -113,6 +113,7 @@ spec:
         - name: command
           value: >
             export GOPROXY=https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct
+            export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*,gopkg.in/*"
 
             golangci-lint run --concurrency 4 -c .local-golangci.yaml --verbose ./...
         - name: quality-gate
@@ -135,7 +136,7 @@ spec:
         - name: command
           value: |-
             export GOPROXY="https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct"
-            export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*"
+            export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*,gopkg.in/*"
             make test
         - name: coverage-report-path
           value: ./coverage.txt
