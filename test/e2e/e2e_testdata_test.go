@@ -30,9 +30,10 @@ import (
 )
 
 var (
-	testNamespace         = utils.GetEnv("NAMESPACE", "valkey-test")
-	valkeyDefaultUsername = "default"
-	valkeyDefaultPassword string
+	testNamespace               = utils.GetEnv("NAMESPACE", "valkey-test")
+	valkeyDefaultUsername       = "default"
+	valkeyDefaultPassword, _    = security.GeneratePassword(12)
+	valkeyDefaultSenPassword, _ = security.GeneratePassword(12)
 )
 
 func generateValkeyUserInstanceName(inst *rdsv1alpha1.Valkey, username string) string {
@@ -146,12 +147,13 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 	} else if inst.Spec.Arch == core.ValkeyReplica {
 		addrs = []string{fmt.Sprintf("rfr-%s-read-write:6379", inst.GetName())}
 	}
-	GinkgoWriter.Printf("valkey instance %s address: %v", inst.GetName(), addrs)
+	GinkgoWriter.Printf("valkey instance %s address: %v, username: %s, password: %s", inst.GetName(), addrs, username, password)
 
 	options := valkey.ClientOption{
 		Username:    username,
 		Password:    password,
 		InitAddress: addrs,
+		ClientName:  "e2e-tests",
 	}
 	if inst.Spec.Arch == core.ValkeyFailover {
 		options.Sentinel = valkey.SentinelOption{
@@ -204,8 +206,6 @@ type TestData struct {
 var clusterTestCases = []TestData{
 	{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
-			valkeyDefaultPassword, _ = security.GeneratePassword(12)
-
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fmt.Sprintf("cluster-valkey-%s", strings.ReplaceAll(version, ".", "-")),
@@ -315,7 +315,7 @@ var clusterTestCases = []TestData{
 			{
 				Name: "scale up to 5 shards",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to 5 shards")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Replicas.Shards = 5
 					Expect(k8sClient.Update(ctx, inst)).To(Succeed())
@@ -331,7 +331,7 @@ var clusterTestCases = []TestData{
 			{
 				Name: "scale down to 3 shards",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to 3 shards")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Replicas.Shards = 3
 					Expect(k8sClient.Update(ctx, inst)).To(Succeed())
@@ -347,7 +347,7 @@ var clusterTestCases = []TestData{
 			{
 				Name: "restart valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to restart")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.PodAnnotations = map[string]string{
 						builder.RestartAnnotationKey: time.Now().Format(time.RFC3339Nano),
@@ -365,7 +365,7 @@ var clusterTestCases = []TestData{
 			{
 				Name: "update valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Resources = corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -409,8 +409,6 @@ var clusterTestCases = []TestData{
 var failoverTestCases = []TestData{
 	{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
-			valkeyDefaultPassword, _ = security.GeneratePassword(12)
-
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fmt.Sprintf("failover-valkey-%s", strings.ReplaceAll(version, ".", "-")),
@@ -492,6 +490,7 @@ var failoverTestCases = []TestData{
 						password, _ := security.GeneratePassword(12)
 						By(fmt.Sprintf("create user %s", username))
 						createInstanceUser(ctx, inst, username, password, "+@all ~* &* -acl")
+
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 						checkInstanceRead(ctx, inst, username, password)
 						checkInstanceWrite(ctx, inst, username, password)
@@ -523,7 +522,7 @@ var failoverTestCases = []TestData{
 			{
 				Name: "scale up to 3 replicas",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to 3 replicas")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Replicas.ReplicasOfShard = 3
 					Expect(k8sClient.Update(ctx, inst)).To(Succeed())
@@ -539,7 +538,7 @@ var failoverTestCases = []TestData{
 			{
 				Name: "scale down to 1 replicas",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to 1 replicas")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Replicas.ReplicasOfShard = 1
 					Expect(k8sClient.Update(ctx, inst)).To(Succeed())
@@ -555,7 +554,7 @@ var failoverTestCases = []TestData{
 			{
 				Name: "restart valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance to restart")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.PodAnnotations = map[string]string{
 						builder.RestartAnnotationKey: time.Now().Format(time.RFC3339Nano),
@@ -573,7 +572,7 @@ var failoverTestCases = []TestData{
 			{
 				Name: "update valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Resources = corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -617,8 +616,6 @@ var failoverTestCases = []TestData{
 var replicationTestCases = []TestData{
 	{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
-			valkeyDefaultPassword, _ = security.GeneratePassword(12)
-
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fmt.Sprintf("replica-valkey-%s", strings.ReplaceAll(version, ".", "-")),
@@ -696,6 +693,7 @@ var replicationTestCases = []TestData{
 						password, _ := security.GeneratePassword(12)
 						By(fmt.Sprintf("create user %s", username))
 						createInstanceUser(ctx, inst, username, password, "+@all ~* &* -acl")
+
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 						checkInstanceRead(ctx, inst, username, password)
 						checkInstanceWrite(ctx, inst, username, password)
@@ -727,7 +725,7 @@ var replicationTestCases = []TestData{
 			{
 				Name: "restart valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("restart valkey instance")
+					By("restart valkey instance to restart")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.PodAnnotations = map[string]string{
 						builder.RestartAnnotationKey: time.Now().Format(time.RFC3339Nano),
@@ -745,7 +743,7 @@ var replicationTestCases = []TestData{
 			{
 				Name: "update valkey",
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("update valkey instance")
+					By("update valkey instance resources")
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					inst.Spec.Resources = corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
