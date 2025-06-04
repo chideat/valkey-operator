@@ -88,7 +88,7 @@ type ValkeySpec struct {
 
 	// AffinityPolicy specifies the affinity policy for the Pod
 	// +optional
-	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInSharding";"AntiAffinity";"CustomAffinity"
+	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInShard";"AntiAffinity";"CustomAffinity"
 	AffinityPolicy *core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 
 	// CustomAffinity specifies the custom affinity settings for the Pod

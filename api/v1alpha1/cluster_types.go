@@ -79,7 +79,7 @@ type ClusterSpec struct {
 	// PodAnnotations
 	PodAnnotations map[string]string `json:"annotations,omitempty"`
 	// AffinityPolicy
-	// +kubebuilder:validation:Enum=SoftAntiAffinity;AntiAffinityInSharding;AntiAffinity
+	// +kubebuilder:validation:Enum=SoftAntiAffinity;AntiAffinityInShard;AntiAffinity;CustomAffinity
 	AffinityPolicy *core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 	// Affinity
 	CustomAffinity *corev1.Affinity `json:"CustomAffinity,omitempty"`
