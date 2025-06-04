@@ -24,12 +24,14 @@ TODO
 
 ## Supported Versions
 
-| Version | K8s Versions | Supported | Tested |
-|---------|:-------------|-----------|--------|
-| 7.2.x   | 1.31         | Yes       | Yes    |
-|         | 1.32         | Yes       |        |
-| 8.0.x   | 1.31         | Yes       | Yes    |
-|         | 1.32         | Yes       |        |
+| Version | K8s Versions | Supported |
+|---------|:-------------|-----------|
+| 7.2.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
+| 8.0.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
+| 8.1.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
 
 ## Documentation
 
