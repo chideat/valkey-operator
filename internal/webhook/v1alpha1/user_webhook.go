@@ -44,7 +44,7 @@ import (
 
 // nolint:unused
 // log is for logging in this package.
-var logger = logf.Log.WithName("user-resource")
+var logger = logf.Log.WithName("user-webhook")
 
 // SetupUserWebhookWithManager registers the webhook for User in the manager.
 func SetupUserWebhookWithManager(mgr ctrl.Manager) error {
@@ -76,6 +76,17 @@ func (d *UserCustomDefaulter) Default(ctx context.Context, obj runtime.Object) (
 	if !ok {
 		return fmt.Errorf("expected User object but got %T", obj)
 	}
+
+	{
+		var oldInst valkeybufredv1alpha1.User
+		if err := d.mgrClient.Get(ctx, client.ObjectKeyFromObject(inst), &oldInst); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+		if oldInst.GetDeletionTimestamp() != nil {
+			return nil
+		}
+	}
+
 	logger.V(3).Info("setup defaults", "user.name", inst.Name)
 
 	if inst.Labels == nil {
@@ -147,11 +158,10 @@ type UserCustomValidator struct {
 
 var _ webhook.CustomValidator = &UserCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type User.
-func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
-	inst, ok := obj.(*valkeybufredv1alpha1.User)
+func (v *UserCustomValidator) validate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
+	inst, ok := newObj.(*valkeybufredv1alpha1.User)
 	if !ok {
-		return nil, fmt.Errorf("expected User object but got %T", obj)
+		return nil, fmt.Errorf("expected User object but got %T", newObj)
 	}
 	logger.V(3).Info("Validation for User upon creation", "name", inst.GetName())
 
@@ -192,29 +202,39 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Ob
 		}
 	}
 
-	switch inst.Spec.Arch {
-	case core.ValkeyFailover, core.ValkeyReplica:
-		vf := &v1alpha1.Failover{}
-		if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
-			Namespace: inst.Namespace,
-			Name:      inst.Spec.InstanceName}, vf); err != nil {
-			return nil, err
-		}
-	case core.ValkeyCluster:
-		cluster := v1alpha1.Cluster{}
-		if err := v.mgrClient.Get(context.TODO(), types.NamespacedName{
-			Namespace: inst.Namespace,
-			Name:      inst.Spec.InstanceName}, &cluster); err != nil {
-			return nil, err
+	if oldObj == nil {
+		switch inst.Spec.Arch {
+		case core.ValkeyFailover, core.ValkeyReplica:
+			vf := &v1alpha1.Failover{}
+			if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
+				Namespace: inst.Namespace,
+				Name:      inst.Spec.InstanceName,
+			}, vf); err != nil {
+				return nil, err
+			}
+		case core.ValkeyCluster:
+			cluster := v1alpha1.Cluster{}
+			if err := v.mgrClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: inst.Namespace,
+				Name:      inst.Spec.InstanceName,
+			}, &cluster); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return
 }
 
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type User.
+func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
+	ctx = context.WithValue(ctx, actionKey, "create")
+	return v.validate(ctx, nil, obj)
+}
+
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type User.
 func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
 	ctx = context.WithValue(ctx, actionKey, "update")
-	return v.ValidateCreate(ctx, newObj)
+	return v.validate(ctx, oldObj, newObj)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type User.
@@ -223,9 +243,10 @@ func (v *UserCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Ob
 	if !ok {
 		return nil, fmt.Errorf("expected User object but got %T", obj)
 	}
-	logger.Info("Validation for User upon deletion", "name", inst.GetName())
+	logger.V(3).Info("Validation for User upon deletion", "name", inst.GetName())
 
-	if inst.Spec.Username == user.DefaultOperatorUserName {
+	// TODO: added support of safely deleting default user
+	if inst.Spec.Username == user.DefaultOperatorUserName || inst.Spec.Username == user.DefaultUserName {
 		switch inst.Spec.Arch {
 		case core.ValkeyFailover, core.ValkeyReplica:
 			rf := v1alpha1.Failover{}

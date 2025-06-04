@@ -79,8 +79,8 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return reconcile.Result{}, err
 	}
 
-	isMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
-	if isMarkedToBeDeleted {
+	if instance.GetDeletionTimestamp() != nil {
+		logger.Info("user is being deleted", "instance", req.NamespacedName)
 		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
 			if instance.Status.Message != err.Error() {
 				instance.Status.Phase = v1alpha1.UserFail
@@ -94,6 +94,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		} else {
 			controllerutil.RemoveFinalizer(&instance, UserFinalizer)
 			if err := r.Update(ctx, &instance); err != nil {
+				logger.Error(err, "remove finalizer failed", "instance", req.NamespacedName)
 				return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 			}
 		}
