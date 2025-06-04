@@ -166,14 +166,13 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			return fmt.Errorf("instance is not ready")
 		}
 
-		aclRules := inst.Spec.AclRules
 		rule, err := user.NewRule(inst.Spec.AclRules)
 		if err != nil {
 			logger.V(3).Info("rule parse failed", "rule", inst.Spec.AclRules)
 			return err
 		}
 		rule = types.PatchClusterClientRequiredRules(rule)
-		aclRules = rule.Encode()
+		aclRules := rule.Encode()
 
 		userObj, err := types.NewUserFromValkeyUser(inst.Spec.Username, aclRules, userPassword)
 		if err != nil {

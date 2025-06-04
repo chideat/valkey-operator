@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/chideat/valkey-operator/cmd/helper/commands"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -165,8 +166,8 @@ func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podNam
 		format_announceIp = fmt.Sprintf("%s0", format_announceIp)
 	}
 	labelPatch := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"add","path":"/metadata/labels/%s","value":"%s"}]`,
-		strings.Replace("middleware.alauda.io/announce_ip", "/", "~1", -1), format_announceIp,
-		strings.Replace("middleware.alauda.io/announce_port", "/", "~1", -1), strconv.Itoa(int(announcePort)))
+		strings.Replace(builder.AnnounceIPLabelKey, "/", "~1", -1), format_announceIp,
+		strings.Replace(builder.AnnouncePortLabelKey, "/", "~1", -1), strconv.Itoa(int(announcePort)))
 
 	logger.Info(labelPatch)
 	_, err = client.CoreV1().Pods(pod.Namespace).Patch(ctx, podName, types.JSONPatchType, []byte(labelPatch), metav1.PatchOptions{})

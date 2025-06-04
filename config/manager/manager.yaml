@@ -70,6 +70,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['valkeyImageName']
+        - name: VALKEY_VERSION_MAP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['valkeyVersionMap']
         image: controller:latest
         name: manager
         securityContext:

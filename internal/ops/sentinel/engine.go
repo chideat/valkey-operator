@@ -71,7 +71,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 		return actor.NewResult(CommandEnsureResource)
 	}
 
-	// NOTE: checked if resource is fullfilled, expecially for pod binded services
+	// NOTE: checked if resource is fullfilled, especially for pod binded services
 	if isFullfilled, _ := sentinel.IsResourceFullfilled(ctx); !isFullfilled {
 		return actor.NewResult(CommandEnsureResource)
 	}

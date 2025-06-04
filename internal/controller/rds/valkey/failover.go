@@ -22,6 +22,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -49,15 +50,21 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 		exporter *core.Exporter
 		sentinel = instance.Spec.Sentinel.DeepCopy()
 
-		annotations = map[string]string{}
+		annotations = map[string]string{
+			builder.CRVersionKey: config.GetOperatorVersion(),
+		}
 	)
 
 	if exp := instance.Spec.Exporter; exp == nil || !exp.Disable {
-		exporter = &exp.Exporter
+		if exp != nil {
+			exporter = &exp.Exporter
+		} else {
+			exporter = &core.Exporter{}
+		}
 		if exporter.Image == "" {
 			exporter.Image = config.GetValkeyExporterImage(nil)
 		}
-		if exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
+		if exporter.Resources == nil || exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
 			exporter.Resources = &corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
 					corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -86,8 +93,6 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 			}
 			sentinel.PodAnnotations = lo.Assign(sentinel.PodAnnotations, instance.Spec.PodAnnotations)
 		}
-	} else {
-		annotations["standalone"] = "true"
 	}
 
 	failover := &v1alpha1.Failover{
@@ -100,8 +105,8 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 		},
 		Spec: v1alpha1.FailoverSpec{
 			Image:          image,
-			Replicas:       int32(*&instance.Spec.Replicas.ReplicasOfShard),
-			Resources:      *instance.Spec.Resources,
+			Replicas:       instance.Spec.Replicas.ReplicasOfShard,
+			Resources:      instance.Spec.Resources,
 			CustomConfigs:  instance.Spec.CustomConfigs,
 			PodAnnotations: lo.Assign(instance.Spec.PodAnnotations),
 			Exporter:       exporter,

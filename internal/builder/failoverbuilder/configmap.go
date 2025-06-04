@@ -26,10 +26,10 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/version"
 
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -37,89 +37,81 @@ func ConfigMapName(name string) string {
 	return FailoverStatefulSetName(name)
 }
 
-const (
-	ValkeyConfig_MaxMemory               = "maxmemory"
-	ValkeyConfig_MaxMemoryPolicy         = "maxmemory-policy"
-	ValkeyConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
-	ValkeyConfig_Save                    = "save"
-	ValkeyConfig_RenameCommand           = "rename-command"
-	ValkeyConfig_Appendonly              = "appendonly"
-	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
-)
-
 func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 	rf := inst.Definition()
-
-	customConfig := rf.Spec.CustomConfigs
-	default_config := make(map[string]string)
-	default_config["loglevel"] = "notice"
-	default_config["stop-writes-on-bgsave-error"] = "yes"
-	default_config["rdbcompression"] = "yes"
-	default_config["rdbchecksum"] = "yes"
-	default_config["slave-read-only"] = "yes"
-	default_config["repl-diskless-sync"] = "no"
-	default_config["slowlog-max-len"] = "128"
-	default_config["slowlog-log-slower-than"] = "10000"
-	default_config["maxclients"] = "10000"
-	default_config["hz"] = "10"
-	default_config["tcp-keepalive"] = "300"
-	default_config["tcp-backlog"] = "511"
-	default_config["protected-mode"] = "no"
-
-	version, _ := version.ParseValkeyVersionFromImage(rf.Spec.Image)
-	innerValkeyConfig := version.CustomConfigs(core.ValkeyFailover)
-	default_config = lo.Assign(default_config, innerValkeyConfig)
-
-	for k, v := range customConfig {
-		k = strings.ToLower(k)
-		v = strings.TrimSpace(v)
-		if k == "save" && v == "60 100" {
-			continue
-		}
-		if k == ValkeyConfig_RenameCommand {
-			continue
-		}
-		default_config[k] = v
+	if rf == nil {
+		return nil, fmt.Errorf("failover instance definition is nil")
 	}
+	var (
+		customConfig      = rf.Spec.CustomConfigs
+		keys              = make([]string, 0, len(rf.Spec.CustomConfigs))
+		innerValkeyConfig = inst.Version().CustomConfigs(core.ValkeyFailover)
+		configMap         = lo.Assign(rf.Spec.CustomConfigs, innerValkeyConfig)
+	)
 
 	// check if it's need to set default save
 	// check if aof enabled
-	if customConfig[ValkeyConfig_Appendonly] != "yes" &&
-		customConfig[ValkeyConfig_ReplDisklessSync] != "yes" &&
-		(customConfig[ValkeyConfig_Save] == "" || customConfig[ValkeyConfig_Save] == `""`) {
+	if customConfig[builder.ValkeyConfig_Appendonly] != "yes" &&
+		customConfig[builder.ValkeyConfig_ReplDisklessSync] != "yes" &&
+		(customConfig[builder.ValkeyConfig_Save] == "" || customConfig[builder.ValkeyConfig_Save] == `""`) {
 
-		default_config["save"] = "60 10000 300 100 600 1"
+		configMap["save"] = "60 10000 300 100 600 1"
 	}
 
-	if limits := rf.Spec.Resources.Limits; limits != nil {
-		if configedMem := customConfig[ValkeyConfig_MaxMemory]; configedMem == "" {
-			memLimit, _ := limits.Memory().AsInt64()
-			if policy := customConfig[ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
-				memLimit = int64(float64(memLimit) * 0.8)
-			} else {
-				memLimit = int64(float64(memLimit) * 0.7)
+	if rf.Spec.Resources.Limits != nil {
+		var osMem int64
+		for _, res := range []*resource.Quantity{rf.Spec.Resources.Limits.Memory(), rf.Spec.Resources.Requests.Memory()} {
+			if res == nil && res.IsZero() {
+				continue
 			}
-			if memLimit > 0 {
-				default_config[ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", memLimit)
+			osMem, _ = res.AsInt64()
+			break
+		}
+		if osMem > 0 {
+			if configedMem := configMap[builder.ValkeyConfig_MaxMemory]; configedMem == "" {
+				var recommendMem int64
+				if policy := configMap[builder.ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
+					recommendMem = int64(float64(osMem) * 0.8)
+				} else {
+					recommendMem = int64(float64(osMem) * 0.7)
+				}
+				configMap[builder.ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", recommendMem)
+			}
+			if backlogSize := configMap[builder.ValkeyConfig_ReplBacklogSize]; backlogSize == "" {
+				val := int64(0.01 * float64(osMem))
+				if val > 256*1024*1024 {
+					val = 256 * 1024 * 1024
+				} else if val < 1024*1024 {
+					val = 1024 * 1024
+				}
+				configMap[builder.ValkeyConfig_ReplBacklogSize] = fmt.Sprintf("%d", val)
 			}
 		}
 	}
 
-	keys := make([]string, 0, len(default_config))
-	for k := range default_config {
-		keys = append(keys, k)
+	for k, v := range configMap {
+		if policy := builder.ValkeyConfigRestartPolicy[k]; policy == builder.Forbid {
+			continue
+		}
+
+		lowerKey, trimVal := strings.ToLower(k), strings.TrimSpace(v)
+		keys = append(keys, lowerKey)
+		if lowerKey != k || trimVal != v {
+			configMap[lowerKey] = trimVal
+		}
+		// TODO: filter illgal config
 	}
 	sort.Strings(keys)
 
 	var buffer bytes.Buffer
 	for _, k := range keys {
-		v := default_config[k]
+		v := configMap[k]
 		if v == "" || v == `""` {
 			buffer.WriteString(fmt.Sprintf("%s \"\"\n", k))
 			continue
 		}
 		switch k {
-		case ValkeyConfig_ClientOutputBufferLimit:
+		case builder.ValkeyConfig_ClientOutputBufferLimit:
 			fields := strings.Fields(v)
 			if len(fields)%4 != 0 {
 				continue
@@ -127,7 +119,7 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 			for i := 0; i < len(fields); i += 4 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s %s %s\n", k, fields[i], fields[i+1], fields[i+2], fields[i+3]))
 			}
-		case ValkeyConfig_Save, ValkeyConfig_RenameCommand:
+		case builder.ValkeyConfig_Save:
 			fields := strings.Fields(v)
 			if len(fields)%2 != 0 {
 				continue
@@ -135,6 +127,8 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 			for i := 0; i < len(fields); i += 2 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
 			}
+		case builder.ValkeyConfig_RenameCommand:
+			continue
 		default:
 			if _, ok := builder.MustQuoteValkeyConfig[k]; ok && !strings.HasPrefix(v, `"`) {
 				v = fmt.Sprintf(`"%s"`, v)

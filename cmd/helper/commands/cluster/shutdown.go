@@ -80,7 +80,7 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 
 	nodes, err := valkey.ParseNodes(string(data))
 	if err != nil {
-		logger.Error(err, "parse cluster nodes failed")
+		logger.Error(err, "parse cluster nodes failed", "nodes", string(data))
 		return nil
 	}
 	if nodes == nil {
@@ -151,6 +151,13 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 		}
 
 		for i := 0; i < 20; i++ {
+			select {
+			case <-ctx.Done():
+				logger.Info("context done, exit shutdown")
+				return nil
+			default:
+			}
+
 			logger.Info(fmt.Sprintf("try %d failover", i))
 			if err := func() error {
 				canPod, err := getCandidatePod()

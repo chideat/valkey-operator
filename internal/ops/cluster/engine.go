@@ -467,7 +467,7 @@ func (g *RuleEngine) allocateSlots(ctx context.Context, cluster types.ClusterIns
 		}
 	}
 
-	// TODO: do reshard to fix slot fragement
+	// TODO: do reshard to fix slot fragment
 
 	return nil
 }
@@ -482,7 +482,7 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, cluster types.Cluste
 	logger := g.logger.WithName("isPasswordChanged")
 
 	name := aclbuilder.GenerateACLConfigMapName(cluster.Arch(), cluster.GetName())
-	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); errors.IsNotFound(err) {
+	if cm, err := g.client.GetConfigMap(ctx, cluster.GetNamespace(), name); errors.IsNotFound(err) || (cm != nil && cm.GetDeletionTimestamp() != nil) {
 		return true, nil
 	} else if err != nil {
 		g.logger.Error(err, "failed to get configmap", "configmap", name)
@@ -544,8 +544,8 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return true, nil
@@ -555,13 +555,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 
 func buildStatusOfShards(cluster types.ClusterInstance, slots []*slot.Slots) (ret []*clusterv1.ClusterShards) {
 	statusShards := cluster.Definition().Status.Shards
-	maxShards := len(cluster.Shards())
-	if int(cluster.Definition().Spec.Replicas.Shards) > maxShards {
-		maxShards = int(cluster.Definition().Spec.Replicas.Shards)
-	}
-	if len(statusShards) > maxShards {
-		maxShards = len(statusShards)
-	}
+	maxShards := max(len(cluster.Shards()), int(cluster.Definition().Spec.Replicas.Shards), len(statusShards))
 
 	var (
 		isNewAssign    = (len(cluster.Definition().Status.Shards) == 0)

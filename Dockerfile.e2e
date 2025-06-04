@@ -1,0 +1,49 @@
+# Multi-stage Dockerfile for E2E tests
+# Stage 1: Build the test binary
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /workspace
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code (needed for build only)
+COPY . .
+
+# Build the e2e test binary
+RUN CGO_ENABLED=0 go test -c -o e2e-tests ./test/e2e/
+
+# Stage 2: Runtime image with only the test binary
+FROM alpine:3.21
+
+# Install necessary tools for e2e tests
+RUN apk add --no-cache \
+    curl \
+    kubectl \
+    bash \
+    ca-certificates
+
+# Create a non-root user
+RUN addgroup -g 1000 e2e && \
+    adduser -u 1000 -G e2e -s /bin/sh -D e2e
+
+# Set working directory
+WORKDIR /e2e
+
+# Copy only the test binary from builder stage
+COPY --from=builder /workspace/e2e-tests .
+
+# Change ownership
+RUN chown -R e2e:e2e /e2e
+
+# Switch to non-root user
+USER e2e
+
+# Set entrypoint
+ENTRYPOINT ["./e2e-tests"]
+
+# Default command args
+CMD ["-test.v"]

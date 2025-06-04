@@ -16,11 +16,6 @@ limitations under the License.
 
 package builder
 
-import (
-	"fmt"
-	"strings"
-)
-
 const (
 	HostnameTopologyKey  = "kubernetes.io/hostname"
 	RestartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
@@ -40,10 +35,6 @@ const (
 	InstanceTypeLabelKey = "buf.red/type"
 	InstanceNameLabelKey = "buf.red/name"
 )
-
-func ChecksumKey(typ string) string {
-	return fmt.Sprintf("%s-%s", ChecksumLabelKey, strings.ToLower(typ))
-}
 
 const (
 	OperatorUsername   = "OPERATOR_USERNAME"

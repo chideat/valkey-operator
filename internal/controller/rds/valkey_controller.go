@@ -103,15 +103,12 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return r.updateInstanceStatus(ctx, inst, err, logger)
 		}
 	case core.ValkeyFailover, core.ValkeyReplica:
-		if shards := inst.Spec.Replicas.Shards; shards == 0 {
-			inst.Spec.Replicas.Shards = 1
-		}
 		if err := r.reconcileFailover(ctx, inst, logger); err != nil {
 			logger.Error(err, fmt.Sprintf("fail to reconcile %s instance", inst.Spec.Arch))
 			return r.updateInstanceStatus(ctx, inst, err, logger)
 		}
 	default:
-		err = fmt.Errorf("this arch isn't valid, must be cluster, sentinel or standalone")
+		err = fmt.Errorf("this arch isn't valid, must be cluster, failover or replica")
 		return ctrl.Result{}, err
 	}
 	return r.updateInstanceStatus(ctx, inst, err, logger)
@@ -166,7 +163,7 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 	if vkHandler.ShouldUpdateFailover(failover, newFailover, logger) {
 		newFailover.ResourceVersion = failover.ResourceVersion
 		newFailover.Status = failover.Status
-		if err := r.updateFailoverInstance(ctx, newFailover); err != nil {
+		if err := r.updateFailoverInstance(ctx, newFailover, logger); err != nil {
 			inst.Status.Phase = rdsv1alpha1.Failed
 			inst.Status.Message = err.Error()
 			logger.Error(err, "fail to update failover inst")
@@ -177,7 +174,7 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 
 	inst.Status.LastShardCount = 1
 	inst.Status.LastVersion = inst.Spec.Version
-	inst.Status.ClusterNodes = failover.Status.Nodes
+	inst.Status.Nodes = failover.Status.Nodes
 	inst.Status.Message = failover.Status.Message
 	if failover.Status.Phase == v1alpha1.FailoverPhaseFailed {
 		logger.V(3).Info("instance is fail")
@@ -246,7 +243,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 	if vkHandler.ShouldUpdateCluster(cluster, newCluster, logger) {
 		newCluster.ResourceVersion = cluster.ResourceVersion
 		newCluster.Status = cluster.Status
-		if err := r.updateClusterInstance(ctx, newCluster); err != nil {
+		if err := r.updateClusterInstance(ctx, newCluster, logger); err != nil {
 			logger.Error(err, "fail to update cluster instance")
 			inst.Status.Phase = rdsv1alpha1.Failed
 			inst.Status.Message = err.Error()
@@ -257,7 +254,7 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 
 	inst.Status.LastShardCount = cluster.Spec.Replicas.Shards
 	inst.Status.LastVersion = inst.Spec.Version
-	inst.Status.ClusterNodes = cluster.Status.Nodes
+	inst.Status.Nodes = cluster.Status.Nodes
 	inst.Status.Message = cluster.Status.Message
 	if vkHandler.ClusterIsUp(cluster) {
 		logger.V(3).Info("instance is ready")
@@ -277,7 +274,8 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 	return nil
 }
 
-func (r *ValkeyReconciler) updateClusterInstance(ctx context.Context, inst *v1alpha1.Cluster) error {
+func (r *ValkeyReconciler) updateClusterInstance(ctx context.Context, inst *v1alpha1.Cluster, logger logr.Logger) error {
+	logger.V(3).Info("updating cluster instance")
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var oldInst v1alpha1.Cluster
 		if err := r.Get(ctx, client.ObjectKeyFromObject(inst), &oldInst); err != nil {
@@ -291,7 +289,8 @@ func (r *ValkeyReconciler) updateClusterInstance(ctx context.Context, inst *v1al
 	return nil
 }
 
-func (r *ValkeyReconciler) updateFailoverInstance(ctx context.Context, inst *v1alpha1.Failover) error {
+func (r *ValkeyReconciler) updateFailoverInstance(ctx context.Context, inst *v1alpha1.Failover, logger logr.Logger) error {
+	logger.V(3).Info("updating failover instance")
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var oldInst v1alpha1.Failover
 		if err := r.Get(ctx, client.ObjectKeyFromObject(inst), &oldInst); err != nil {
@@ -306,7 +305,7 @@ func (r *ValkeyReconciler) updateFailoverInstance(ctx context.Context, inst *v1a
 }
 
 func (r *ValkeyReconciler) updateInstanceStatus(ctx context.Context, inst *rdsv1alpha1.Valkey, err error, logger logr.Logger) (ctrl.Result, error) {
-	logger.V(3).Info("updating inst state")
+	logger.V(3).Info("updating instance state")
 
 	if inst.Status.Phase == rdsv1alpha1.Failed {
 		inst.Status.Phase = rdsv1alpha1.Initializing

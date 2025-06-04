@@ -402,7 +402,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 
 	serviceNameRange := map[string]struct{}{}
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
-		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
+		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard); replica++ {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			serviceNameRange[serviceName] = struct{}{}
 		}
@@ -463,8 +463,8 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 			newPorts = append(newPorts, port)
 		}
 	}
-	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
-		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
+	for shard := range int(cr.Spec.Replicas.Shards) {
+		for replica := range int(cr.Spec.Replicas.ReplicasOfShard) {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			oldService, err := a.client.GetService(ctx, cr.Namespace, serviceName)
 			if errors.IsNotFound(err) {
@@ -483,7 +483,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 				return actor.RequeueWithError(err)
 			}
 
-			// check old service for compability
+			// check old service for compatibility
 			if len(oldService.OwnerReferences) == 0 || oldService.OwnerReferences[0].Kind == "Pod" {
 				oldService.OwnerReferences = util.BuildOwnerReferences(cr)
 				if err := a.client.UpdateService(ctx, oldService.Namespace, oldService); err != nil {
@@ -551,7 +551,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 
 	// 4. check again if all gossip port is added
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
-		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
+		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard); replica++ {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			if svc, err := a.client.GetService(ctx, cr.Namespace, serviceName); errors.IsNotFound(err) {
 				continue
@@ -581,7 +581,7 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, cluste
 	cr := cluster.Definition()
 
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
-		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard)+1; replica++ {
+		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard); replica++ {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
 			newSvc := clusterbuilder.GeneratePodService(cr, serviceName, cr.Spec.Access.ServiceType, cr.Spec.Access.Annotations)
 			if svc, err := a.client.GetService(ctx, cr.Namespace, serviceName); errors.IsNotFound(err) {
@@ -625,7 +625,7 @@ func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster t
 			logger.Error(err, "parse svc name failed", "target", client.ObjectKeyFromObject(svc))
 			continue
 		}
-		if shard+1 > int(cr.Spec.Replicas.Shards) || index > int(cr.Spec.Replicas.ReplicasOfShard) {
+		if shard >= int(cr.Spec.Replicas.Shards) || index >= int(cr.Spec.Replicas.ReplicasOfShard) {
 			_, err := a.client.GetPod(ctx, svc.Namespace, svc.Name)
 			if errors.IsNotFound(err) {
 				if err = a.client.DeleteService(ctx, svc.Namespace, svc.Name); err != nil {

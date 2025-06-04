@@ -22,6 +22,7 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -61,15 +62,23 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 
 	image := config.GetValkeyImageByVersion(instance.Spec.Version)
 	var (
-		labels   = clusterbuilder.GenerateClusterLabels(instance.Name, instance.Labels)
+		labels      = clusterbuilder.GenerateClusterLabels(instance.Name, instance.Labels)
+		annotations = map[string]string{
+			builder.CRVersionKey: config.GetOperatorVersion(),
+		}
 		exporter *core.Exporter
 	)
 
-	if instance.Spec.Exporter == nil || !instance.Spec.Exporter.Disable {
-		exporter = &core.Exporter{
-			Image: config.GetValkeyExporterImage(nil),
+	if exp := instance.Spec.Exporter; exp == nil || !exp.Disable {
+		if instance.Spec.Exporter != nil {
+			exporter = &exp.Exporter
+		} else {
+			exporter = &core.Exporter{}
 		}
-		if exporter.Resources == nil {
+		if exporter.Image == "" {
+			exporter.Image = config.GetValkeyExporterImage(nil)
+		}
+		if exporter.Resources == nil || exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
 			exporter.Resources = &corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
 					corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -93,6 +102,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Name:            instance.Name,
 			Namespace:       instance.Namespace,
 			Labels:          labels,
+			Annotations:     annotations,
 			OwnerReferences: util.BuildOwnerReferences(instance),
 		},
 		Spec: v1alpha1.ClusterSpec{

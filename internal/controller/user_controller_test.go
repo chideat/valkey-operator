@@ -68,7 +68,7 @@ var _ = Describe("User Controller", func() {
 							Shards:          3,
 							ReplicasOfShard: 1,
 						},
-						Resources: &corev1.ResourceRequirements{
+						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
 								corev1.ResourceMemory: resource.MustParse("256Mi"),
@@ -127,7 +127,6 @@ var _ = Describe("User Controller", func() {
 			controllerReconciler := &UserReconciler{
 				Client:        k8sClient,
 				Scheme:        k8sClient.Scheme(),
-				K8sClient:     k8sClientSet,
 				EventRecorder: eventRecorder,
 				Handler:       userHandler.NewUserHandler(k8sClientSet, eventRecorder, ctrl.Log.WithName("UserHandler")),
 			}

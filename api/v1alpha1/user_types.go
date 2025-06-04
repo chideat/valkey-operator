@@ -31,10 +31,10 @@ const (
 // UserSpec defines the desired state of User
 type UserSpec struct {
 	// user account type
-	// +kubebuilder:validation:Enum=system;custom;default
+	// +kubebuilder:validation:Enum=system;custom
 	AccountType AccountType `json:"accountType,omitempty"`
 	// user account type
-	// +kubebuilder:validation:Enum=sentinel;cluster;standalone
+	// +kubebuilder:validation:Enum=failover;cluster;replica
 	Arch core.Arch `json:"arch,omitempty"`
 	// Username (required)
 	Username string `json:"username"`
@@ -52,7 +52,7 @@ type UserPhase string
 
 const (
 	UserFail    UserPhase = "Fail"
-	UserSuccess UserPhase = "Success"
+	UserReady   UserPhase = "Ready"
 	UserPending UserPhase = "Pending"
 )
 
@@ -70,6 +70,7 @@ type UserStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=users,scope=Namespaced,shortName=vku
 // +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.spec.instanceName`
 // +kubebuilder:printcolumn:name="username",type=string,JSONPath=`.spec.username`
 // +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.Phase`

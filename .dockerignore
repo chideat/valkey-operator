@@ -1,3 +1,39 @@
-# More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
-# Ignore build and test binaries.
+# .dockerignore for e2e builds
+# Exclude everything except what we need for the test binary
+
+# Version control
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Build artifacts (except our test binary)
 bin/
+!e2e-tests
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Kubernetes manifests (not needed in test binary)
+config/samples/
+examples/
+
+# Other test outputs
+coverage.txt
+*.log
+
+# Violet build files
+violet/

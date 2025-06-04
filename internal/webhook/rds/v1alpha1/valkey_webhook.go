@@ -41,13 +41,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-const (
-	ConfigReplBacklogSizeKey = "repl-backlog-size"
-)
-
 // nolint:unused
 // log is for logging in this package.
 var logger = logf.Log.WithName("inst-resource")
+
+const actionKey = "action"
 
 // SetupValkeyWebhookWithManager registers the webhook for inst in the manager.
 func SetupValkeyWebhookWithManager(mgr ctrl.Manager) error {
@@ -64,8 +62,7 @@ func SetupValkeyWebhookWithManager(mgr ctrl.Manager) error {
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
-type ValkeyCustomDefaulter struct {
-}
+type ValkeyCustomDefaulter struct{}
 
 var _ webhook.CustomDefaulter = &ValkeyCustomDefaulter{}
 
@@ -85,33 +82,15 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, obj runtime.Object)
 		inst.Spec.PodAnnotations = make(map[string]string)
 	}
 
-	if inst.Spec.CustomConfigs[ConfigReplBacklogSizeKey] == "" {
-		// https://raw.githubusercontent.com/antirez/redis/7.0/redis.conf
-		// https://docs.redis.com/latest/rs/databases/active-active/manage/#replication-backlog
-		if inst.Spec.Resources != nil {
-			for _, resource := range []*resource.Quantity{inst.Spec.Resources.Limits.Memory(), inst.Spec.Resources.Requests.Memory()} {
-				if resource == nil {
-					continue
-				}
-				if val, ok := resource.AsInt64(); ok {
-					val = int64(0.01 * float64(val))
-					if val > 256*1024*1024 {
-						val = 256 * 1024 * 1024
-					} else if val < 1024*1024 {
-						val = 1024 * 1024
-					}
-					inst.Spec.CustomConfigs[ConfigReplBacklogSizeKey] = fmt.Sprintf("%d", val)
-				}
-			}
-		}
-	}
-
 	// init exporter settings
 	if inst.Spec.Exporter == nil {
 		inst.Spec.Exporter = &rdsv1alpha1.ValkeyExporter{}
 	}
-	if inst.Spec.Exporter.Resources.Limits.Cpu().IsZero() ||
-		inst.Spec.Exporter.Resources.Limits.Memory().IsZero() {
+	if !inst.Spec.Exporter.Disable &&
+		(inst.Spec.Exporter.Resources == nil ||
+			inst.Spec.Exporter.Resources.Limits == nil ||
+			inst.Spec.Exporter.Resources.Limits.Cpu().IsZero() ||
+			inst.Spec.Exporter.Resources.Limits.Memory().IsZero()) {
 		inst.Spec.Exporter.Resources = &corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -196,13 +175,32 @@ var _ webhook.CustomValidator = &ValkeyCustomValidator{}
 func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
 	inst, ok := obj.(*rdsv1alpha1.Valkey)
 	if !ok {
-		return nil, fmt.Errorf("expected a inst object but got %T", obj)
+		return warns, fmt.Errorf("expected a inst object but got %T", obj)
 	}
 	logger.Info("Validation for inst upon creation", "name", inst.GetName())
 
-	if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
-		return warns, err
+	if inst.Spec.Replicas == nil {
+		return warns, fmt.Errorf("spec.replicas not specified")
 	}
+
+	if inst.Spec.Resources.Limits == nil && inst.Spec.Resources.Requests == nil {
+		return warns, fmt.Errorf("spec.resources is specified")
+	}
+	if inst.Spec.Resources.Limits.Memory().IsZero() && inst.Spec.Resources.Requests.Memory().IsZero() {
+		return warns, fmt.Errorf("spec.resources.limits.memory is required")
+	}
+	if inst.Spec.Resources.Limits.Cpu().IsZero() && inst.Spec.Resources.Requests.Cpu().IsZero() {
+		return warns, fmt.Errorf("spec.resources.limits.cpu is required")
+	}
+	if inst.Spec.Resources.Limits.Memory().Cmp(*inst.Spec.Resources.Requests.Memory()) != 0 ||
+		inst.Spec.Resources.Limits.Cpu().Cmp(*inst.Spec.Resources.Requests.Cpu()) != 0 {
+		warns = append(warns, "spec.resources.limits.memory and spec.resources.requests.memory should be the same")
+	}
+
+	// if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
+	// 	return warns, err
+	// }
+
 	if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
 		helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),
 		&warns); err != nil {
@@ -211,18 +209,16 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 
 	switch inst.Spec.Arch {
 	case core.ValkeyCluster:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
 		if inst.Spec.Replicas.Shards < 3 {
-			return nil, fmt.Errorf("spec.replicas.shards must >= 3")
+			return warns, fmt.Errorf("spec.replicas.shards must >= 3")
 		}
 
 		// validate shard configs
 		shards := int32(len(inst.Spec.Replicas.ShardsConfig))
-		if shards > 0 {
+
+		if ctx.Value(actionKey) == nil && shards > 0 {
 			if shards != inst.Spec.Replicas.Shards {
-				return nil, fmt.Errorf("specified shard slots list length not not match shards count")
+				return warns, fmt.Errorf("specified shard configs not not match shards count")
 			}
 
 			var (
@@ -231,32 +227,29 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 			)
 			for _, shard := range inst.Spec.Replicas.ShardsConfig {
 				if shardSlots, err := slot.LoadSlots(shard.Slots); err != nil {
-					return nil, fmt.Errorf("failed to load shard slots: %v", err)
+					return warns, fmt.Errorf("failed to load shard slots: %v", err)
 				} else {
 					fullSlots = fullSlots.Union(shardSlots)
 					total += shardSlots.Count(slot.SlotAssigned)
 				}
 			}
 			if !fullSlots.IsFullfilled() {
-				return nil, fmt.Errorf("specified shard slots not fullfilled")
+				return warns, fmt.Errorf("specified shard slots not fullfilled")
 			}
 			if total > slot.ValkeyMaxSlots {
-				return nil, fmt.Errorf("specified shard slots duplicated")
+				return warns, fmt.Errorf("specified shard slots duplicated")
 			}
 		}
 	case core.ValkeyFailover:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
 		if inst.Spec.Replicas.Shards != 1 {
-			return nil, fmt.Errorf("spec.replicas.shards must be 1")
+			return warns, fmt.Errorf("spec.replicas.shards must be 1")
+		}
+		if inst.Spec.Sentinel == nil {
+			return warns, fmt.Errorf("spec.sentinel not specified")
 		}
 
-		if inst.Spec.Sentinel == nil {
-			return nil, fmt.Errorf("spec.sentinel not specified")
-		}
 		if inst.Spec.Sentinel.Replicas%2 == 0 || inst.Spec.Sentinel.Replicas < 3 {
-			return nil, fmt.Errorf("sentinel replicas must be odd and greater >= 3")
+			return warns, fmt.Errorf("sentinel replicas must be odd and greater >= 3")
 		}
 		if inst.Spec.Sentinel.Access.DefaultPasswordSecret != "" {
 			if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Sentinel.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
@@ -272,127 +265,27 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 			portMap := map[int32]struct{}{}
 			ports, _ := corehelper.ParsePorts(inst.Spec.Access.Ports)
 			for _, port := range ports {
-				if _, ok := portMap[port]; ok {
-					return nil, fmt.Errorf("port %d has been assigned", port)
-				}
 				portMap[port] = struct{}{}
 			}
 			ports, _ = corehelper.ParsePorts(inst.Spec.Sentinel.Access.Ports)
 			for _, port := range ports {
 				if _, ok := portMap[port]; ok {
-					return nil, fmt.Errorf("port %d has been assigned", port)
+					return warns, fmt.Errorf("port %d has been assigned", port)
 				}
 			}
 		}
 	case core.ValkeyReplica:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
 		if inst.Spec.Replicas.Shards != 1 {
-			return nil, fmt.Errorf("spec.replicas.shards must be 1")
+			return warns, fmt.Errorf("spec.replicas.shards must be 1")
 		}
 	}
-	return nil, nil
+	return
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type inst.
 func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
-	inst, ok := newObj.(*rdsv1alpha1.Valkey)
-	if !ok {
-		return nil, fmt.Errorf("expected a inst object for the newObj but got %T", newObj)
-	}
-	logger.Info("Validation for inst upon update", "name", inst.GetName())
-
-	if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
-		return warns, err
-	}
-
-	switch inst.Spec.Arch {
-	case core.ValkeyCluster:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
-
-		if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
-			helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),
-			&warns); err != nil {
-			return warns, err
-		}
-
-		shards := int32(len(inst.Spec.Replicas.ShardsConfig))
-		if shards > 0 && shards == inst.Spec.Replicas.Shards {
-			// for update validator, only check slots fullfilled
-			var (
-				fullSlots *slot.Slots
-				total     int
-			)
-			for _, shard := range inst.Spec.Replicas.ShardsConfig {
-				if shardSlots, err := slot.LoadSlots(shard.Slots); err != nil {
-					return nil, fmt.Errorf("failed to load shard slots: %v", err)
-				} else {
-					fullSlots = fullSlots.Union(shardSlots)
-					total += shardSlots.Count(slot.SlotAssigned)
-				}
-			}
-			if !fullSlots.IsFullfilled() {
-				return nil, fmt.Errorf("specified shard slots not fullfilled")
-			}
-			if total > slot.ValkeyMaxSlots {
-				return nil, fmt.Errorf("specified shard slots duplicated")
-			}
-		}
-	case core.ValkeyFailover:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
-		if inst.Spec.Replicas.Shards != 1 {
-			return nil, fmt.Errorf("spec.replicas.shards must be 1")
-		}
-
-		if inst.Spec.Sentinel.Replicas%2 == 0 || inst.Spec.Sentinel.Replicas < 3 {
-			return nil, fmt.Errorf("sentinel replicas must be odd and greater >= 3")
-		}
-
-		if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
-			helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),
-			&warns); err != nil {
-			return warns, err
-		}
-		if err := coreVal.ValidateInstanceAccess(&inst.Spec.Sentinel.Access.InstanceAccess, int(inst.Spec.Sentinel.Replicas), &warns); err != nil {
-			return warns, err
-		}
-
-		if inst.Spec.Access.ServiceType == v1.ServiceTypeNodePort {
-			portMap := map[int32]struct{}{}
-			ports, _ := corehelper.ParsePorts(inst.Spec.Access.Ports)
-			for _, port := range ports {
-				if _, ok := portMap[port]; ok {
-					return nil, fmt.Errorf("port %d has assigned", port)
-				}
-				portMap[port] = struct{}{}
-			}
-			ports, _ = corehelper.ParsePorts(inst.Spec.Sentinel.Access.Ports)
-			for _, port := range ports {
-				if _, ok := portMap[port]; ok {
-					return nil, fmt.Errorf("port %d has assigned", port)
-				}
-			}
-		}
-	case core.ValkeyReplica:
-		if inst.Spec.Replicas == nil {
-			return nil, fmt.Errorf("instance replicas not specified")
-		}
-		if inst.Spec.Replicas.Shards != 1 {
-			return nil, fmt.Errorf("spec.replicas.shards must be 1")
-		}
-
-		if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
-			helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),
-			&warns); err != nil {
-			return warns, err
-		}
-	}
-	return
+	ctx = context.WithValue(ctx, actionKey, "update")
+	return v.ValidateCreate(ctx, newObj)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type inst.

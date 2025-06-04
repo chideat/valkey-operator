@@ -17,11 +17,16 @@ limitations under the License.
 package validation
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -374,3 +379,83 @@ func TestValidateReplicationScalingResource(t *testing.T) {
 		})
 	}
 }
+
+var _ = Describe("Valkey Webhook", func() {
+	var ctx = context.Background()
+
+	BeforeEach(func() {
+		ctx = context.Background()
+
+		By("Creating a secret for the default password")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "valkey-secret-nosec",
+				Namespace: "default",
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: map[string][]byte{
+				"password": []byte("password"),
+			},
+		}
+		secret2 := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "valkey-secret",
+				Namespace: "default",
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: map[string][]byte{
+				"password": []byte("admin@123"),
+			},
+		}
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, secret2)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		By("Deleting the secrets")
+		Expect(k8sClient.Delete(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "valkey-secret",
+				Namespace: "default",
+			},
+		})).To(Succeed())
+		Expect(k8sClient.Delete(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "valkey-secret-nosec",
+				Namespace: "default",
+			},
+		})).To(Succeed())
+	})
+
+	Context("Validate passwords", func() {
+		It("Should pass validation", func() {
+			By("Check password")
+			err := ValidatePasswordSecret("default", "valkey-secret", k8sClient, nil)
+
+			By("Verifying result")
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("Should not pass validation", func() {
+			By("Check password")
+			err := ValidatePasswordSecret("default", "valkey-secret-nosec", k8sClient, nil)
+
+			By("Verifying result")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("password should consists of letters"))
+		})
+		It("Not pass secret", func() {
+			By("Check password")
+			err := ValidatePasswordSecret("default", "", k8sClient, nil)
+
+			By("Verifying result")
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("Should not validate", func() {
+			By("Check password")
+			err := ValidatePasswordSecret("default", "valkey-secret-nosec", nil, nil)
+
+			By("Verifying result")
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+})

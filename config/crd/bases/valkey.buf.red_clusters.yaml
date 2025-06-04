@@ -11,20 +11,22 @@ spec:
     kind: Cluster
     listKind: ClusterList
     plural: clusters
+    shortNames:
+    - vkc
     singular: cluster
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - description: Current Shards
-      jsonPath: .status.numberOfMaster
+      jsonPath: .spec.replicas.shards
       name: Shards
       type: integer
-    - description: Service status
-      jsonPath: .status.serviceStatus
+    - description: Cluster status
+      jsonPath: .status.clusterStatus
       name: Service Status
       type: string
     - description: Instance access type
-      jsonPath: .spec.access.type
+      jsonPath: .spec.access.serviceType
       name: Access
       type: string
     - description: Instance phase
@@ -32,7 +34,7 @@ spec:
       name: Phase
       type: string
     - description: Status message
-      jsonPath: .status.reason
+      jsonPath: .status.message
       name: Message
       type: string
     - description: Time since creation
@@ -348,7 +350,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -363,7 +364,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -529,7 +529,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                 Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -544,7 +543,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                 Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -707,7 +705,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -722,7 +719,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -888,7 +884,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                 Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -903,7 +898,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                 Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -1003,11 +997,6 @@ spec:
                     - ClusterIssuer
                     - Issuer
                     type: string
-                  defaultPasswordSecret:
-                    description: |-
-                      DefaultPasswordSecret referered to the secret which defined the password for default user
-                      The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
-                    type: string
                   enableTLS:
                     description: EnableTLS enable TLS for external access
                     type: boolean
@@ -1023,7 +1012,7 @@ spec:
                     description: Ports defines the nodeports of NodePort service
                     pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
                     type: string
-                  type:
+                  serviceType:
                     default: ClusterIP
                     description: ServiceType defines the type of the all related services
                     enum:
@@ -1036,8 +1025,9 @@ spec:
                 description: AffinityPolicy
                 enum:
                 - SoftAntiAffinity
-                - AntiAffinityInSharding
+                - AntiAffinityInShard
                 - AntiAffinity
+                - CustomAffinity
                 type: string
               annotations:
                 additionalProperties:
@@ -1339,6 +1329,30 @@ spec:
                       type: string
                   type: object
                   x-kubernetes-map-type: atomic
+                type: array
+              modules:
+                description: Modules defines the module settings for Valkey
+                items:
+                  description: ValkeyModule defines the module for Valkey
+                  properties:
+                    args:
+                      description: |-
+                        Args args for module
+
+                        Supported for valkey 8.0+
+                      items:
+                        type: string
+                      type: array
+                    path:
+                      description: |-
+                        Path path of valkey module.
+
+                        .so suffix will be appended if path not suffixed provided
+                        if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+                      type: string
+                  required:
+                  - path
+                  type: object
                 type: array
               nodeSelector:
                 additionalProperties:
@@ -1799,6 +1813,9 @@ spec:
                   - statefulSet
                   type: object
                 type: array
+              phase:
+                description: Status the status of the cluster
+                type: string
               shards:
                 description: Shards the cluster shards
                 items:
@@ -1836,11 +1853,8 @@ spec:
                   - slots
                   type: object
                 type: array
-              status:
-                description: Status the status of the cluster
-                type: string
             required:
-            - status
+            - phase
             type: object
         type: object
     served: true

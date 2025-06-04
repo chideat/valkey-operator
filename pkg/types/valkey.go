@@ -53,7 +53,7 @@ type ValkeyNode interface {
 	ID() string
 	// Index the index of statefulset
 	Index() int
-	// IsConnected indicate where this node is accessable
+	// IsConnected indicate where this node is accessible
 	IsConnected() bool
 	// IsTerminating indicate whether is pod is deleted
 	IsTerminating() bool

@@ -11,6 +11,8 @@ spec:
     kind: Valkey
     listKind: ValkeyList
     plural: valkeys
+    shortNames:
+    - vk
     singular: valkey
   scope: Namespaced
   versions:
@@ -24,8 +26,12 @@ spec:
       name: Version
       type: string
     - description: Instance access type
-      jsonPath: .spec.access.type
+      jsonPath: .spec.access.serviceType
       name: Access
+      type: string
+    - description: Storage class name
+      jsonPath: .spec.storage.storageClassName
+      name: Storage Class
       type: string
     - description: Instance phase
       jsonPath: .status.phase
@@ -35,14 +41,6 @@ spec:
       jsonPath: .status.message
       name: Message
       type: string
-    - description: Bundle Version
-      jsonPath: .status.upgradeStatus.crVersion
-      name: Bundle Version
-      type: string
-    - description: Enable instance auto upgrade
-      jsonPath: .spec.upgradeOption.autoUpgrade
-      name: AutoUpgrade
-      type: boolean
     - description: Time since creation
       jsonPath: .metadata.creationTimestamp
       name: Age
@@ -72,12 +70,55 @@ spec:
           spec:
             description: ValkeySpec defines the desired state of Valkey
             properties:
+              access:
+                description: Access defines information for Valkey nodePorts settings
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
+                  certIssuer:
+                    description: Cert Issuer for external access TLS certificate
+                    type: string
+                  certIssuerType:
+                    default: ClusterIssuer
+                    description: Cert Issuer Type for external access TLS certificate
+                    enum:
+                    - ClusterIssuer
+                    - Issuer
+                    type: string
+                  enableTLS:
+                    description: EnableTLS enable TLS for external access
+                    type: boolean
+                  ipFamilyPrefer:
+                    description: |-
+                      IPFamily represents the IP Family (IPv4 or IPv6).
+                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
+                    enum:
+                    - IPv4
+                    - IPv6
+                    type: string
+                  ports:
+                    description: Ports defines the nodeports of NodePort service
+                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                    type: string
+                  serviceType:
+                    default: ClusterIP
+                    description: ServiceType defines the type of the all related services
+                    enum:
+                    - NodePort
+                    - LoadBalancer
+                    - ClusterIP
+                    type: string
+                type: object
               affinityPolicy:
                 description: AffinityPolicy specifies the affinity policy for the
                   Pod
                 enum:
                 - SoftAntiAffinity
-                - AntiAffinityInSharding
+                - AntiAffinityInShard
                 - AntiAffinity
                 - CustomAffinity
                 type: string
@@ -85,8 +126,8 @@ spec:
                 description: Arch supports cluster, sentinel
                 enum:
                 - cluster
-                - sentinel
-                - standalone
+                - failover
+                - replica
                 type: string
               customAffinity:
                 description: |-
@@ -374,7 +415,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -389,7 +429,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -555,7 +594,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                 Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -570,7 +608,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                 Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -733,7 +770,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -748,7 +784,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -914,7 +949,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                 Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -929,7 +963,6 @@ spec:
                                 pod labels will be ignored. The default value is empty.
                                 The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                 Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                               items:
                                 type: string
                               type: array
@@ -1283,55 +1316,6 @@ spec:
                         type: object
                     type: object
                 type: object
-              instanceAccess:
-                description: ' ExternalAccess defines information for Valkey nodePorts
-                  settings'
-                properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: The annnotations of the service which will be attached
-                      to services
-                    type: object
-                  certIssuer:
-                    description: Cert Issuer for external access TLS certificate
-                    type: string
-                  certIssuerType:
-                    default: ClusterIssuer
-                    description: Cert Issuer Type for external access TLS certificate
-                    enum:
-                    - ClusterIssuer
-                    - Issuer
-                    type: string
-                  defaultPasswordSecret:
-                    description: |-
-                      DefaultPasswordSecret referered to the secret which defined the password for default user
-                      The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
-                    type: string
-                  enableTLS:
-                    description: EnableTLS enable TLS for external access
-                    type: boolean
-                  ipFamilyPrefer:
-                    description: |-
-                      IPFamily represents the IP Family (IPv4 or IPv6).
-                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
-                    enum:
-                    - IPv4
-                    - IPv6
-                    type: string
-                  ports:
-                    description: Ports defines the nodeports of NodePort service
-                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
-                    type: string
-                  type:
-                    default: ClusterIP
-                    description: ServiceType defines the type of the all related services
-                    enum:
-                    - NodePort
-                    - LoadBalancer
-                    - ClusterIP
-                    type: string
-                type: object
               modules:
                 description: Modules defines the module settings for Valkey
                 items:
@@ -1345,15 +1329,15 @@ spec:
                       items:
                         type: string
                       type: array
-                    name:
+                    path:
                       description: |-
-                        Name name of valkey module.
+                        Path path of valkey module.
 
-                        .so suffix will be appended if name not suffixed provided
-                        if name is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+                        .so suffix will be appended if path not suffixed provided
+                        if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
                       type: string
                   required:
-                  - name
+                  - path
                   type: object
                 type: array
               nodeSelector:
@@ -1737,7 +1721,7 @@ spec:
                         description: Ports defines the nodeports of NodePort service
                         pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
                         type: string
-                      type:
+                      serviceType:
                         default: ClusterIP
                         description: ServiceType defines the type of the all related
                           services
@@ -2033,7 +2017,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2048,7 +2031,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2215,7 +2197,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2230,7 +2211,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2395,7 +2375,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2410,7 +2389,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2577,7 +2555,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2592,7 +2569,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -3451,7 +3427,25 @@ spec:
           status:
             description: ValkeyStatus defines the observed state of Valkey
             properties:
-              clusterNodes:
+              lastShardCount:
+                description: LastShardCount indicates the last number of shards in
+                  the Valkey Cluster.
+                format: int32
+                type: integer
+              lastVersion:
+                description: LastVersion indicates the last version of the Valkey
+                  instance.
+                type: string
+              matchLabels:
+                additionalProperties:
+                  type: string
+                description: Matching labels selector for Valkey
+                type: object
+              message:
+                description: This field contains an additional message for the instance's
+                  status
+                type: string
+              nodes:
                 description: ClusterNodes valkey nodes info
                 items:
                   description: ValkeyNode represent a ValkeyCluster Node
@@ -3498,46 +3492,15 @@ spec:
                   - statefulSet
                   type: object
                 type: array
-              lastShardCount:
-                description: LastShardCount indicates the last number of shards in
-                  the Valkey Cluster.
-                format: int32
-                type: integer
-              lastVersion:
-                description: LastVersion indicates the last version of the Valkey
-                  instance.
-                type: string
-              matchLabels:
-                additionalProperties:
-                  type: string
-                description: Matching labels selector for Valkey
-                type: object
-              message:
-                description: This field contains an additional message for the instance's
-                  status
-                type: string
-              passwordSecretName:
-                description: The name of the kubernetes Secret that contains Valkey
-                  password.
-                type: string
               phase:
                 description: |-
                   Phase indicates whether all the resource for the instance is ok.
                   Values are as below:
                     Initializing - Resource is in Initializing or Reconcile
                     Ready        - All resources is ok. In most cases, Ready means the cluster is ok to use
-                    Error        - Error found when do resource init
-                type: string
-              proxyMatchLabels:
-                additionalProperties:
-                  type: string
-                description: Matching label selector for Valkey proxy.
-                type: object
-              proxyServiceName:
-                description: The name of the kubernetes Service for Valkey Proxy
-                type: string
-              serviceName:
-                description: The name of the kubernetes Service for Valkey
+                    Rebalancing  - Cluster instance is rebalancing
+                    Failed       - Error found when do resource reconcile, which not recoverable
+                    Paused       - Instance paused which means workload replicas is set to 0
                 type: string
             type: object
         type: object

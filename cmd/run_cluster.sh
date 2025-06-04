@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# Configuration file paths
 VALKEY_DEFAULT_CONFIG_FILE="/etc/valkey/valkey.conf"
 VALKEY_CONFIG_FILE="/tmp/valkey.conf"
 ACL_CONFIG_FILE="/tmp/acl.conf"
@@ -69,9 +68,9 @@ fi
 
 # Configure ACL if available
 ACL_ARGS=""
-if [ -n "${ACL_CONFIG_FILEMAP_NAME}" ]; then
+if [ -n "${ACL_CONFIGMAP_NAME}" ]; then
     echo "# Run: generate acl"
-    /opt/valkey-helper helper generate acl --name "${ACL_CONFIG_FILEMAP_NAME}" --namespace "${NAMESPACE}" > "${ACL_CONFIG_FILE}" || exit 1
+    /opt/valkey-helper helper generate acl --name "${ACL_CONFIGMAP_NAME}" --namespace "${NAMESPACE}" > "${ACL_CONFIG_FILE}" || exit 1
     ACL_ARGS="--aclfile ${ACL_CONFIG_FILE}"
 fi
 
