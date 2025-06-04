@@ -44,22 +44,6 @@ type ValkeyReplicas struct {
 	ReplicasOfShard int32 `json:"replicasOfShard"`
 }
 
-// ValkeyModule defines the module for Valkey
-type ValkeyModule struct {
-	// Name name of valkey module.
-	//
-	// .so suffix will be appended if name not suffixed provided
-	// if name is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
-	// +required
-	Name string `json:"name"`
-
-	// Args args for module
-	//
-	// Supported for valkey 8.0+
-	// +optional
-	Args []string `json:"args,omitempty"`
-}
-
 // ValkeyExporter defines the specification for the valkey exporter
 type ValkeyExporter struct {
 	core.Exporter `json:",inline"`
@@ -75,28 +59,28 @@ type ValkeySpec struct {
 	Version string `json:"version"`
 
 	// Arch supports cluster, sentinel
-	// +kubebuilder:validation:Enum="cluster";"sentinel";"standalone"
+	// +kubebuilder:validation:Enum="cluster";"failover";"replica"
 	Arch core.Arch `json:"arch"`
 
 	// Replicas defines desired number of replicas for Valkey
 	Replicas *ValkeyReplicas `json:"replicas"`
 
 	// Resources for setting resource requirements for the Pod Resources *v1.ResourceRequirements
-	Resources *corev1.ResourceRequirements `json:"resources"`
+	Resources corev1.ResourceRequirements `json:"resources"`
 
 	// CustomConfigs defines the configuration settings for Valkey
 	// for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
 	// Modules defines the module settings for Valkey
-	Modules []ValkeyModule `json:"modules,omitempty"`
+	Modules []core.ValkeyModule `json:"modules,omitempty"`
 
 	// Storage defines the storage settings for Valkey
 	Storage *core.Storage `json:"storage,omitempty"`
 
-	//  ExternalAccess defines information for Valkey nodePorts settings
+	// Access defines information for Valkey nodePorts settings
 	// +optional
-	Access core.InstanceAccess `json:"instanceAccess,omitempty"`
+	Access core.InstanceAccess `json:"access,omitempty"`
 
 	// PodAnnotations holds Kubernetes Pod annotations PodAnnotations
 	// +optional
@@ -104,7 +88,7 @@ type ValkeySpec struct {
 
 	// AffinityPolicy specifies the affinity policy for the Pod
 	// +optional
-	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInSharding";"AntiAffinity";"CustomAffinity"
+	// +kubebuilder:validation:Enum="SoftAntiAffinity";"AntiAffinityInShard";"AntiAffinity";"CustomAffinity"
 	AffinityPolicy *core.AffinityPolicy `json:"affinityPolicy,omitempty"`
 
 	// CustomAffinity specifies the custom affinity settings for the Pod
@@ -155,22 +139,16 @@ type ValkeyStatus struct {
 	// Values are as below:
 	//   Initializing - Resource is in Initializing or Reconcile
 	//   Ready        - All resources is ok. In most cases, Ready means the cluster is ok to use
-	//   Error        - Error found when do resource init
+	//   Rebalancing  - Cluster instance is rebalancing
+	//   Failed       - Error found when do resource reconcile, which not recoverable
+	//   Paused       - Instance paused which means workload replicas is set to 0
 	Phase ValkeyPhase `json:"phase,omitempty"`
 	// This field contains an additional message for the instance's status
 	Message string `json:"message,omitempty"`
-	// The name of the kubernetes Secret that contains Valkey password.
-	PasswordSecretName string `json:"passwordSecretName,omitempty"`
-	// The name of the kubernetes Service for Valkey
-	ServiceName string `json:"serviceName,omitempty"`
 	// Matching labels selector for Valkey
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-	// Matching label selector for Valkey proxy.
-	ProxyMatchLabels map[string]string `json:"proxyMatchLabels,omitempty"`
-	// The name of the kubernetes Service for Valkey Proxy
-	ProxyServiceName string `json:"proxyServiceName,omitempty"`
 	// ClusterNodes valkey nodes info
-	ClusterNodes []core.ValkeyNode `json:"clusterNodes,omitempty"`
+	Nodes []core.ValkeyNode `json:"nodes,omitempty"`
 	// LastShardCount indicates the last number of shards in the Valkey Cluster.
 	LastShardCount int32 `json:"lastShardCount,omitempty"`
 	// LastVersion indicates the last version of the Valkey instance.
@@ -179,13 +157,13 @@ type ValkeyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=valkeys,scope=Namespaced,shortName=vk
 // +kubebuilder:printcolumn:name="Arch",type="string",JSONPath=".spec.arch",description="Instance arch"
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Valkey version"
-// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.type",description="Instance access type"
+// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"
+// +kubebuilder:printcolumn:name="Storage Class",type="string",JSONPath=".spec.storage.storageClassName",description="Storage class name"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.phase",description="Instance phase"
 // +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Instance status message"
-// +kubebuilder:printcolumn:name="Bundle Version",type="string",JSONPath=".status.upgradeStatus.crVersion",description="Bundle Version"
-// +kubebuilder:printcolumn:name="AutoUpgrade",type="boolean",JSONPath=".spec.upgradeOption.autoUpgrade",description="Enable instance auto upgrade"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
 // Valkey is the Schema for the valkeys API

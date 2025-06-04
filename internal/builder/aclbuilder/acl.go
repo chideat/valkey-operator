@@ -80,7 +80,7 @@ func GenerateUser(inst types.Instance, u *user.User) *v1alpha1.User {
 	var (
 		name            = GenerateUserResourceName(inst.Arch(), inst.GetName(), u.Name)
 		accountType     v1alpha1.AccountType
-		passwordSecrets []string
+		passwordSecrets = []string{}
 	)
 	switch u.Role {
 	case user.RoleOperator:

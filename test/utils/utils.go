@@ -20,9 +20,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 )
 
 const (
@@ -137,4 +141,42 @@ func GetProjectDir() (string, error) {
 	}
 	wd = strings.Replace(wd, "/test/e2e", "", -1)
 	return wd, nil
+}
+
+// GetEnv will return the value of the environment variable with the given key, or the default value
+func GetEnv(key string, vals ...string) string {
+	value := os.Getenv(key)
+	if value == "" && len(vals) > 0 {
+		return vals[0]
+	}
+	GinkgoWriter.Printf("Get ENV: %s=%s\n", key, value)
+	return value
+}
+
+func GetRestConfig() (*rest.Config, error) {
+	var (
+		err  error
+		conf *rest.Config
+	)
+
+	host, port := os.Getenv("KUBERNETES_SERVICE_HOST"), os.Getenv("KUBERNETES_SERVICE_PORT")
+	if host == "" && port == "" {
+		if fp := os.Getenv("KUBE_CONFIG"); fp != "" {
+			if conf, err = clientcmd.BuildConfigFromFlags("", fp); err != nil {
+				return nil, fmt.Errorf("load config from $KUBE_CONFIG failed, error=%s", err)
+			}
+		} else {
+			if home := homedir.HomeDir(); home != "" {
+				fp := filepath.Join(home, ".kube", "config")
+				if conf, err = clientcmd.BuildConfigFromFlags("", fp); err != nil {
+					return nil, fmt.Errorf("load config from local .kube/config failed, error=%s", err)
+				}
+			} else {
+				return nil, fmt.Errorf("no local config found")
+			}
+		}
+	} else if conf, err = rest.InClusterConfig(); err != nil {
+		return nil, err
+	}
+	return conf, nil
 }

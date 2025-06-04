@@ -137,7 +137,7 @@ func (w *FileWatcher) Run(ctx context.Context) error {
 
 	checker(ctx)
 
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 2)
 	defer ticker.Stop()
 
 	for {

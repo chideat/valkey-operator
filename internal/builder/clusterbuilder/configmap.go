@@ -19,7 +19,6 @@ package clusterbuilder
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -30,6 +29,7 @@ import (
 	"github.com/samber/lo"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -53,24 +53,16 @@ func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error)
 	}, nil
 }
 
-const (
-	ValkeyConfig_MaxMemory               = "maxmemory"
-	ValkeyConfig_MaxMemoryPolicy         = "maxmemory-policy"
-	ValkeyConfig_ClientOutputBufferLimit = "client-output-buffer-limit"
-	ValkeyConfig_Save                    = "save"
-	ValkeyConfig_RenameCommand           = "rename-command"
-	ValkeyConfig_Appendonly              = "appendonly"
-	ValkeyConfig_ReplDisklessSync        = "repl-diskless-sync"
-)
-
 // buildValkeyConfigs
 //
 // TODO: validate config and config value. check the empty value
 func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	cr := cluster.Definition()
-	var buffer bytes.Buffer
-
+	if cr == nil {
+		return "", fmt.Errorf("cluster definition is nil")
+	}
 	var (
+		buffer            bytes.Buffer
 		keys              = make([]string, 0, len(cr.Spec.CustomConfigs))
 		innerValkeyConfig = cluster.Version().CustomConfigs(core.ValkeyCluster)
 		configMap         = lo.Assign(cr.Spec.CustomConfigs, innerValkeyConfig)
@@ -78,37 +70,53 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 
 	// check memory-policy
 	if cluster != nil && cr.Spec.Resources.Limits != nil {
-		osMem, _ := cr.Spec.Resources.Limits.Memory().AsInt64()
-		if configedMem := configMap[ValkeyConfig_MaxMemory]; configedMem == "" {
-			var recommendMem int64
-			if policy := cr.Spec.CustomConfigs[ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
-				recommendMem = int64(float64(osMem) * 0.8)
-			} else {
-				recommendMem = int64(float64(osMem) * 0.7)
+		var osMem int64
+		for _, res := range []*resource.Quantity{cr.Spec.Resources.Limits.Memory(), cr.Spec.Resources.Requests.Memory()} {
+			if res == nil && res.IsZero() {
+				continue
 			}
-			configMap[ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", recommendMem)
+			osMem, _ = res.AsInt64()
+			break
 		}
-		// TODO: validate user input
+		if osMem > 0 {
+			if configedMem := configMap[builder.ValkeyConfig_MaxMemory]; configedMem == "" {
+				var recommendMem int64
+				if policy := cr.Spec.CustomConfigs[builder.ValkeyConfig_MaxMemoryPolicy]; policy == "noeviction" {
+					recommendMem = int64(float64(osMem) * 0.8)
+				} else {
+					recommendMem = int64(float64(osMem) * 0.7)
+				}
+				configMap[builder.ValkeyConfig_MaxMemory] = fmt.Sprintf("%d", recommendMem)
+			}
+			if backlogSize := configMap[builder.ValkeyConfig_ReplBacklogSize]; backlogSize == "" {
+				val := int64(0.01 * float64(osMem))
+				if val > 256*1024*1024 {
+					val = 256 * 1024 * 1024
+				} else if val < 1024*1024 {
+					val = 1024 * 1024
+				}
+				configMap[builder.ValkeyConfig_ReplBacklogSize] = fmt.Sprintf("%d", val)
+			}
+		}
 	}
 
 	// check if it's needed to set default save
 	// check if aof enabled
-	if configMap[ValkeyConfig_Appendonly] != "yes" &&
-		configMap[ValkeyConfig_ReplDisklessSync] != "yes" &&
-		(configMap[ValkeyConfig_Save] == "" || configMap[ValkeyConfig_Save] == `""`) {
+	if configMap[builder.ValkeyConfig_Appendonly] != "yes" &&
+		configMap[builder.ValkeyConfig_ReplDisklessSync] != "yes" &&
+		(configMap[builder.ValkeyConfig_Save] == "" || configMap[builder.ValkeyConfig_Save] == `""`) {
 
 		configMap["save"] = "60 10000 300 100 600 1"
 	}
-	delete(configMap, ValkeyConfig_RenameCommand)
 
 	for k, v := range configMap {
-		if policy := ValkeyConfigRestartPolicy[k]; policy == Forbid {
+		if policy := builder.ValkeyConfigRestartPolicy[k]; policy == builder.Forbid {
 			continue
 		}
 
 		lowerKey, trimVal := strings.ToLower(k), strings.TrimSpace(v)
 		keys = append(keys, lowerKey)
-		if lowerKey != k || !strings.EqualFold(trimVal, v) {
+		if lowerKey != k || trimVal != v {
 			configMap[lowerKey] = trimVal
 		}
 		// TODO: filter illgal config
@@ -117,14 +125,13 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 
 	for _, k := range keys {
 		v := configMap[k]
-
 		if v == "" || v == `""` {
 			buffer.WriteString(fmt.Sprintf("%s \"\"\n", k))
 			continue
 		}
 
 		switch k {
-		case ValkeyConfig_ClientOutputBufferLimit:
+		case builder.ValkeyConfig_ClientOutputBufferLimit:
 			fields := strings.Fields(v)
 			if len(fields)%4 != 0 {
 				return "", fmt.Errorf(`value "%s" for config %s is invalid`, v, k)
@@ -132,7 +139,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 			for i := 0; i < len(fields); i += 4 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s %s %s\n", k, fields[i], fields[i+1], fields[i+2], fields[i+3]))
 			}
-		case ValkeyConfig_Save:
+		case builder.ValkeyConfig_Save:
 			fields := strings.Fields(v)
 			if len(fields)%2 != 0 {
 				return "", fmt.Errorf(`value "%s" for config %s is invalid`, v, k)
@@ -140,15 +147,9 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 			for i := 0; i < len(fields); i += 2 {
 				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
 			}
-		case ValkeyConfig_RenameCommand:
+		case builder.ValkeyConfig_RenameCommand:
 			// DEPRECATED: for consistence of the config
-			fields := strings.Fields(v)
-			if len(fields)%2 != 0 {
-				return "", fmt.Errorf(`value "%s" for config %s is invalid`, v, k)
-			}
-			for i := 0; i < len(fields); i += 2 {
-				buffer.WriteString(fmt.Sprintf("%s %s %s\n", k, fields[i], fields[i+1]))
-			}
+			continue
 		default:
 			if _, ok := builder.MustQuoteValkeyConfig[k]; ok && !strings.HasPrefix(v, `"`) {
 				v = fmt.Sprintf(`"%s"`, v)
@@ -164,130 +165,4 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 
 func ValkeyConfigMapName(clusterName string) string {
 	return fmt.Sprintf("%s-%s", "valkey-cluster", clusterName)
-}
-
-type ValkeyConfigSettingRule string
-
-const (
-	OK             ValkeyConfigSettingRule = "OK"
-	RequireRestart ValkeyConfigSettingRule = "Restart"
-	Forbid         ValkeyConfigSettingRule = "Forbid"
-)
-
-var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
-	// forbid
-	"include":          Forbid,
-	"loadmodule":       Forbid,
-	"bind":             Forbid,
-	"protected-mode":   Forbid,
-	"port":             Forbid,
-	"tls-port":         Forbid,
-	"tls-cert-file":    Forbid,
-	"tls-key-file":     Forbid,
-	"tls-ca-cert-file": Forbid,
-	"tls-ca-cert-dir":  Forbid,
-	"unixsocket":       Forbid,
-	"unixsocketperm":   Forbid,
-	"daemonize":        Forbid,
-	"supervised":       Forbid,
-	"pidfile":          Forbid,
-	"logfile":          Forbid,
-	"syslog-enabled":   Forbid,
-	"syslog-ident":     Forbid,
-	"syslog-facility":  Forbid,
-	"always-show-logo": Forbid,
-	"dbfilename":       Forbid,
-	"appendfilename":   Forbid,
-	"dir":              Forbid,
-	"slaveof":          Forbid,
-	"replicaof":        Forbid,
-	"gopher-enabled":   Forbid,
-	// "ignore-warnings":       Forbid,
-	"aclfile":               Forbid,
-	"requirepass":           Forbid,
-	"masterauth":            Forbid,
-	"masteruser":            Forbid,
-	"slave-announce-ip":     Forbid,
-	"replica-announce-ip":   Forbid,
-	"slave-announce-port":   Forbid,
-	"replica-announce-port": Forbid,
-	"cluster-enabled":       Forbid,
-	"cluster-config-file":   Forbid,
-
-	// RequireRestart
-	"tcp-backlog":         RequireRestart,
-	"databases":           RequireRestart,
-	"rename-command":      RequireRestart,
-	"rdbchecksum":         RequireRestart,
-	"io-threads":          RequireRestart,
-	"io-threads-do-reads": RequireRestart,
-}
-
-type ValkeyConfigValues []string
-
-func (v *ValkeyConfigValues) String() string {
-	if v == nil {
-		return ""
-	}
-	sort.Strings(*v)
-	return strings.Join(*v, " ")
-}
-
-// ValkeyConfig
-type ValkeyConfig map[string]ValkeyConfigValues
-
-// LoadValkeyConfig
-func LoadValkeyConfig(data string) (ValkeyConfig, error) {
-	conf := ValkeyConfig{}
-	for _, line := range strings.Split(data, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		fields := strings.SplitN(line, " ", 2)
-		if len(fields) != 2 {
-			continue
-		}
-		key := fields[0]
-		// filter unsupported config
-		if policy := ValkeyConfigRestartPolicy[key]; policy == Forbid {
-			continue
-		}
-		val := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(fields[1]), `"`), `"`)
-		conf[key] = append(conf[key], val)
-	}
-	return conf, nil
-}
-
-// Diff return diff two n ValkeyConfig
-func (o ValkeyConfig) Diff(n ValkeyConfig) (added, changed, deleted map[string]ValkeyConfigValues) {
-	if len(n) == 0 {
-		return nil, nil, o
-	}
-	if len(o) == 0 {
-		return n, nil, nil
-	}
-
-	if reflect.DeepEqual(o, n) {
-		return nil, nil, nil
-	}
-
-	added, changed, deleted = map[string]ValkeyConfigValues{}, map[string]ValkeyConfigValues{}, map[string]ValkeyConfigValues{}
-	for key, vals := range n {
-		val := util.UnifyValueUnit(vals.String())
-		if oldVals, ok := o[key]; ok {
-			if util.UnifyValueUnit(oldVals.String()) != val {
-				changed[key] = vals
-			}
-		} else {
-			added[key] = vals
-		}
-	}
-	for key, vals := range o {
-		if _, ok := n[key]; !ok {
-			deleted[key] = vals
-		}
-	}
-	return
 }

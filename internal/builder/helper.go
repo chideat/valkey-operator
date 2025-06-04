@@ -27,6 +27,10 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func ChecksumKey(typ string) string {
+	return fmt.Sprintf("%s-%s", ChecksumLabelKey, strings.ToLower(typ))
+}
+
 func ResourcePrefix(arch core.Arch) string {
 	// NOTE: compatibility with redis-operator
 	switch arch {
@@ -46,7 +50,7 @@ func LocalhostAlias(family corev1.IPFamily) corev1.HostAlias {
 	}
 	return corev1.HostAlias{
 		IP:        localhost,
-		Hostnames: []string{"localhost", "localhost.localdomain"},
+		Hostnames: []string{"local.inject"},
 	}
 }
 

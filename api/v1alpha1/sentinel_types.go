@@ -27,6 +27,11 @@ import (
 type SentinelInstanceAccess struct {
 	core.InstanceAccess `json:",inline"`
 
+	// DefaultPasswordSecret referered to the secret which defined the password for default user
+	// The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
+	// +optional
+	DefaultPasswordSecret string `json:"defaultPasswordSecret,omitempty"`
+
 	// ExternalTLSSecret the external TLS secret to use, if not provided, the operator will issue one
 	ExternalTLSSecret string `json:"externalTLSSecret,omitempty"`
 }
@@ -99,8 +104,9 @@ type SentinelStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=sentinels,scope=Namespaced,shortName=vks
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas",description="Sentinel replicas"
-// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.type",description="Instance access type"
+// +kubebuilder:printcolumn:name="Access",type="string",JSONPath=".spec.access.serviceType",description="Instance access type"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.phase",description="Instance phase"
 // +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Instance status message"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"

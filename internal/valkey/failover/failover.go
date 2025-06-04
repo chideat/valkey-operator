@@ -157,7 +157,7 @@ func (s *Failover) UpdateStatus(ctx context.Context, st types.InstanceStatus, ms
 
 	if s.IsBindedSentinel() {
 		if sentinel, err = s.client.GetSentinel(ctx, s.GetNamespace(), s.GetName()); err != nil && !errors.IsNotFound(err) {
-			s.logger.Error(err, "get ValkeySentinel failed")
+			s.logger.Error(err, "get Sentinel failed")
 			return err
 		}
 	}
@@ -458,35 +458,33 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			}
 		}
 	}
-	for _, name := range []string{
-		aclbuilder.GenerateOperatorUserResourceName(s.Arch(), s.GetName()),
-		aclbuilder.GenerateDefaultUserResourceName(s.Arch(), s.GetName()),
-	} {
-		if ru, err := s.client.GetUser(ctx, s.GetNamespace(), name); err != nil {
+
+	opUserName := aclbuilder.GenerateOperatorUserResourceName(s.Arch(), s.GetName())
+	if ru, err := s.client.GetUser(ctx, s.GetNamespace(), opUserName); err != nil {
+		if !errors.IsNotFound(err) {
 			s.logger.Error(err, "load operator user failed")
-			users = nil
-			break
-		} else {
-			var password *user.Password
-			if len(ru.Spec.PasswordSecrets) > 0 {
-				if password, err = getPassword(ru.Spec.PasswordSecrets[0]); err != nil {
-					s.logger.Error(err, "load operator user password failed")
-					return nil, err
-				}
-			}
-			if u, err := types.NewUserFromValkeyUser(ru.Spec.Username, ru.Spec.AclRules, password); err != nil {
-				s.logger.Error(err, "load operator user failed")
+			return nil, err
+		}
+	} else {
+		var password *user.Password
+		if len(ru.Spec.PasswordSecrets) > 0 {
+			if password, err = getPassword(ru.Spec.PasswordSecrets[0]); err != nil {
+				s.logger.Error(err, "load operator user password failed")
 				return nil, err
-			} else {
-				users = append(users, u)
 			}
+		}
+		if u, err := types.NewUserFromValkeyUser(ru.Spec.Username, ru.Spec.AclRules, password); err != nil {
+			s.logger.Error(err, "load operator user failed")
+			return nil, err
+		} else {
+			users = append(users, u)
 		}
 	}
 
 	if len(users) == 0 {
-		if cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name); errors.IsNotFound(err) {
+		cm, err := s.client.GetConfigMap(ctx, s.GetNamespace(), name)
+		if errors.IsNotFound(err) || (cm != nil && cm.GetDeletionTimestamp() != nil) {
 			var (
-				username       string
 				passwordSecret string
 				secret         *corev1.Secret
 			)
@@ -495,73 +493,26 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 			if err != nil {
 				if !errors.IsNotFound(err) {
 					s.logger.Error(err, "load statefulset failed", "target", util.ObjectKey(s.GetNamespace(), s.GetName()))
+					return nil, err
 				}
-				passwordSecret = aclbuilder.GenerateACLOperatorSecretName(s.Arch(), s.GetName())
-				username = user.DefaultOperatorUserName
 			} else {
 				spec := sts.Spec.Template.Spec
 				if container := util.GetContainerByName(&spec, builder.ServerContainerName); container != nil {
 					for _, env := range container.Env {
-						if env.Name == builder.PasswordEnvName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
-							passwordSecret = env.ValueFrom.SecretKeyRef.LocalObjectReference.Name
-						} else if env.Name == builder.OperatorSecretName && env.Value != "" {
+						if env.Name == builder.OperatorSecretName && env.Value != "" {
 							passwordSecret = env.Value
-						} else if env.Name == builder.OperatorUsername {
-							username = env.Value
-						}
-					}
-				}
-				if passwordSecret == "" {
-					// COMPAT: for old sentinel version, the secret is mounted to the pod
-					for _, vol := range spec.Volumes {
-						if vol.Name == "valkey-auth" && vol.Secret != nil {
-							passwordSecret = vol.Secret.SecretName
-							break
 						}
 					}
 				}
 			}
-
 			if passwordSecret != "" {
 				objKey := client.ObjectKey{Namespace: s.GetNamespace(), Name: passwordSecret}
 				if secret, err = s.loadUserSecret(ctx, objKey); err != nil {
 					s.logger.Error(err, "load user secret failed", "target", objKey)
 					return nil, err
 				}
-			} else if passwordSecret := s.Spec.Access.DefaultPasswordSecret; passwordSecret != "" {
-				secret, err = s.client.GetSecret(ctx, s.GetNamespace(), passwordSecret)
-				if err != nil {
-					return nil, err
-				}
-			}
-			role := user.RoleDeveloper
-			if username == user.DefaultOperatorUserName {
-				role = user.RoleOperator
-			} else if username == "" {
-				username = user.DefaultUserName
-			}
 
-			if role == user.RoleOperator {
 				if u, err := types.NewOperatorUser(secret); err != nil {
-					s.logger.Error(err, "init users failed")
-					return nil, err
-				} else {
-					users = append(users, u)
-				}
-
-				if passwordSecret := s.Spec.Access.DefaultPasswordSecret; passwordSecret != "" {
-					secret, err = s.client.GetSecret(ctx, s.GetNamespace(), passwordSecret)
-					if err != nil {
-						return nil, err
-					}
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, secret)
-					users = append(users, u)
-				} else {
-					u, _ := user.NewUser(user.DefaultUserName, user.RoleDeveloper, nil)
-					users = append(users, u)
-				}
-			} else {
-				if u, err := user.NewUser(username, role, secret); err != nil {
 					s.logger.Error(err, "init users failed")
 					return nil, err
 				} else {
@@ -569,7 +520,7 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 				}
 			}
 		} else if err != nil {
-			s.logger.Error(err, "load default users's password secret failed", "target", util.ObjectKey(s.GetNamespace(), name))
+			s.logger.Error(err, "get acl configmap failed", "name", name)
 			return nil, err
 		} else if users, err = acl.LoadACLUsers(ctx, s.client, cm); err != nil {
 			s.logger.Error(err, "load acl failed")
@@ -581,15 +532,9 @@ func (s *Failover) loadUsers(ctx context.Context) (types.Users, error) {
 
 func (s *Failover) loadUserSecret(ctx context.Context, objKey client.ObjectKey) (*corev1.Secret, error) {
 	secret, err := s.client.GetSecret(ctx, objKey.Namespace, objKey.Name)
-	if err != nil && !errors.IsNotFound(err) {
+	if err != nil {
 		s.logger.Error(err, "load default users's password secret failed", "target", objKey.String())
 		return nil, err
-	} else if errors.IsNotFound(err) {
-		secret = aclbuilder.GenerateOperatorSecret(s)
-		err := s.client.CreateSecret(ctx, objKey.Namespace, secret)
-		if err != nil {
-			return nil, err
-		}
 	} else if _, ok := secret.Data[user.PasswordSecretKey]; !ok {
 		return nil, fmt.Errorf("no password found")
 	}
@@ -664,13 +609,13 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	var (
 		serviceKey  = corev1.SchemeGroupVersion.WithKind("Service")
 		stsKey      = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
-		sentinelKey = databasesv1.GroupVersion.WithKind("ValkeySentinel")
+		sentinelKey = databasesv1.GroupVersion.WithKind("Sentinel")
 	)
 	resources := map[schema.GroupVersionKind][]string{
 		serviceKey: {
 			failoverbuilder.FailoverStatefulSetName(s.GetName()), // rfr-<name>
-			failoverbuilder.ROServiceName(s.GetName()),           // rfr-<name>-read-only
-			failoverbuilder.RWServiceName(s.GetName()),           // rfr-<name>-read-write
+			failoverbuilder.ROServiceName(s.GetName()),           // rfr-<name>-readonly
+			failoverbuilder.RWServiceName(s.GetName()),           // rfr-<name>-readwrite
 		},
 		stsKey: {
 			failoverbuilder.FailoverStatefulSetName(s.GetName()),

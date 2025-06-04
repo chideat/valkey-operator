@@ -44,10 +44,10 @@ func ValidateInstanceAccess(acc *core.InstanceAccess, nodeCount int, warns *admi
 		if acc.Ports != "" {
 			ports, err := helper.ParsePorts(acc.Ports)
 			if err != nil {
-				return fmt.Errorf("failed to parse data storage node port sequence: %v", err)
+				return fmt.Errorf("failed to parse nodeports: %v", err)
 			}
 			if nodeCount != len(ports) {
-				return fmt.Errorf("expected %d nodes, but got %d ports in node port sequence", nodeCount, len(ports))
+				return fmt.Errorf("expected %d nodes, but got %d ports to assign", nodeCount, len(ports))
 			}
 		}
 	}

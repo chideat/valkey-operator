@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -28,7 +29,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/controller/user"
 	"github.com/chideat/valkey-operator/internal/util"
-	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
 
 	corev1 "k8s.io/api/core/v1"
@@ -56,7 +56,6 @@ type UserReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	K8sClient     kubernetes.ClientSet
 	EventRecorder record.EventRecorder
 	Handler       *user.UserHandler
 }
@@ -73,19 +72,31 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	instance := v1alpha1.User{}
 	err := r.Client.Get(ctx, req.NamespacedName, &instance)
 	if err != nil {
-		logger.Error(err, "get valkey user failed")
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		logger.Error(err, "get valkey user failed")
 		return reconcile.Result{}, err
 	}
 
-	isMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
-	if isMarkedToBeDeleted {
-		logger.Info("remove finalizer")
-		controllerutil.RemoveFinalizer(&instance, UserFinalizer)
-		if err := r.Update(ctx, &instance); err != nil {
-			return ctrl.Result{}, err
+	if instance.GetDeletionTimestamp() != nil {
+		logger.Info("user is being deleted", "instance", req.NamespacedName)
+		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
+			if instance.Status.Message != err.Error() {
+				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.Message = fmt.Sprintf("clean user failed with error %s", err.Error())
+				if err := r.Client.Status().Update(ctx, &instance); err != nil {
+					logger.Error(err, "update user status failed", "instance", req.NamespacedName)
+					return ctrl.Result{}, err
+				}
+			}
+			return ctrl.Result{RequeueAfter: time.Second * 10}, err
+		} else {
+			controllerutil.RemoveFinalizer(&instance, UserFinalizer)
+			if err := r.Update(ctx, &instance); err != nil {
+				logger.Error(err, "remove finalizer failed", "instance", req.NamespacedName)
+				return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+			}
 		}
 		return ctrl.Result{}, nil
 	}
@@ -152,7 +163,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			secret.Labels[builder.InstanceNameLabelKey] = vkName
 			secret.OwnerReferences = util.BuildOwnerReferences(&instance)
 			if err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				return r.K8sClient.UpdateSecret(ctx, instance.Namespace, secret)
+				return r.Update(ctx, secret)
 			}); err != nil {
 				logger.Error(err, "update secret owner failed", "secret", secret.Name)
 				instance.Status.Message = err.Error()
@@ -184,7 +195,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		return reconcile.Result{RequeueAfter: time.Second * 10}, nil
 	}
-	instance.Status.Phase = v1alpha1.UserSuccess
+	instance.Status.Phase = v1alpha1.UserReady
 	instance.Status.Message = ""
 	logger.V(3).Info("user reconcile success")
 	if err := r.updateUserStatus(ctx, &instance); err != nil {

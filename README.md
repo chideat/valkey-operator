@@ -1,4 +1,7 @@
-# ValkeyOperator [![Coverage Status](https://coveralls.io/repos/github/chideat/valkey-operator/badge.svg?branch=main)](https://coveralls.io/github/chideat/valkey-operator?branch=main)
+# ValkeyOperator
+
+[![Coverage Status](https://coveralls.io/repos/github/chideat/valkey-operator/badge.svg?branch=main)](https://coveralls.io/github/chideat/valkey-operator?branch=main)
+[![Go Report Card](https://goreportcard.com/badge/github.com/chideat/valkey-operator)](https://goreportcard.com/report/github.com/chideat/valkey-operator)
 
 **ValkeyOperator** is a production-ready kubernetes operator to deploy and manage high available [Valkey Sentinel](https://valkey.io/topics/sentinel/) and [Valkey Cluster](https://valkey.io/topics/cluster-spec/) instances. This repository contains multi [Custom Resource Definition (CRD)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) designed for the lifecycle of Valkey standalone, sentinel or cluster instance.
 
@@ -21,12 +24,14 @@ TODO
 
 ## Supported Versions
 
-| Version | K8s Versions | Supported | Tested |
-|---------|:-------------|-----------|--------|
-| 7.2.x   | 1.31         | Yes       | Yes    |
-|         | 1.32         | Yes       |        |
-| 8.0.x   | 1.31         | Yes       | Yes    |
-|         | 1.32         | Yes       |        |
+| Version | K8s Versions | Supported |
+|---------|:-------------|-----------|
+| 7.2.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
+| 8.0.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
+| 8.1.x   | 1.31         | Yes       |
+|         | 1.32         | Yes       |
 
 ## Documentation
 

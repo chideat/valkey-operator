@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/chideat/valkey-operator/cmd/helper/commands"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	"github.com/urfave/cli/v2"
@@ -275,8 +276,8 @@ func healCluster(c *cli.Context, ctx context.Context, client *kubernetes.Clients
 
 			if err := func() error {
 				addr := net.JoinHostPort(pod.Status.PodIP, "6379")
-				announceIP := strings.ReplaceAll(pod.Labels["middleware.alauda.io/announce_ip"], "-", ":")
-				announcePort := pod.Labels["middleware.alauda.io/announce_port"]
+				announceIP := strings.ReplaceAll(pod.Labels[builder.AnnounceIPLabelKey], "-", ":")
+				announcePort := pod.Labels[builder.AnnouncePortLabelKey]
 				if announceIP != "" && announcePort != "" {
 					addr = net.JoinHostPort(announceIP, announcePort)
 				}
@@ -366,8 +367,9 @@ func getPodsOfShard(ctx context.Context, c *cli.Context, client *kubernetes.Clie
 	stsName := podName[0:splitIndex]
 
 	labels := map[string]string{
-		"middleware.instance/type": "distributed-valkey-cluster",
-		"statefulSet":              stsName,
+		"app.kubernetes.io/managed-by": "valkey-operator",
+		"buf.red/type":                 "cluster",
+		"statefulset":                  stsName,
 	}
 
 	if err = commands.RetryGet(func() error {

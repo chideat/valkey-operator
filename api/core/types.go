@@ -110,15 +110,11 @@ type Exporter struct {
 
 // InstanceAccess
 type InstanceAccess struct {
-	// DefaultPasswordSecret referered to the secret which defined the password for default user
-	// The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
-	// +optional
-	DefaultPasswordSecret string `json:"defaultPasswordSecret,omitempty"`
 
 	// ServiceType defines the type of the all related services
 	// +kubebuilder:default:=ClusterIP
 	// +kubebuilder:validation:Enum=NodePort;LoadBalancer;ClusterIP
-	ServiceType corev1.ServiceType `json:"type,omitempty"`
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 
 	// The annnotations of the service which will be attached to services
 	Annotations map[string]string `json:"annotations,omitempty"`
@@ -166,4 +162,20 @@ type ValkeyNode struct {
 	PodName string `json:"podName"`
 	// NodeName is the node name of the node where holds the pod
 	NodeName string `json:"nodeName"`
+}
+
+// ValkeyModule defines the module for Valkey
+type ValkeyModule struct {
+	// Path path of valkey module.
+	//
+	// .so suffix will be appended if path not suffixed provided
+	// if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
+	// +required
+	Path string `json:"path"`
+
+	// Args args for module
+	//
+	// Supported for valkey 8.0+
+	// +optional
+	Args []string `json:"args,omitempty"`
 }

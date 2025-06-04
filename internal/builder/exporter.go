@@ -32,8 +32,8 @@ const (
 	UserEnvName     = "REDIS_USER"
 	PasswordEnvName = "REDIS_PASSWORD"
 
-	ExporterPortNumber    = 9121
-	ExporterTelemetryPath = "/metrics"
+	ExporterPortNumber    int32 = 9121
+	ExporterTelemetryPath       = "/metrics"
 )
 
 func BuildExporterContainer(obj metav1.Object, exporter *core.Exporter, user *user.User, enableTLS bool) *corev1.Container {

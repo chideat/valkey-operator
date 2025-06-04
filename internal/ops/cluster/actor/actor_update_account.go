@@ -18,8 +18,8 @@ package actor
 
 import (
 	"context"
+	"maps"
 	"reflect"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
@@ -75,8 +75,9 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	var (
 		err error
 
-		users  = cluster.Users()
-		opUser = users.GetOpUser()
+		users     = cluster.Users()
+		opUser    = users.GetOpUser()
+		isUpdated = false
 	)
 
 	name := aclbuilder.GenerateACLConfigMapName(cluster.Arch(), cluster.GetName())
@@ -84,7 +85,10 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	if err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "load configmap failed", "target", name)
 		return actor.NewResultWithError(cops.CommandRequeue, err)
-	} else if oldCm == nil {
+	} else if oldCm != nil && oldCm.GetDeletionTimestamp() != nil {
+		logger.Info("configmap is being deleted, skip update", "target", name)
+		return actor.NewResult(cops.CommandRequeue)
+	} else {
 		// sync acl configmap
 		oldCm = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -95,31 +99,31 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 			},
 			Data: users.Encode(true),
 		}
+		isUpdated = true
 
 		// create acl with old password
 		// create valkey acl file, after restart, the password is updated
-		if err := a.client.CreateConfigMap(ctx, cluster.GetNamespace(), oldCm); err != nil {
-			logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
-			return actor.NewResultWithError(cops.CommandRequeue, err)
-		}
+		// if err := a.client.CreateConfigMap(ctx, cluster.GetNamespace(), oldCm); err != nil {
+		// 	logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
+		// 	return actor.NewResultWithError(cops.CommandRequeue, err)
+		// }
 
-		// wait for resource sync
-		time.Sleep(time.Second * 3)
-		if oldCm, err = a.client.GetConfigMap(ctx, cluster.GetNamespace(), name); err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "get configmap failed")
-			}
-			logger.Error(err, "get configmap failed", "target", name)
-			return actor.NewResultWithError(cops.CommandRequeue, err)
-		}
+		// // wait for resource sync
+		// time.Sleep(time.Second * 3)
+		// if oldCm, err = a.client.GetConfigMap(ctx, cluster.GetNamespace(), name); err != nil {
+		// 	if !errors.IsNotFound(err) {
+		// 		logger.Error(err, "get configmap failed")
+		// 	}
+		// 	logger.Error(err, "get configmap failed", "target", name)
+		// 	return actor.NewResultWithError(cops.CommandRequeue, err)
+		// }
 	}
 
-	isUpdated := false
 	users = users[0:0]
 	if opUser == nil {
 		secretName := aclbuilder.GenerateACLOperatorSecretName(cluster.Arch(), cluster.GetName())
 		ownRefs := util.BuildOwnerReferences(cluster.Definition())
-		if opUser, err := acl.NewOperatorUser(ctx, a.client, secretName, cluster.GetNamespace(), ownRefs); err != nil {
+		if opUser, err = acl.NewOperatorUser(ctx, a.client, secretName, cluster.GetNamespace(), ownRefs); err != nil {
 			logger.Error(err, "create operator user failed")
 			return actor.NewResult(cops.CommandRequeue)
 		} else {
@@ -139,9 +143,8 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	}
 
 	if isUpdated {
-		for k, v := range users.Encode(true) {
-			oldCm.Data[k] = v
-		}
+		maps.Copy(oldCm.Data, users.Encode(true))
+
 		if err := a.client.CreateOrUpdateConfigMap(ctx, cluster.GetNamespace(), oldCm); err != nil {
 			logger.Error(err, "update acl configmap failed", "target", oldCm.Name)
 			return actor.NewResultWithError(cops.CommandRequeue, err)

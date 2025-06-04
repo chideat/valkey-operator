@@ -296,7 +296,7 @@ func (c *valkeyClient) Pipeline(ctx context.Context, args [][]any) ([]PipelineRe
 	}
 
 	var rets []PipelineResult
-	for i := 0; i < len(args); i++ {
+	for range len(args) {
 		ret := PipelineResult{}
 		ret.Value, ret.Error = conn.Receive()
 		rets = append(rets, ret)
@@ -499,8 +499,8 @@ func (c *valkeyClient) Info(ctx context.Context, sections ...any) (*NodeInfo, er
 			}
 			if strings.HasPrefix(fields[0], "db") {
 				vals := strings.SplitN(fields[1], ",", 2)
-				if strings.HasPrefix(vals[0], "key=") {
-					val, _ := strconv.ParseInt(vals[0][4:], 10, 64)
+				if strings.HasPrefix(vals[0], "keys=") {
+					val, _ := strconv.ParseInt(vals[0][5:], 10, 64)
 					info.Dbsize += val
 				}
 			}
@@ -677,11 +677,8 @@ func (c *valkeyClient) Nodes(ctx context.Context) (ClusterNodes, error) {
 	}
 
 	var nodes ClusterNodes
-	for _, line := range strings.Split(data, "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
 		if node, err := ParseNodeFromClusterNode(line); err != nil {
 			return nil, err
 		} else {

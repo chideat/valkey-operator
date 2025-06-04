@@ -498,7 +498,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			newPorts = append(newPorts, port)
 		}
 	}
-	for i := 0; i < int(sen.Spec.Replicas); i++ {
+	for i := range int(sen.Spec.Replicas) {
 		serviceName := sentinelbuilder.SentinelPodServiceName(sen.Name, i)
 		oldService, err := a.client.GetService(ctx, sen.Namespace, serviceName)
 		if errors.IsNotFound(err) {
@@ -518,7 +518,7 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 		}
 
 		svc := sentinelbuilder.GeneratePodNodePortService(sen, i, getClientPort(oldService))
-		// check old service for compability
+		// check old service for compatibility
 		if !reflect.DeepEqual(oldService.Spec.Selector, svc.Spec.Selector) ||
 			len(oldService.Spec.Ports) != len(svc.Spec.Ports) ||
 			!reflect.DeepEqual(oldService.Labels, svc.Labels) ||

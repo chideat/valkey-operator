@@ -82,8 +82,8 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 	}
 
 	// check if config changed
-	newConf, _ := clusterbuilder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := clusterbuilder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 
 	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
@@ -103,7 +103,7 @@ func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.A
 
 	foundRestartApplyConfig := false
 	for key := range changed {
-		if policy := clusterbuilder.ValkeyConfigRestartPolicy[key]; policy == clusterbuilder.RequireRestart {
+		if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
 			foundRestartApplyConfig = true
 			break
 		}

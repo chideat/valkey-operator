@@ -56,5 +56,5 @@ func GenerateClusterStatefulSetLabels(name string, index int, extra ...map[strin
 // GenerateClusterStaticLabels
 // extra labels will override by the static labels
 func GenerateClusterLabels(name string, extra map[string]string) map[string]string {
-	return lo.Assign(extra, generateSelectors(name))
+	return lo.Assign(generateSelectors(name), extra)
 }

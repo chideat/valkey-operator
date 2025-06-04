@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValkeyExporterContainer(t *testing.T) {
@@ -33,8 +34,13 @@ func TestValkeyExporterContainer(t *testing.T) {
 		name     string
 		cluster  *v1alpha1.Cluster
 		user     *user.User
-		expected corev1.Container
+		expected *corev1.Container
 	}{
+		{
+			name:     "nil",
+			cluster:  &v1alpha1.Cluster{},
+			expected: nil,
+		},
 		{
 			name: "Basic test",
 			cluster: &v1alpha1.Cluster{
@@ -61,7 +67,7 @@ func TestValkeyExporterContainer(t *testing.T) {
 					SecretName: "secret-name",
 				},
 			},
-			expected: corev1.Container{
+			expected: &corev1.Container{
 				Name: "exporter",
 				Command: []string{
 					"/redis_exporter",
@@ -101,6 +107,130 @@ func TestValkeyExporterContainer(t *testing.T) {
 			},
 		},
 		{
+			name: "with out image",
+			cluster: &v1alpha1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"buf.red/imageversions-exporter": "oliver006/redis_exporter:v1.67.1-alpine",
+					},
+				},
+				Spec: v1alpha1.ClusterSpec{
+					Exporter: &core.Exporter{
+						Resources: &corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("200Mi"),
+							},
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("200m"),
+								corev1.ResourceMemory: resource.MustParse("200Mi"),
+							},
+						},
+					},
+				},
+			},
+			user: &user.User{
+				Name: user.DefaultOperatorUserName,
+				Role: user.RoleOperator,
+				Password: &user.Password{
+					SecretName: "secret-name",
+				},
+			},
+			expected: &corev1.Container{
+				Name: "exporter",
+				Command: []string{
+					"/redis_exporter",
+					"--web.listen-address", fmt.Sprintf(":%d", ExporterPortNumber),
+					"--web.telemetry-path", ExporterTelemetryPath},
+				Image:           "oliver006/redis_exporter:v1.67.1-alpine",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Ports: []corev1.ContainerPort{
+					{
+						Name:          "exporter",
+						Protocol:      corev1.ProtocolTCP,
+						ContainerPort: ExporterPortNumber,
+					},
+				},
+				Env: []corev1.EnvVar{
+					{Name: UserEnvName, Value: user.DefaultOperatorUserName},
+					{Name: PasswordEnvName, ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							Key: "password",
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "secret-name",
+							},
+						},
+					}},
+					{Name: "REDIS_ADDR", Value: "valkey://local.inject:6379"},
+				},
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+				},
+			},
+		},
+		{
+			name: "without resource",
+			cluster: &v1alpha1.Cluster{
+				Spec: v1alpha1.ClusterSpec{
+					Exporter: &core.Exporter{
+						Image: "valkey-exporter:latest",
+					},
+				},
+			},
+			user: &user.User{
+				Name: user.DefaultOperatorUserName,
+				Role: user.RoleOperator,
+				Password: &user.Password{
+					SecretName: "secret-name",
+				},
+			},
+			expected: &corev1.Container{
+				Name: "exporter",
+				Command: []string{
+					"/redis_exporter",
+					"--web.listen-address", fmt.Sprintf(":%d", ExporterPortNumber),
+					"--web.telemetry-path", ExporterTelemetryPath},
+				Image:           "valkey-exporter:latest",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Ports: []corev1.ContainerPort{
+					{
+						Name:          "exporter",
+						Protocol:      corev1.ProtocolTCP,
+						ContainerPort: ExporterPortNumber,
+					},
+				},
+				Env: []corev1.EnvVar{
+					{Name: UserEnvName, Value: user.DefaultOperatorUserName},
+					{Name: PasswordEnvName, ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							Key: "password",
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "secret-name",
+							},
+						},
+					}},
+					{Name: "REDIS_ADDR", Value: "valkey://local.inject:6379"},
+				},
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("512Mi"),
+					},
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("512Mi"),
+					},
+				},
+			},
+		},
+		{
 			name: "test with tls enabled",
 			cluster: &v1alpha1.Cluster{
 				Spec: v1alpha1.ClusterSpec{
@@ -129,7 +259,7 @@ func TestValkeyExporterContainer(t *testing.T) {
 					SecretName: "secret-name",
 				},
 			},
-			expected: corev1.Container{
+			expected: &corev1.Container{
 				Name: "exporter",
 				Command: []string{
 					"/redis_exporter",
@@ -181,15 +311,25 @@ func TestValkeyExporterContainer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			container := BuildExporterContainer(tt.cluster, tt.cluster.Spec.Exporter, tt.user, tt.cluster.Spec.Access.EnableTLS)
-			assert.Equal(t, tt.expected.Name, container.Name)
-			assert.Equal(t, tt.expected.Command, container.Command)
-			assert.Equal(t, tt.expected.Args, container.Args)
-			assert.Equal(t, tt.expected.Image, container.Image)
-			assert.Equal(t, tt.expected.ImagePullPolicy, container.ImagePullPolicy)
-			assert.Equal(t, tt.expected.Ports, container.Ports)
-			assert.ElementsMatch(t, tt.expected.Env, container.Env)
-			assert.Equal(t, tt.expected.Resources, container.Resources)
-			assert.ElementsMatch(t, tt.expected.VolumeMounts, container.VolumeMounts)
+			if container == nil {
+				if tt.expected != nil {
+					assert.Fail(t, "container should not be nil")
+					return
+				}
+			} else if tt.expected == nil {
+				assert.Fail(t, "container should be nil")
+				return
+			} else {
+				assert.Equal(t, tt.expected.Name, container.Name)
+				assert.Equal(t, tt.expected.Command, container.Command)
+				assert.Equal(t, tt.expected.Args, container.Args)
+				assert.Equal(t, tt.expected.Image, container.Image)
+				assert.Equal(t, tt.expected.ImagePullPolicy, container.ImagePullPolicy)
+				assert.Equal(t, tt.expected.Ports, container.Ports)
+				assert.ElementsMatch(t, tt.expected.Env, container.Env)
+				assert.Equal(t, tt.expected.Resources, container.Resources)
+				assert.ElementsMatch(t, tt.expected.VolumeMounts, container.VolumeMounts)
+			}
 		})
 	}
 }
