@@ -86,7 +86,61 @@ spec:
                   cpu: 1500m
                   memory: 3000Mi
   tasks:
+    - name: versions
+      params:
+        - name: version-docker
+          value: $(build.git.version.docker)
+        - name: version-clean
+          value: $(build.git.version.clean)
+        - name: revision
+          value: $(build.git.revision)
+        - name: revision-id
+          value: $(build.git.revision.id)
+        - name: shortID
+          value: $(build.git.lastCommit.shortID)
+      taskSpec:
+        params:
+          - name: version-docker
+            type: string
+          - name: version-clean
+            type: string
+        results:
+          - name: version-custom
+            description: adjusted version
+          - name: version-clean-custom
+            description: adjusted version
+        steps:
+          - name: replace
+            image: build-harbor.alauda.cn/ops/alpine:3.21
+            imagePullPolicy: IfNotPresent
+            script: |
+              #!/bin/sh
+ 
+              set -x
+
+              ts="$(date "+%m%d%H%M")"
+              version=$(params.version-docker)
+              cversion=$(params.version-clean)
+              revision=$(params.revision)
+              revision_id=$(params.revision-id)
+              shortID=$(params.shortID)
+              if echo -n "${revision}" | grep -q "refs/tags/"; then
+                  version=${revision_id}
+                  cversion=${revision_id#v}
+              elif echo -n "${revision}" | grep -q "refs/heads/release-"; then
+                  if echo "$version" | grep -Eq "^v?[0-9]+\.[0-9]+\.[0-9]+$"; then
+                      version="${version}-rc.d${ts}.${shortID}"
+                      cversion=${version#v}
+                  fi
+              fi
+              echo -n "version: "
+              echo -n "${version}" | tee $(results.version-custom.path)
+              echo ""
+              echo -n "cversion: "
+              echo -n "${cversion}" | tee $(results.version-clean-custom.path)
     - name: go-test
+      runAfter:
+        - versions
       timeout: 30m
       retries: 0
       taskRef:
@@ -98,17 +152,6 @@ spec:
       params:
         - name: command
           value: |-
-            env
-
-            echo "build.git.version.docker=$(build.git.version.docker)"
-            echo "build.git.revision=$(build.git.revision)"
-            echo "build.git.revision.raw=$(build.git.revision.raw)"
-            echo "build.git.revision.id=$(build.git.revision.id)"
-            echo "build.git.revision.type=$(build.git.revision.type)"
-            echo "build.git.target=$(build.git.target)"
-            echo "build.triggeredBy.ref=$(build.triggeredBy.ref)"
-
-
             export GOPROXY="https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct"
             export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*,gopkg.in/*"
             make test
@@ -135,6 +178,8 @@ spec:
         - name: quality-gate
           value: "false"
     - name: build-operator
+      runAfter:
+        - versions
       timeout: 30m
       retries: 3
       taskRef:
@@ -147,12 +192,14 @@ spec:
         - name: container-image
           value: build-harbor.alauda.cn/middleware/valkey-operator
         - name: container-image-tag
-          value: $(build.git.version.docker)
+          value: $(tasks.versions.results.version-custom)
         - name: labels
           value:
             - branch=$(build.git.branch.name)
             - commit=$(build.git.lastCommit.id)
     - name: e2e-image
+      runAfter:
+        - versions
       timeout: 30m
       retries: 3
       taskRef:
@@ -165,7 +212,7 @@ spec:
         - name: container-image
           value: build-harbor.alauda.cn/middleware/valkey-operator-e2e
         - name: container-image-tag
-          value: $(build.git.version.docker)
+          value: $(tasks.versions.results.version-custom)
         - name: labels
           value:
             - branch=$(build.git.branch.name)
@@ -175,6 +222,8 @@ spec:
 
     ########## build bundle ##########
     - name: generate-bundle
+      runAfter:
+        - versions
       timeout: 30m
       retries: 3
       taskRef:
@@ -187,15 +236,15 @@ spec:
         - name: tools-image
           value: registry.alauda.cn:60080/fundamentals/operator-builder:master-1.24
         - name: set-skip-range
-          value: ">=0.0.0 <$(build.git.version.clean)"
+          value: ">=0.0.0 <$(tasks.versions.results.version-clean-custom)"
         - name: build-command
           value: |
             export GONOSUMDB="gopkg.in/*"
             rm -rf /usr/local/bin/operator-sdk /go/bin/operator-sdk $(pwd)/bin/operator-sdk && make operator-sdk && chmod +x $(pwd)/bin/operator-sdk && make bundle
         - name: controller-version
-          value: $(build.git.version.docker)
+          value: $(tasks.versions.results.version-custom)
         - name: bundle-version
-          value: $(build.git.version.clean)
+          value: $(tasks.versions.results.version-clean-custom)
         - name: csv-file-path
           value: config/manifests/bases/valkey-operator.clusterserviceversion.yaml
         - name: bundle-csv-file-path
@@ -220,7 +269,7 @@ spec:
         - name: container-image
           value: build-harbor.alauda.cn/middleware/valkey-operator-bundle
         - name: container-image-tag
-          value: $(build.git.version.docker)
+          value: $(tasks.versions.results.version-custom)
         - name: dockerfile
           value: bundle.Dockerfile
         - name: labels
@@ -229,11 +278,11 @@ spec:
             - branch=$(build.git.branch.name)
             - commit=$(build.git.lastCommit.id)
         - name: set-skip-range
-          value: ">=0.0.0 <$(build.git.version.clean)"
+          value: ">=0.0.0 <$(tasks.versions.results.version-clean-custom)"
         - name: controller-version
-          value: $(build.git.version.docker)
+          value: $(tasks.versions.results.version-custom)
         - name: bundle-version
-          value: $(build.git.version.clean)
+          value: $(tasks.versions.results.version-clean-custom)
         - name: csv-file-path
           value: config/manifests/bases/valkey-operator.clusterserviceversion.yaml
         - name: bundle-csv-file-path
@@ -293,38 +342,14 @@ spec:
       params:
         - name: container-images
           value:
-            - build-harbor.alauda.cn/middleware/valkey-operator-violet:$(build.git.version.docker)
+            - build-harbor.alauda.cn/middleware/valkey-operator-violet:$(tasks.versions.results.version-custom)
         - name: cache-major-branches
           value: "false"
         - name: context
           value: violet
         - name: extra-args
           value: >
-            --opt build-arg:TAG=$(build.git.version.docker)
+            --opt build-arg:TAG=$(tasks.versions.results.version-custom)
             --opt build-arg:LEVEL=s3
         - name: dockerfile
           value: violet/violet.Dockerfile
-  finally:
-    - name: release-tag
-      when:
-        - input: "$(build.git.versionPhase)"
-          operator: in
-          values:
-            - custom
-            - ga
-        - input: $(tasks.status)
-          operator: in
-          values:
-            - Succeeded
-            - Completed
-      timeout: 30m
-      retries: 0
-      taskRef:
-        kind: ClusterTask
-        name: alauda-release-tag
-      workspaces:
-        - name: source
-          workspace: source
-      params:
-        - name: version
-          value: $(build.git.version.docker)
