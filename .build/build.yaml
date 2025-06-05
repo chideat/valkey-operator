@@ -98,6 +98,17 @@ spec:
       params:
         - name: command
           value: |-
+            env
+
+            echo "build.git.version.docker=$(build.git.version.docker)"
+            echo "build.git.revision=$(build.git.revision)"
+            echo "build.git.revision.raw=$(build.git.revision.raw)"
+            echo "build.git.revision.id=$(build.git.revision.id)"
+            echo "build.git.revision.type=$(build.git.revision.type)"
+            echo "build.git.target=$(build.git.target)"
+            echo "build.triggeredBy.ref=$(build.triggeredBy.ref)"
+
+
             export GOPROXY="https://goproxy.cn,https://build-nexus.alauda.cn/repository/golang/,direct"
             export GONOSUMDB="gitlab-ce.alauda.cn/*,gomod.alauda.cn/*,bitbucket.org/mathildetech/*,gopkg.in/*"
             make test
