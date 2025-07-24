@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 go test -c -o e2e-tests ./test/e2e/
 
 # Stage 2: Runtime image with only the test binary
-FROM alpine:3.21
+FROM alpine:3.22
 
 # Install necessary tools for e2e tests
 RUN apk add --no-cache \
