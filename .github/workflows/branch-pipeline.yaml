@@ -58,10 +58,11 @@ jobs:
         else
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           VERSION="${BRANCH_NAME#release-}"
+          TS=$(date '+%m%d%H%M')
           LARGEST_TAG=$(git tag --merged $BRANCH_NAME --sort=-v:refname | grep $VERSION | head -n 1)
           if [ -z "$LARGEST_TAG" ]; then
             # No existing tag found, use version from branch name with .0 patch version
-            TAG_NAME="${VERSION}.0-${GITHUB_SHA::7}"
+            TAG_NAME="v${VERSION}.0-rc.${TS}.${GITHUB_SHA::7}"
           else
             # Extract and increment patch version from existing tag
             if [[ $LARGEST_TAG =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
@@ -69,14 +70,10 @@ jobs:
               MINOR=${BASH_REMATCH[2]}
               PATCH=${BASH_REMATCH[3]}
               NEW_PATCH=$((PATCH + 1))
-              if [[ $LARGEST_TAG =~ ^v ]]; then
-                TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}-${GITHUB_SHA::7}"
-              else
-                TAG_NAME="${MAJOR}.${MINOR}.${NEW_PATCH}-${GITHUB_SHA::7}"
-              fi
+              TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}-rc.${ts}.${GITHUB_SHA::7}"
             else
               # Fallback if tag format is unexpected
-              TAG_NAME="${LARGEST_TAG}-${GITHUB_SHA::7}"
+              TAG_NAME="${LARGEST_TAG}-rc.${TS}.${GITHUB_SHA::7}"
             fi
           fi
         fi
