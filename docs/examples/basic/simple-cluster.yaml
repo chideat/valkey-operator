@@ -1,0 +1,31 @@
+apiVersion: valkey.buf.red/v1alpha1
+kind: Cluster
+metadata:
+  name: simple-cluster
+  namespace: default
+spec:
+  # Use the latest stable Valkey image
+  image: valkey/valkey:8.0-alpine
+  
+  # Basic cluster configuration
+  replicas:
+    shards: 3                 # 3 shards for data distribution
+    replicasOfShard: 1       # 1 replica per shard for basic HA
+  
+  # Resource allocation
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi" 
+      cpu: "500m"
+  
+  # Network access
+  access:
+    serviceType: ClusterIP
+  
+  # Basic Valkey configuration
+  customConfigs:
+    maxmemory-policy: "allkeys-lru"
+    tcp-keepalive: "300"

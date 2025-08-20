@@ -18,9 +18,20 @@
 
 ## Quickstart
 
-If you have a Kubernetes cluster and `kubectl` configured to access it, run the following command to instance the operator:
+If you have a Kubernetes cluster and `kubectl` configured to access it, run the following commands to deploy the operator and create a simple cluster:
 
-TODO
+```bash
+# Install the ValkeyOperator
+kubectl apply -k https://github.com/chideat/valkey-operator/config/default
+
+# Deploy a simple Valkey cluster
+kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/simple-cluster.yaml
+
+# Check the cluster status
+kubectl get cluster simple-cluster -w
+```
+
+For detailed installation and configuration instructions, see the [User Guide](./docs/guides/user-guide.md).
 
 ## Supported Versions
 
@@ -35,14 +46,16 @@ TODO
 
 ## Documentation
 
-ValkeyOperator is covered by following topics:
+ValkeyOperator is covered by comprehensive documentation:
 
-* **TODO** Operator overview
-* **TODO** Deploying the operator
-* **TODO** Deploying a Valkey sentinel/cluster instance
-* **TODO** Monitoring the instance 
+* **[Operator Overview](./docs/guides/operator-overview.md)** - Architecture and core concepts
+* **[User Guide](./docs/guides/user-guide.md)** - Complete installation and usage guide
+* **[API Reference](./docs/api/index.md)** - Detailed API documentation
+* **[Examples](./docs/examples/)** - Ready-to-use configuration examples
 
-In addition, few [samples](./config/samples) can be find in this repo.
+For a complete list of features and configuration options, see the [documentation directory](./docs/).
+
+In addition, practical [examples](./docs/examples) and [configuration samples](./config/samples) can be found in this repository.
 
 ## Contributing
 
