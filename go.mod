@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/cert-manager/cert-manager v1.16.2
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-logr/logr v1.4.2
 	github.com/gomodule/redigo v1.9.2
 	github.com/onsi/ginkgo/v2 v2.23.3
