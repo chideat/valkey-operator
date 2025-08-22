@@ -299,3 +299,31 @@ bundle-build: ## Build the bundle image.
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
 	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+
+##@ Documentation
+
+GEN_CRD_API_REFERENCE_DOCS ?= $(LOCALBIN)/gen-crd-api-reference-docs
+
+.PHONY: docs
+docs: gen-crd-api-reference-docs ## Generate documentation.
+	@echo "Generating API documentation..."
+	@mkdir -p docs/api
+	@$(GEN_CRD_API_REFERENCE_DOCS) -config docs/config.json -api-dir ./api/v1alpha1 -out-file docs/api/v1alpha1-reference-generated.md || true
+	@$(GEN_CRD_API_REFERENCE_DOCS) -config docs/config.json -api-dir ./api/rds/v1alpha1 -out-file docs/api/rds-v1alpha1-reference-generated.md || true
+	@$(GEN_CRD_API_REFERENCE_DOCS) -config docs/config.json -api-dir ./api/core -out-file docs/api/core-reference-generated.md || true
+	@go doc -all ./api/v1alpha1 > docs/api/v1alpha1-reference.md
+	@go doc -all ./api/rds/v1alpha1 > docs/api/rds-v1alpha1-reference.md
+	@go doc -all ./api/core > docs/api/core-reference.md
+	@echo "Documentation generated in docs/ directory"
+
+.PHONY: docs-serve
+docs-serve: gen-crd-api-reference-docs ## Serve documentation locally.
+	@echo "Starting documentation server on http://localhost:8080"
+	@$(GEN_CRD_API_REFERENCE_DOCS) -config docs/config.json -api-dir ./api -http-addr :8080 || \
+	 (echo "Falling back to simple HTTP server..."; cd docs && python3 -m http.server 8080)
+
+.PHONY: gen-crd-api-reference-docs
+gen-crd-api-reference-docs: $(GEN_CRD_API_REFERENCE_DOCS) ## Download gen-crd-api-reference-docs locally if necessary.
+$(GEN_CRD_API_REFERENCE_DOCS): $(LOCALBIN)
+	@test -s $(LOCALBIN)/gen-crd-api-reference-docs || \
+	GOBIN=$(LOCALBIN) go install github.com/ahmetb/gen-crd-api-reference-docs@v0.3.0
