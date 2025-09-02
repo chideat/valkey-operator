@@ -17,75 +17,40 @@ Welcome to the ValkeyOperator documentation. This guide will help you deploy, co
 - **[User API](./api/v1alpha1-user.md)** - User and ACL management
 - **[Core Types](./api/core-types.md)** - Shared types and structures
 
-## Architecture Support
+## Unified Valkey Resource
 
-ValkeyOperator supports multiple Valkey deployment architectures:
+ValkeyOperator uses a unified `Valkey` resource to manage all deployment architectures. You can specify the desired architecture using the `arch` field.
 
-### 🔧 **Cluster Mode**
-High-performance distributed clusters with automatic sharding and replication.
+- `arch: replica` - Standalone Valkey instance.
+- `arch: cluster` - Valkey cluster with automatic sharding.
+- `arch: failover` - High-availability setup with Sentinel.
 
+Here is an example of a Valkey cluster:
 ```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: my-cluster
+  name: my-valkey-cluster
 spec:
+  arch: cluster
+  version: "8.0"
   replicas:
     shards: 3
     replicasOfShard: 1
 ```
 
-### 🔄 **Failover Mode** 
-High-availability using Valkey Sentinel for automatic failover.
-
-```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Failover
-metadata:
-  name: my-failover
-spec:
-  replicas: 3
-  sentinel:
-    replicas: 3
-    quorum: 2
-```
-
-### 👁️ **Sentinel Mode**
-Standalone sentinel instances for monitoring external Valkey deployments.
-
-```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Sentinel
-metadata:
-  name: my-sentinel
-spec:
-  replicas: 3
-```
-
-### 🔐 **User Management**
-ACL-based user authentication and authorization.
-
-```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: User
-metadata:
-  name: app-user
-spec:
-  username: myapp
-  aclRules: "+@read +@write -@dangerous ~app:*"
-```
-
 ## Features
 
-- ✅ **Multi-Architecture Support** - Cluster, Failover, Sentinel modes
-- ✅ **High Availability** - Automatic failover and recovery
-- ✅ **Horizontal Scaling** - Online scale up/down operations
-- ✅ **Version Upgrades** - Graceful rolling updates
-- ✅ **Persistent Storage** - Configurable storage with retention
-- ✅ **Security** - TLS encryption and ACL support
-- ✅ **Monitoring** - Built-in Prometheus exporter
-- ✅ **IPv4/IPv6** - Dual-stack networking support
-- ✅ **Node Scheduling** - Affinity, tolerations, node selectors
+- ✅ **Unified API** - Manage all Valkey architectures with a single CRD.
+- ✅ **Multi-Architecture Support** - `replica`, `cluster`, and `failover` modes.
+- ✅ **High Availability** - Automatic failover and recovery.
+- ✅ **Horizontal Scaling** - Online scale up/down operations.
+- ✅ **Version Upgrades** - Graceful rolling updates.
+- ✅ **Persistent Storage** - Configurable storage with retention.
+- ✅ **Security** - TLS encryption and ACL support.
+- ✅ **Monitoring** - Built-in Prometheus exporter.
+- ✅ **IPv4/IPv6** - Dual-stack networking support.
+- ✅ **Node Scheduling** - Affinity, tolerations, node selectors.
 
 ## Supported Versions
 
@@ -99,10 +64,10 @@ spec:
 
 | Use Case | Example | Description |
 |----------|---------|-------------|
-| **Development** | [Simple Cluster](./examples/basic/simple-cluster.yaml) | Basic cluster for development |
-| **Production** | [Production Cluster](./examples/production/production-cluster.yaml) | Production-ready cluster with HA |
-| **High Availability** | [HA Failover](./examples/basic/simple-failover.yaml) | Sentinel-based failover |
-| **Security** | [Secure Cluster](./examples/production/secure-cluster.yaml) | TLS and ACL configuration |
+| **Standalone** | [Valkey Standalone](./examples/basic/standalone.yaml) | Basic standalone Valkey instance |
+| **Cluster** | [Valkey Cluster](./examples/basic/cluster.yaml) | Valkey cluster with sharding |
+| **High Availability** | [Valkey Failover](./examples/basic/failover.yaml) | Sentinel-based failover |
+| **User Management** | [ACL Users](./examples/users/acl-users.yaml) | User and ACL configuration |
 | **Monitoring** | [With Monitoring](./examples/advanced/monitoring.yaml) | Prometheus integration |
 
 ## Quick Installation
@@ -111,11 +76,11 @@ spec:
 # Install the operator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 
-# Deploy a cluster
-kubectl apply -f docs/examples/basic/simple-cluster.yaml
+# Deploy a standalone Valkey instance
+kubectl apply -f docs/examples/basic/standalone.yaml
 
 # Check status
-kubectl get cluster simple-cluster -w
+kubectl get valkey valkey-standalone -w
 ```
 
 ## Getting Help
