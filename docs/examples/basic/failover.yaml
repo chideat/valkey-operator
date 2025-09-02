@@ -1,0 +1,49 @@
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
+metadata:
+  name: valkey-failover
+  namespace: default
+spec:
+  # Valkey version, supports 7.2, 8.0, 8.1
+  version: "8.0"
+
+  # Valkey architecture, supports cluster, failover, replica
+  arch: failover
+
+  # Failover configuration
+  replicas:
+    shards: 1
+    replicasOfShard: 2
+
+  # Resource allocation for Valkey
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+
+  # Sentinel configuration
+  sentinel:
+    replicas: 3
+    quorum: 2
+    monitorConfig:
+      down-after-milliseconds: "30000"
+      failover-timeout: "180000"
+      parallel-syncs: "1"
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+
+  # Network access
+  access:
+    serviceType: ClusterIP
+
+  # Basic Valkey configuration
+  customConfigs:
+    maxmemory-policy: "allkeys-lru"
