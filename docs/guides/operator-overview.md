@@ -105,22 +105,30 @@ ValkeyOperator is a production-ready Kubernetes operator that automates the depl
 # Install the operator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 
-# Deploy a simple cluster
+# Deploy a simple valkey
 cat <<EOF | kubectl apply -f -
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
   name: quickstart
   namespace: default
 spec:
-  image: valkey/valkey:8.0-alpine
+  arch: cluster
+  version: 8.0-alpine
   replicas:
     shards: 3
     replicasOfShard: 1
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
 EOF
 
 # Check status
-kubectl get cluster quickstart -w
+kubectl get valkey quickstart -w
 ```
 
 ### Next Steps

@@ -56,16 +56,17 @@ kubectl get crd | grep valkey
 
 ## Basic Usage
 
-### Deploy a Simple Cluster
+### Deploy a Simple Valkey Cluster
 
 ```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: my-cluster
+  name: my-valkey-cluster
   namespace: default
 spec:
-  image: valkey/valkey:8.0-alpine
+  arch: cluster
+  version: "8.0"
   replicas:
     shards: 3
     replicasOfShard: 1
@@ -79,21 +80,23 @@ spec:
 ```
 
 ```bash
-kubectl apply -f cluster.yaml
-kubectl get cluster my-cluster -w
+kubectl apply -f valkey-cluster.yaml
+kubectl get valkey my-valkey-cluster -w
 ```
 
-### Deploy a Failover Instance
+### Deploy a Valkey Failover Instance
 
 ```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Failover
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: my-failover
+  name: my-valkey-failover
   namespace: default
 spec:
-  image: valkey/valkey:8.0-alpine
-  replicas: 3
+  arch: failover
+  version: "8.0"
+  replicas:
+    replicasOfShard: 3
   sentinel:
     replicas: 3
     quorum: 2
@@ -104,8 +107,8 @@ spec:
 ```
 
 ```bash
-kubectl apply -f failover.yaml
-kubectl get failover my-failover -w
+kubectl apply -f valkey-failover.yaml
+kubectl get valkey my-valkey-failover -w
 ```
 
 ## Architecture Overview
@@ -113,13 +116,13 @@ kubectl get failover my-failover -w
 ### Cluster Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│              Valkey Cluster             │
-├─────────────┬─────────────┬─────────────┤
-│   Shard 1   │   Shard 2   │   Shard 3   │
-│ Master + 1R │ Master + 1R │ Master + 1R │
-│ Slots 0-5k  │ Slots 5k-10k│ Slots 10k-16k│
-└─────────────┴─────────────┴─────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                      Valkey Cluster                       │
+├──────────────────┬──────────────────┬───────────────────┤
+│     Shard 1      │      Shard 2     │      Shard 3      │
+│   Master + 1R    │    Master + 1R   │    Master + 1R    │
+│ Slots 0-5460     │ Slots 5461-10922 │ Slots 10923-16383 │
+└──────────────────┴──────────────────┴───────────────────┘
 ```
 
 ### Failover Architecture
@@ -138,16 +141,17 @@ kubectl get failover my-failover -w
 
 ## Configuration Examples
 
-### Production Cluster with Storage
+### Production Valkey Cluster with Storage
 
 ```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: prod-cluster
+  name: prod-valkey-cluster
   namespace: valkey-production
 spec:
-  image: valkey/valkey:8.0-alpine
+  arch: cluster
+  version: "8.0"
   replicas:
     shards: 6
     replicasOfShard: 2
@@ -178,16 +182,17 @@ spec:
       effect: NoSchedule
 ```
 
-### Secure Cluster with TLS and ACL
+### Secure Valkey Cluster with TLS and ACL
 
 ```yaml
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: secure-cluster
+  name: secure-valkey-cluster
   namespace: valkey-secure
 spec:
-  image: valkey/valkey:8.0-alpine
+  arch: cluster
+  version: "8.0"
   replicas:
     shards: 3
     replicasOfShard: 1
@@ -212,7 +217,7 @@ spec:
   passwordSecrets:
     - app-user-password
   aclRules: "+@read +@write -@dangerous ~app:* &notifications:*"
-  instanceName: secure-cluster
+  instanceName: secure-valkey-cluster
 ```
 
 ## Monitoring
