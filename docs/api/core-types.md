@@ -21,7 +21,8 @@ Defines the architecture type for Valkey instances:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `storageClassName` | string | Storage class name for persistent volumes |
+| `annotations` | map[string]string | Annotations for the storage service |
+| `storageClassName` | *string | Storage class name for persistent volumes |
 | `capacity` | *resource.Quantity | Storage capacity (defaults to 2x memory limit if not set) |
 | `accessMode` | corev1.PersistentVolumeAccessMode | Access mode (default: ReadWriteOnce) |
 | `retainAfterDeleted` | bool | Whether to retain storage after deletion |
@@ -33,11 +34,12 @@ Defines the architecture type for Valkey instances:
 | Field | Type | Description |
 |-------|------|-------------|
 | `serviceType` | corev1.ServiceType | Kubernetes service type (ClusterIP, NodePort, LoadBalancer) |
-| `ipFamilyPrefer` | IPFamilyPrefer | IP family preference (IPv4, IPv6, or dual-stack) |
-| `loadBalancerIP` | string | Static IP for LoadBalancer services |
-| `loadBalancerSourceRanges` | []string | Source IP ranges for LoadBalancer |
 | `annotations` | map[string]string | Service annotations |
-| `nodePortSequence` | string | NodePort sequence assignment |
+| `ipFamilyPrefer` | corev1.IPFamily | IP family preference (IPv4, IPv6) |
+| `ports` | string | NodePort sequence assignment (e.g., "30000:30000,30001:30001") |
+| `enableTLS` | bool | Enable TLS for external access |
+| `certIssuer` | string | Certificate issuer for TLS |
+| `certIssuerType` | string | Certificate issuer type (ClusterIssuer or Issuer) |
 
 ## Monitoring Configuration
 
@@ -56,12 +58,16 @@ Defines the architecture type for Valkey instances:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `id` | string | Valkey cluster node ID |
+| `shardId` | string | Cluster shard ID of the node |
+| `role` | NodeRole | Node role (master, replica, sentinel) |
 | `ip` | string | Node IP address |
-| `port` | int32 | Node port |
-| `role` | NodeRole | Node role (master, slave, sentinel) |
+| `port` | string | Node port |
 | `slots` | string | Cluster slots (for cluster mode) |
-| `flags` | string | Node flags |
-| `masterId` | string | Master node ID (for replicas) |
+| `masterRef` | string | Master node ID (for replicas) |
+| `statefulSet` | string | StatefulSet name of the pod |
+| `podName` | string | Pod name |
+| `nodeName` | string | Kubernetes node name where the pod is running |
 
 ## Affinity Policies
 
@@ -80,7 +86,6 @@ Predefined affinity policies for pod scheduling:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Module name |
 | `path` | string | Module file path |
 | `args` | []string | Module arguments (Valkey 8.0+) |
 

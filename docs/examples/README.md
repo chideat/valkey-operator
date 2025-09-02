@@ -4,25 +4,22 @@ This directory contains example configurations for various ValkeyOperator use ca
 
 ## Basic Examples
 
-### [Simple Cluster](./basic/simple-cluster.yaml)
-Basic 3-shard cluster with minimal configuration.
+### [Valkey Standalone](./basic/standalone.yaml)
+A simple standalone Valkey instance.
 
-### [Simple Failover](./basic/simple-failover.yaml)
-Basic failover setup with embedded sentinel.
+### [Valkey Cluster](./basic/cluster.yaml)
+A simple Valkey cluster.
+
+### [Valkey Failover](./basic/failover.yaml)
+A simple Valkey failover setup with Sentinel.
 
 ### [Standalone Sentinel](./basic/standalone-sentinel.yaml)
 Standalone sentinel for monitoring external Valkey instances.
 
 ## Production Examples
 
-### [Production Cluster](./production/production-cluster.yaml)
-Production-ready cluster with persistence, monitoring, and security.
-
-### [High Availability Failover](./production/ha-failover.yaml)
-High-availability failover with external sentinel cluster.
-
-### [Secure Cluster](./production/secure-cluster.yaml)
-Cluster with TLS encryption and ACL configuration.
+### [Production Cluster](./production/cluster.yaml)
+A production-ready Valkey cluster with persistence, monitoring, and security.
 
 ## Advanced Examples
 

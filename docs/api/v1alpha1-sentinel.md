@@ -61,14 +61,6 @@ Inherits from `core.InstanceAccess` and adds:
 - `Ready` - Sentinel is ready and monitoring
 - `Failed` - Sentinel failed to deploy or is in error state
 
-## SentinelMonitorNode
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `ip` | string | Sentinel node IP address |
-| `port` | int32 | Sentinel node port |
-| `flags` | string | Node flags |
-
 ## Example
 
 ```yaml

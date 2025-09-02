@@ -48,14 +48,6 @@ status:
 - `Ready` - User is ready and configured
 - `Pending` - User configuration is pending
 
-## Authorization
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `username` | string | Username for Valkey |
-| `passwordSecret` | string | Password secret for Valkey |
-| `tlsSecret` | string | TLS secret |
-
 ## ACL Rules
 
 ACL rules follow Valkey ACL syntax. Examples:

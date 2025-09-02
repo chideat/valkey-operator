@@ -1,16 +1,19 @@
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
-  name: simple-cluster
+  name: valkey-cluster
   namespace: default
 spec:
-  # Use the latest stable Valkey image
-  image: valkey/valkey:8.0-alpine
+  # Valkey version, supports 7.2, 8.0, 8.1
+  version: "8.0"
   
-  # Basic cluster configuration
+  # Valkey architecture, supports cluster, failover, replica
+  arch: cluster
+
+  # Cluster configuration
   replicas:
-    shards: 3                 # 3 shards for data distribution
-    replicasOfShard: 1       # 1 replica per shard for basic HA
+    shards: 3
+    replicasOfShard: 1
   
   # Resource allocation
   resources:
