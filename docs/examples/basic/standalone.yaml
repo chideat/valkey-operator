@@ -1,0 +1,34 @@
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
+metadata:
+  name: valkey-standalone
+  namespace: default
+spec:
+  # Valkey version, supports 7.2, 8.0, 8.1
+  version: "8.0"
+
+  # Valkey architecture, supports cluster, failover, replica
+  arch: replica
+
+  # Standalone instance configuration
+  replicas:
+    shards: 1
+    replicasOfShard: 1
+
+  # Resource allocation
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+
+  # Network access
+  access:
+    serviceType: ClusterIP
+
+  # Basic Valkey configuration
+  customConfigs:
+    maxmemory-policy: "allkeys-lru"
+    tcp-keepalive: "300"

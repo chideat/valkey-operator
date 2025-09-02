@@ -1,12 +1,15 @@
-apiVersion: valkey.buf.red/v1alpha1
-kind: Cluster
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
 metadata:
   name: production-cluster
   namespace: valkey-production
 spec:
-  # Production Valkey image
-  image: valkey/valkey:8.0-alpine
+  # Valkey version, supports 7.2, 8.0, 8.1
+  version: "8.0"
   
+  # Valkey architecture, supports cluster, failover, replica
+  arch: cluster
+
   # Production cluster sizing
   replicas:
     shards: 6                    # 6 shards for better distribution
@@ -80,7 +83,7 @@ spec:
         cpu: "100m"
   
   # Pod annotations for monitoring
-  annotations:
+  podAnnotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9121"
     prometheus.io/path: "/metrics"
