@@ -24,11 +24,11 @@ If you have a Kubernetes cluster and `kubectl` configured to access it, run the 
 # Install the ValkeyOperator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 
-# Deploy a simple Valkey cluster
-kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/simple-cluster.yaml
+# Deploy a Valkey cluster
+kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/cluster.yaml
 
 # Check the cluster status
-kubectl get cluster simple-cluster -w
+kubectl get valkey valkey-cluster -w
 ```
 
 For detailed installation and configuration instructions, see the [User Guide](./docs/guides/user-guide.md).
