@@ -1,0 +1,99 @@
+apiVersion: valkey.buf.red/v1alpha1
+kind: User
+metadata:
+  name: readonly-user
+  namespace: valkey-system
+spec:
+  accountType: custom
+  arch: cluster
+  username: readonly
+  passwordSecrets:
+    - readonly-user-password
+  aclRules: "+@read ~*"
+  instanceName: my-cluster
+
+---
+apiVersion: valkey.buf.red/v1alpha1
+kind: User
+metadata:
+  name: app-user
+  namespace: valkey-system
+spec:
+  accountType: custom
+  arch: cluster
+  username: myapp
+  passwordSecrets:
+    - app-user-password
+  aclRules: "+@all -@dangerous ~app:* &notifications:*"
+  instanceName: my-cluster
+
+---
+apiVersion: valkey.buf.red/v1alpha1
+kind: User
+metadata:
+  name: cache-user
+  namespace: valkey-system
+spec:
+  accountType: custom
+  arch: cluster
+  username: cache
+  passwordSecrets:
+    - cache-user-password
+  aclRules: "+@read +@write -@dangerous -flushall -flushdb ~cache:*"
+  instanceName: my-cluster
+
+---
+apiVersion: valkey.buf.red/v1alpha1
+kind: User
+metadata:
+  name: monitoring-user
+  namespace: valkey-system
+spec:
+  accountType: custom
+  arch: cluster
+  username: monitor
+  passwordSecrets:
+    - monitoring-user-password
+  aclRules: "+info +ping +client +config|get ~*"
+  instanceName: my-cluster
+
+---
+# Secrets for user passwords
+apiVersion: v1
+kind: Secret
+metadata:
+  name: readonly-user-password
+  namespace: valkey-system
+type: Opaque
+data:
+  password: cmVhZG9ubHlwYXNzd29yZA==  # readonlypassword
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-user-password
+  namespace: valkey-system
+type: Opaque
+data:
+  password: YXBwdXNlcnBhc3N3b3Jk  # appuserpassword
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cache-user-password
+  namespace: valkey-system
+type: Opaque
+data:
+  password: Y2FjaGV1c2VycGFzc3dvcmQ=  # cacheuserpassword
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: monitoring-user-password
+  namespace: valkey-system
+type: Opaque
+data:
+  password: bW9uaXRvcmluZ3Bhc3N3b3Jk  # monitoringpassword
