@@ -114,7 +114,7 @@ metadata:
   namespace: default
 spec:
   arch: cluster
-  version: 8.0-alpine
+  version: 8.0
   replicas:
     shards: 3
     replicasOfShard: 1
