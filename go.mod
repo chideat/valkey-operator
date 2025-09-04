@@ -3,7 +3,7 @@ module github.com/chideat/valkey-operator
 go 1.24.0
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.1
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/fsnotify/fsnotify v1.9.0
