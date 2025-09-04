@@ -137,7 +137,7 @@ func (g *RuleEngine) isPatchLabelNeeded(ctx context.Context, inst types.Failover
 
 	for _, pod := range pods {
 		var node types.ValkeyNode
-		slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
+		_ = slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
 			if i.GetName() == pod.GetName() {
 				node = i
 				return true

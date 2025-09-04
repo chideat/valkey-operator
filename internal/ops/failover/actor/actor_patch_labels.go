@@ -77,7 +77,7 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 
 	for _, pod := range pods {
 		var node types.ValkeyNode
-		slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
+		_ = slices.IndexFunc(inst.Nodes(), func(i types.ValkeyNode) bool {
 			if i.GetName() == pod.GetName() {
 				node = i
 				return true

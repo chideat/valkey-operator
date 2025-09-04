@@ -85,7 +85,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 		}
 
 		var node types.SentinelNode
-		slices.IndexFunc(inst.Nodes(), func(n types.SentinelNode) bool {
+		_ = slices.IndexFunc(inst.Nodes(), func(n types.SentinelNode) bool {
 			if n.GetName() == pod.GetName() {
 				node = n
 				return true
