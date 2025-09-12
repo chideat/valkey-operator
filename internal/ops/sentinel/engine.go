@@ -114,7 +114,13 @@ func (g *RuleEngine) isPodHealNeeded(ctx context.Context, inst types.SentinelIns
 			} else if err != nil {
 				return actor.RequeueWithError(err)
 			}
-			if typ == corev1.ServiceTypeNodePort {
+
+			if svc.Spec.Type != typ {
+				return actor.NewResult(CommandEnsureResource)
+			}
+
+			switch typ {
+			case corev1.ServiceTypeNodePort:
 				port := util.GetServicePortByName(svc, "sentinel")
 				if port != nil {
 					if int(port.NodePort) != announcePort {
@@ -123,7 +129,7 @@ func (g *RuleEngine) isPodHealNeeded(ctx context.Context, inst types.SentinelIns
 				} else {
 					logger.Error(fmt.Errorf("service %s not found", node.GetName()), "failed to get service, which should not happen")
 				}
-			} else if typ == corev1.ServiceTypeLoadBalancer {
+			case corev1.ServiceTypeLoadBalancer:
 				if slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(i corev1.LoadBalancerIngress) bool {
 					return i.IP == announceIP
 				}) < 0 {

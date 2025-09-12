@@ -215,10 +215,6 @@ func buildEnvs(inst types.FailoverInstance, opUser *user.User, aclConfigMapName 
 			Value: opUser.GetPassword().GetSecretName(),
 		},
 		{
-			Name:  "SERVICE_TYPE",
-			Value: string(rf.Spec.Access.ServiceType),
-		},
-		{
 			Name:  "IP_FAMILY_PREFER",
 			Value: string(rf.Spec.Access.IPFamilyPrefer),
 		},
@@ -389,10 +385,6 @@ func buildValkeyDataInitContainer(rf *v1alpha1.Failover) (*corev1.Container, err
 			{
 				Name:  "IP_FAMILY_PREFER",
 				Value: string(rf.Spec.Access.IPFamilyPrefer),
-			},
-			{
-				Name:  "SERVICE_TYPE",
-				Value: string(rf.Spec.Access.ServiceType),
 			},
 		},
 		Command:         []string{"sh", "/opt/init_failover.sh"},

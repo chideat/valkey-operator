@@ -39,6 +39,7 @@ import (
 )
 
 var (
+	ErrNoUseableNode   = fmt.Errorf("no usable sentinel node")
 	ErrNoMaster        = fmt.Errorf("no master")
 	ErrDoFailover      = fmt.Errorf("sentinel doing failover")
 	ErrMultipleMaster  = fmt.Errorf("multiple master without majority agreement")
@@ -315,7 +316,7 @@ func (s *SentinelMonitor) Replicas(ctx context.Context) ([]*vkcli.SentinelMonito
 
 func (s *SentinelMonitor) Inited(ctx context.Context) (bool, error) {
 	if s == nil || len(s.nodes) == 0 {
-		return false, fmt.Errorf("no sentinel nodes")
+		return false, ErrNoUseableNode
 	}
 
 	for _, node := range s.nodes {
@@ -333,7 +334,7 @@ func (s *SentinelMonitor) Inited(ctx context.Context) (bool, error) {
 // AllNodeMonitored checks if all sentinel nodes are monitoring all the master and replicas
 func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 	if s == nil || len(s.nodes) == 0 {
-		return false, fmt.Errorf("no sentinel nodes")
+		return false, ErrNoUseableNode
 	}
 
 	var (
@@ -409,7 +410,7 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 
 func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]string) error {
 	if s == nil || len(s.nodes) == 0 {
-		return fmt.Errorf("no sentinel nodes")
+		return ErrNoUseableNode
 	}
 	logger := s.logger.WithName("UpdateConfig")
 
@@ -455,7 +456,7 @@ func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]st
 
 func (s *SentinelMonitor) Failover(ctx context.Context) error {
 	if s == nil || len(s.nodes) == 0 {
-		return fmt.Errorf("no sentinel nodes")
+		return ErrNoUseableNode
 	}
 	logger := s.logger.WithName("failover")
 

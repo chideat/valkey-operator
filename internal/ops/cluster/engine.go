@@ -316,7 +316,8 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 					announceIP := node.DefaultIP().String()
 					announcePort := node.Port()
 
-					if typ == corev1.ServiceTypeNodePort {
+					switch typ {
+					case corev1.ServiceTypeNodePort:
 						port := util.GetServicePortByName(svc, "client")
 						if port != nil {
 							if int(port.NodePort) != announcePort {
@@ -325,7 +326,7 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 						} else {
 							logger.Error(fmt.Errorf("service %s not found", node.GetName()), "failed to get service, which should not happen")
 						}
-					} else if typ == corev1.ServiceTypeLoadBalancer {
+					case corev1.ServiceTypeLoadBalancer:
 						if slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(ing corev1.LoadBalancerIngress) bool {
 							return ing.IP == announceIP
 						}) < 0 {
@@ -536,7 +537,7 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	logger := g.logger.WithName("isConfigMapChanged")
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
-	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
+	if errors.IsNotFound(err) || (oldCm != nil && oldCm.Data[builder.ValkeyConfigKey] == "") {
 		return true, nil
 	} else if err != nil {
 		logger.Error(err, "get old configmap failed")

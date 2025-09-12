@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
@@ -31,6 +32,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
+	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/internal/valkey/failover/monitor"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -300,6 +302,13 @@ func (s *Failover) Masters() []types.ValkeyNode {
 		}
 	}
 	return ret
+}
+
+func (s *Failover) Replication() types.Replication {
+	if s == nil {
+		return nil
+	}
+	return s.replication
 }
 
 func (s *Failover) Nodes() []types.ValkeyNode {
@@ -646,6 +655,17 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 			} else if err != nil {
 				s.logger.Error(err, "get resource failed", "kind", gvk.Kind, "target", util.ObjectKey(s.GetNamespace(), name))
 				return false, err
+			}
+
+			if obj.GroupVersionKind() == serviceKey {
+				ts := obj.GetCreationTimestamp()
+				typ, _, _ := unstructured.NestedString(obj.Object, "spec", "type")
+				lbs, _, _ := unstructured.NestedSlice(obj.Object, "status", "loadBalancer", "ingress")
+				if typ == string(corev1.ServiceTypeLoadBalancer) && len(lbs) == 0 &&
+					time.Since(ts.Time) >= config.LoadbalancerReadyTimeout() {
+					s.logger.V(3).Info("load balancer service not ready", "target", util.ObjectKey(s.GetNamespace(), name), "createdAt", ts.Time)
+					return false, nil
+				}
 			}
 		}
 	}

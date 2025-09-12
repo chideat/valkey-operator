@@ -194,7 +194,7 @@ func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverIns
 		return actor.RequeueWithError(err)
 	}
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
+	if errors.IsNotFound(err) || (oldCm != nil && oldCm.Data[builder.ValkeyConfigKey] == "") {
 		err := fmt.Errorf("configmap %s not found", newCm.GetName())
 		return actor.NewResultWithError(CommandEnsureResource, err)
 	} else if err != nil {
@@ -232,7 +232,13 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			} else if err != nil {
 				return actor.RequeueWithError(err)
 			}
-			if typ == corev1.ServiceTypeNodePort {
+
+			if svc.Spec.Type != typ {
+				return actor.NewResult(CommandEnsureResource)
+			}
+
+			switch typ {
+			case corev1.ServiceTypeNodePort:
 				port := util.GetServicePortByName(svc, "client")
 				if port != nil {
 					if int(port.NodePort) != announcePort {
@@ -241,7 +247,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 				} else {
 					logger.Error(fmt.Errorf("service %s not found", node.GetName()), "failed to get service, which should not happen")
 				}
-			} else if typ == corev1.ServiceTypeLoadBalancer {
+			case corev1.ServiceTypeLoadBalancer:
 				if slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(i corev1.LoadBalancerIngress) bool {
 					return i.IP == announceIP
 				}) < 0 {

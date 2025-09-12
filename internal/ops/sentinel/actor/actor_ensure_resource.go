@@ -31,6 +31,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
+	"github.com/chideat/valkey-operator/internal/config"
 	ops "github.com/chideat/valkey-operator/internal/ops/sentinel"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
@@ -90,14 +91,13 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 	if ret := a.ensureServiceAccount(ctx, sentinel, logger); ret != nil {
 		return ret
 	}
-	if ret := a.ensureService(ctx, sentinel, logger); ret != nil {
-		return ret
-	}
-	// ensure configMap
 	if ret := a.ensureConfigMap(ctx, sentinel, logger); ret != nil {
 		return ret
 	}
 	if ret := a.ensureValkeySSL(ctx, sentinel, logger); ret != nil {
+		return ret
+	}
+	if ret := a.ensureService(ctx, sentinel, logger); ret != nil {
 		return ret
 	}
 	if ret := a.ensureStatefulSet(ctx, sentinel, logger); ret != nil {
@@ -187,7 +187,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 			return actor.RequeueWithError(err)
 		}
 		time.Sleep(time.Second * 3)
-		if err = a.client.CreateStatefulSet(ctx, sen.Namespace, sts); err != nil {
+		if err = a.client.CreateStatefulSet(ctx, sen.Namespace, sts); err != nil && !errors.IsAlreadyExists(err) {
 			logger.Error(err, "update statefulset failed", "target", client.ObjectKeyFromObject(sts))
 			return actor.RequeueWithError(err)
 		}
@@ -382,49 +382,42 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 		return ret
 	}
 
-	createService := func(senService *corev1.Service) *actor.ActorResult {
+	ensureService := func(senService *corev1.Service) *actor.ActorResult {
 		if oldService, err := a.client.GetService(ctx, sen.GetNamespace(), senService.Name); errors.IsNotFound(err) {
 			if err := a.client.CreateService(ctx, sen.GetNamespace(), senService); err != nil {
 				return actor.NewResultWithError(ops.CommandRequeue, err)
 			}
 		} else if err != nil {
 			return actor.NewResultWithError(ops.CommandRequeue, err)
-		} else if senService.Spec.Type != oldService.Spec.Type ||
-			(senService.Spec.Type == corev1.ServiceTypeNodePort && senService.Spec.Ports[0].NodePort != oldService.Spec.Ports[0].NodePort) ||
-			!reflect.DeepEqual(senService.Spec.Selector, oldService.Spec.Selector) ||
-			!reflect.DeepEqual(senService.Labels, oldService.Labels) ||
-			!reflect.DeepEqual(senService.Annotations, oldService.Annotations) {
-
+		} else if util.IsServiceChanged(senService, oldService, logger) {
 			if err := a.client.UpdateService(ctx, sen.GetNamespace(), senService); err != nil {
 				return actor.NewResultWithError(ops.CommandRequeue, err)
 			}
+		} else if oldService.Spec.Type == corev1.ServiceTypeLoadBalancer &&
+			len(oldService.Status.LoadBalancer.Ingress) == 0 &&
+			time.Since(oldService.GetCreationTimestamp().Time) >= config.LoadbalancerReadyTimeout() {
+			// if lb block ed pending for 2mins, return no lb usable error
+			return actor.RequeueWithError(fmt.Errorf("no loadbalancer available for service %s, please check the cloud provider", oldService.Name))
 		}
 		return nil
 	}
 
-	if ret := createService(sentinelbuilder.GenerateSentinelHeadlessService(sen)); ret != nil {
-		return ret
-	}
-
-	switch sen.Spec.Access.ServiceType {
-	case corev1.ServiceTypeNodePort:
+	if sen.Spec.Access.ServiceType == corev1.ServiceTypeNodePort && sen.Spec.Access.Ports != "" {
 		if ret := a.ensureValkeySpecifiedNodePortService(ctx, inst, logger); ret != nil {
 			return ret
 		}
-	case corev1.ServiceTypeLoadBalancer:
-		if ret := a.ensureValkeyPodService(ctx, inst, logger); ret != nil {
-			return ret
-		}
+	} else if ret := a.ensureValkeyPodService(ctx, inst, logger); ret != nil {
+		return ret
+	}
+
+	if ret := ensureService(sentinelbuilder.GenerateSentinelHeadlessService(sen)); ret != nil {
+		return ret
 	}
 	return nil
 }
 
 func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
-
-	if sen.Spec.Access.Ports == "" {
-		return a.ensureValkeyPodService(ctx, inst, logger)
-	}
 
 	logger.V(3).Info("ensure sentinel nodeports", "namepspace", sen.Namespace, "name", sen.Name)
 	configedPorts, err := helper.ParsePorts(sen.Spec.Access.Ports)
@@ -491,7 +484,9 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 		needUpdateServices []*corev1.Service
 	)
 	for _, svc := range services {
-		bindedNodeports = append(bindedNodeports, getClientPort(svc.DeepCopy()))
+		if svc.Spec.Type == corev1.ServiceTypeNodePort {
+			bindedNodeports = append(bindedNodeports, getClientPort(svc.DeepCopy()))
+		}
 	}
 
 	// filter used ports
@@ -521,52 +516,81 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 
 		svc := sentinelbuilder.GeneratePodNodePortService(sen, i, getClientPort(oldService))
 		// check old service for compatibility
-		if !reflect.DeepEqual(oldService.Spec.Selector, svc.Spec.Selector) ||
-			len(oldService.Spec.Ports) != len(svc.Spec.Ports) ||
-			!reflect.DeepEqual(oldService.Labels, svc.Labels) ||
-			!reflect.DeepEqual(oldService.Annotations, svc.Annotations) {
-
-			oldService.OwnerReferences = util.BuildOwnerReferences(sen)
-			oldService.Spec = svc.Spec
-			oldService.Labels = svc.Labels
-			oldService.Annotations = svc.Annotations
-			if err := a.client.UpdateService(ctx, oldService.Namespace, oldService); err != nil {
+		svc.Spec.Type = oldService.Spec.Type
+		if util.IsServiceChanged(oldService, svc, logger) {
+			if err := a.client.UpdateService(ctx, oldService.Namespace, svc); err != nil {
 				a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(oldService))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
 			}
 		}
-		if port := getClientPort(oldService); port != 0 && !slices.Contains(configedPorts, port) {
-			needUpdateServices = append(needUpdateServices, oldService)
+		svc.Spec.Type = corev1.ServiceTypeNodePort
+		if port := getClientPort(oldService); (port != 0 && !slices.Contains(configedPorts, port)) ||
+			oldService.Spec.Type != corev1.ServiceTypeNodePort {
+			needUpdateServices = append(needUpdateServices, svc)
 		}
 	}
 
 	// 3. update existing service and restart pod (only one pod is restarted at a same time for each shard)
 	if len(needUpdateServices) > 0 && len(newPorts) > 0 {
-		port, svc := newPorts[0], needUpdateServices[0]
-		if sp := util.GetServicePortByName(svc, "sentinel"); sp != nil {
-			sp.NodePort = port
+		if inst.Replication() != nil && !(inst.Replication().Definition().Status.ReadyReplicas == 0 || (inst.Replication().IsReady() && func() bool {
+			ts := time.Now()
+			for _, node := range inst.Replication().Nodes() {
+				if cond, exists := lo.Find(node.Definition().Status.Conditions, func(item corev1.PodCondition) bool {
+					return item.Type == corev1.PodReady && item.Status == corev1.ConditionTrue
+				}); !exists || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
+					return false
+				}
+			}
+			return len(inst.Replication().Nodes()) == int(*inst.Replication().Definition().Spec.Replicas)
+		}())) {
+			logger.Info("wait statefulset ready to update next NodePort")
+			return actor.Requeue()
 		}
 
-		// NOTE: here not make sure the failover success, because the nodeport updated, the communication will be failed
-		//       in k8s, the nodeport can still access for sometime after the nodeport updated
-		//
-		// update service
-		if err = a.client.UpdateService(ctx, svc.Namespace, svc); err != nil {
-			a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(svc), "port", port)
-			return actor.NewResultWithValue(ops.CommandRequeue, err)
-		}
-		if pod, _ := a.client.GetPod(ctx, sen.Namespace, svc.Spec.Selector[builder.PodNameLabelKey]); pod != nil {
-			if err := a.client.DeletePod(ctx, sen.Namespace, pod.Name); err != nil {
-				return actor.NewResultWithError(ops.CommandRequeue, err)
+		for i := len(needUpdateServices) - 1; i >= 0; i-- {
+			if len(newPorts) <= i {
+				logger.Error(fmt.Errorf("update nodeport failed"), "not enough nodeport for service", "ports", newPorts)
+				return actor.NewResultWithValue(ops.CommandRequeue, fmt.Errorf("not enough nodeport for service, please check the config"))
 			}
-			return actor.NewResult(ops.CommandRequeue)
+			port, svc := newPorts[i], needUpdateServices[i]
+			if oldPort := getClientPort(svc); slices.Contains(newPorts, oldPort) {
+				port = oldPort
+			}
+			if sp := util.GetServicePortByName(svc, "sentinel"); sp != nil {
+				sp.NodePort = port
+			}
+			tmpNewPorts := newPorts
+			newPorts = newPorts[0:0]
+			for _, p := range tmpNewPorts {
+				if p != port {
+					newPorts = append(newPorts, p)
+				}
+			}
+			// NOTE: here not make sure the failover success, because the nodeport updated, the communication will be failed
+			//       in k8s, the nodeport can still access for sometime after the nodeport updated
+			//
+			// update service
+			if err = a.client.UpdateService(ctx, svc.Namespace, svc); err != nil {
+				logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(svc), "port", port)
+				return actor.NewResultWithValue(ops.CommandRequeue, err)
+			}
+			if pod, _ := a.client.GetPod(ctx, inst.GetNamespace(), svc.Spec.Selector[builder.PodNameLabelKey]); pod != nil {
+				if err := a.client.DeletePod(ctx, inst.GetNamespace(), pod.Name); err != nil {
+					return actor.NewResultWithError(ops.CommandRequeue, err)
+				}
+				return actor.RequeueAfter(time.Second * 5)
+			}
 		}
 	}
 	return nil
 }
 
 func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
-	sen := inst.Definition()
+	var (
+		sen                = inst.Definition()
+		needUpdateServices []*corev1.Service
+	)
+
 	for i := 0; i < int(sen.Spec.Replicas); i++ {
 		newSvc := sentinelbuilder.GeneratePodService(sen, i)
 		if svc, err := a.client.GetService(ctx, sen.Namespace, newSvc.Name); errors.IsNotFound(err) {
@@ -577,14 +601,43 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 		} else if err != nil {
 			logger.Error(err, "get service failed", "target", client.ObjectKeyFromObject(newSvc))
 			return actor.NewResult(ops.CommandRequeue)
-		} else if newSvc.Spec.Type != svc.Spec.Type ||
-			!reflect.DeepEqual(newSvc.Spec.Selector, svc.Spec.Selector) ||
-			!reflect.DeepEqual(newSvc.Labels, svc.Labels) ||
-			!reflect.DeepEqual(newSvc.Annotations, svc.Annotations) {
-			svc.Spec = newSvc.Spec
-			if err = a.client.UpdateService(ctx, sen.Namespace, svc); err != nil {
-				logger.Error(err, "update service failed", "target", client.ObjectKeyFromObject(svc))
-				return actor.NewResultWithError(ops.CommandRequeue, err)
+		} else if util.IsServiceChanged(newSvc, svc, logger) {
+			needUpdateServices = append(needUpdateServices, newSvc)
+		} else if svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
+			len(svc.Status.LoadBalancer.Ingress) == 0 &&
+			time.Since(svc.GetCreationTimestamp().Time) >= config.LoadbalancerReadyTimeout() {
+			// if lb block ed pending for 2mins, return no lb usable error
+			return actor.RequeueWithError(fmt.Errorf("no loadbalancer available for service %s, please check the cloud provider", svc.Name))
+		}
+	}
+
+	if len(needUpdateServices) > 0 {
+		if inst.Replication() != nil && !(inst.Replication().Definition().Status.ReadyReplicas == 0 || (inst.Replication().IsReady() && func() bool {
+			ts := time.Now()
+			for _, node := range inst.Replication().Nodes() {
+				if cond, exists := lo.Find(node.Definition().Status.Conditions, func(item corev1.PodCondition) bool {
+					return item.Type == corev1.PodReady && item.Status == corev1.ConditionTrue
+				}); !exists || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
+					return false
+				}
+			}
+			return len(inst.Replication().Nodes()) == int(*inst.Replication().Definition().Spec.Replicas)
+		}())) {
+			logger.Info("wait statefulset ready to update next service")
+			return actor.Requeue()
+		}
+
+		for i := len(needUpdateServices) - 1; i >= 0; i-- {
+			svc := needUpdateServices[i]
+			if err := a.client.UpdateService(ctx, inst.GetNamespace(), svc); err != nil {
+				logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(svc))
+				return actor.NewResultWithValue(ops.CommandRequeue, err)
+			}
+			if pod, _ := a.client.GetPod(ctx, inst.GetNamespace(), svc.Spec.Selector[builder.PodNameLabelKey]); pod != nil {
+				if err := a.client.DeletePod(ctx, inst.GetNamespace(), pod.Name); err != nil {
+					return actor.NewResultWithError(ops.CommandRequeue, err)
+				}
+				return actor.RequeueAfter(time.Second * 5)
 			}
 		}
 	}

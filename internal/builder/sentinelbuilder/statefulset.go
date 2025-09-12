@@ -173,10 +173,6 @@ func buildInitContainer(sen *v1alpha1.Sentinel, _ []corev1.EnvVar) (*corev1.Cont
 				Name:  "IP_FAMILY_PREFER",
 				Value: string(sen.Spec.Access.IPFamilyPrefer),
 			},
-			{
-				Name:  "SERVICE_TYPE",
-				Value: string(sen.Spec.Access.ServiceType),
-			},
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -346,10 +342,6 @@ func buildEnvs(sen *v1alpha1.Sentinel) []corev1.EnvVar {
 		{
 			Name:  "TLS_ENABLED",
 			Value: fmt.Sprintf("%t", sen.Spec.Access.EnableTLS),
-		},
-		{
-			Name:  "SERVICE_TYPE",
-			Value: string(sen.Spec.Access.ServiceType),
 		},
 		{
 			Name:  "IP_FAMILY_PREFER",

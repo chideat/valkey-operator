@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
@@ -32,6 +33,7 @@ import (
 	databasesv1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
+	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
@@ -331,15 +333,18 @@ func (s *ValkeySentinel) IsResourceFullfilled(ctx context.Context) (bool, error)
 				s.logger.Error(err, "get resource failed", "target", util.ObjectKey(s.GetNamespace(), name))
 				return false, err
 			}
-			// if gvk == stsKey {
-			// 	if replicas, found, err := unstructured.NestedInt64(obj.Object, "spec", "replicas"); err != nil {
-			// 		s.logger.Error(err, "get service replicas failed", "target", util.ObjectKey(s.GetNamespace(), name))
-			// 		return false, err
-			// 	} else if found && replicas != int64(s.Spec.Replicas) {
-			// 		s.logger.Info("@@@@@@@ found", "replicas", replicas, "s.Spec.Replicas", s.Spec.Replicas)
-			// 		return false, nil
-			// 	}
-			// }
+
+			if obj.GroupVersionKind() == serviceKey {
+				ts := obj.GetCreationTimestamp()
+				typ, _, _ := unstructured.NestedString(obj.Object, "spec", "type")
+				lbs, _, _ := unstructured.NestedSlice(obj.Object, "status", "loadBalancer", "ingress")
+				if typ == string(corev1.ServiceTypeLoadBalancer) && len(lbs) == 0 &&
+					time.Since(ts.Time) >= config.LoadbalancerReadyTimeout() {
+					s.logger.V(3).Info("load balancer service not ready", "target", util.ObjectKey(s.GetNamespace(), name), "createdAt", ts.Time)
+					return false, nil
+				}
+			}
+
 		}
 	}
 	return true, nil

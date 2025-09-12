@@ -316,6 +316,136 @@ func IsPodTemplasteChanged(newTplSpec, oldTplSpec *corev1.PodTemplateSpec, logge
 	return false
 }
 
+func IsServiceChanged(ns, os *corev1.Service, logger logr.Logger) bool {
+	if (ns == nil && os != nil) || (ns != nil && os == nil) {
+		return true
+	}
+	newSvc, oldSvc := ns.DeepCopy(), os.DeepCopy()
+
+	isSubset := func(n, o map[string]string) bool {
+		if len(n) > len(o) {
+			return false
+		}
+		for k, v := range n {
+			if val, ok := o[k]; !ok || val != v {
+				return false
+			}
+		}
+		return true
+	}
+
+	if !isSubset(newSvc.Labels, oldSvc.Labels) ||
+		!isSubset(newSvc.Annotations, oldSvc.Annotations) {
+		logger.V(1).Info("Service labels or annotations changed",
+			"newLabels", newSvc.Labels,
+			"oldLabels", oldSvc.Labels,
+			"newAnnotations", newSvc.Annotations,
+			"oldAnnotations", oldSvc.Annotations,
+		)
+		return true
+	}
+
+	if newSvc.Spec.Type == "" {
+		newSvc.Spec.Type = corev1.ServiceTypeClusterIP
+	}
+	if oldSvc.Spec.Type == "" {
+		oldSvc.Spec.Type = corev1.ServiceTypeClusterIP
+	}
+
+	if newSvc.Spec.Type != oldSvc.Spec.Type {
+		logger.V(1).Info("Service type changed")
+		return true
+	}
+	if newSvc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if newSvc.Spec.AllocateLoadBalancerNodePorts == nil {
+			newSvc.Spec.AllocateLoadBalancerNodePorts = ptr.To(true)
+		}
+		if oldSvc.Spec.AllocateLoadBalancerNodePorts == nil {
+			oldSvc.Spec.AllocateLoadBalancerNodePorts = ptr.To(true)
+		}
+	}
+	if newSvc.Spec.SessionAffinity == "" {
+		newSvc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+	}
+	if oldSvc.Spec.SessionAffinity == "" {
+		oldSvc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+	}
+	if newSvc.Spec.InternalTrafficPolicy == nil {
+		newSvc.Spec.InternalTrafficPolicy = ptr.To(corev1.ServiceInternalTrafficPolicyCluster)
+	}
+	if oldSvc.Spec.InternalTrafficPolicy == nil {
+		oldSvc.Spec.InternalTrafficPolicy = ptr.To(corev1.ServiceInternalTrafficPolicyCluster)
+	}
+	if newSvc.Spec.ExternalTrafficPolicy == "" {
+		newSvc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+	}
+	if oldSvc.Spec.ExternalTrafficPolicy == "" {
+		oldSvc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+	}
+
+	if !cmp.Equal(newSvc.Spec.Selector, oldSvc.Spec.Selector, cmpopts.EquateEmpty()) ||
+		!cmp.Equal(newSvc.Spec.IPFamilyPolicy, oldSvc.Spec.IPFamilyPolicy, cmpopts.EquateEmpty()) ||
+		!cmp.Equal(newSvc.Spec.IPFamilies, oldSvc.Spec.IPFamilies, cmpopts.EquateEmpty()) ||
+		newSvc.Spec.HealthCheckNodePort != oldSvc.Spec.HealthCheckNodePort ||
+		newSvc.Spec.PublishNotReadyAddresses != oldSvc.Spec.PublishNotReadyAddresses ||
+		newSvc.Spec.SessionAffinity != oldSvc.Spec.SessionAffinity ||
+		!cmp.Equal(newSvc.Spec.InternalTrafficPolicy, oldSvc.Spec.InternalTrafficPolicy, cmpopts.EquateEmpty()) ||
+		newSvc.Spec.ExternalTrafficPolicy != oldSvc.Spec.ExternalTrafficPolicy ||
+		!cmp.Equal(newSvc.Spec.TrafficDistribution, oldSvc.Spec.TrafficDistribution, cmpopts.EquateEmpty()) ||
+
+		(newSvc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
+			(newSvc.Spec.LoadBalancerIP != oldSvc.Spec.LoadBalancerIP ||
+				!cmp.Equal(newSvc.Spec.LoadBalancerSourceRanges, oldSvc.Spec.LoadBalancerSourceRanges, cmpopts.EquateEmpty()) ||
+				!cmp.Equal(newSvc.Spec.AllocateLoadBalancerNodePorts, oldSvc.Spec.AllocateLoadBalancerNodePorts, cmpopts.EquateEmpty()))) {
+
+		logger.V(1).Info("Service spec changed",
+			"selector", !cmp.Equal(newSvc.Spec.Selector, oldSvc.Spec.Selector, cmpopts.EquateEmpty()),
+			"familypolicy", !cmp.Equal(newSvc.Spec.IPFamilyPolicy, oldSvc.Spec.IPFamilyPolicy, cmpopts.EquateEmpty()),
+			"IPFamilies", !cmp.Equal(newSvc.Spec.IPFamilies, oldSvc.Spec.IPFamilies, cmpopts.EquateEmpty()),
+			"allocatelbport", !cmp.Equal(newSvc.Spec.AllocateLoadBalancerNodePorts, oldSvc.Spec.AllocateLoadBalancerNodePorts, cmpopts.EquateEmpty()),
+			"HealthCheckNodePort", newSvc.Spec.HealthCheckNodePort != oldSvc.Spec.HealthCheckNodePort,
+			"LoadBalancerIP", newSvc.Spec.LoadBalancerIP != oldSvc.Spec.LoadBalancerIP,
+			"LoadBalancerSourceRanges", !cmp.Equal(newSvc.Spec.LoadBalancerSourceRanges, oldSvc.Spec.LoadBalancerSourceRanges, cmpopts.EquateEmpty()),
+			"PublishNotReadyAddresses", newSvc.Spec.PublishNotReadyAddresses != oldSvc.Spec.PublishNotReadyAddresses,
+			"TrafficDistribution", !cmp.Equal(newSvc.Spec.TrafficDistribution, oldSvc.Spec.TrafficDistribution, cmpopts.EquateEmpty()),
+		)
+		return true
+	}
+
+	if len(newSvc.Spec.Ports) != len(oldSvc.Spec.Ports) {
+		logger.V(1).Info("Service ports length changed")
+		return true
+	}
+	for i, port := range newSvc.Spec.Ports {
+		oldPort := oldSvc.Spec.Ports[i]
+		if port.Protocol == "" {
+			port.Protocol = corev1.ProtocolTCP
+		}
+		if oldPort.Protocol == "" {
+			oldPort.Protocol = corev1.ProtocolTCP
+		}
+
+		if port.Name != oldPort.Name ||
+			port.Protocol != oldPort.Protocol ||
+			port.Port != oldPort.Port ||
+			(newSvc.Spec.Type == corev1.ServiceTypeNodePort && port.NodePort != 0 && port.NodePort != oldPort.NodePort) {
+
+			logger.V(1).Info("Service port changed",
+				"portName", port.Name,
+				"portProtocol", port.Protocol,
+				"portNumber", port.Port,
+				"nodePort", port.NodePort,
+				"oldPortName", oldPort.Name,
+				"oldPortProtocol", oldPort.Protocol,
+				"oldPortNumber", oldPort.Port,
+				"oldNodePort", oldPort.NodePort,
+			)
+			return true
+		}
+	}
+	return false
+}
+
 func loadEnvs(envs []corev1.EnvVar) map[string]string {
 	kvs := map[string]string{}
 	for _, item := range envs {

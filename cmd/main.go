@@ -70,7 +70,7 @@ func init() {
 //+kubebuilder:rbac:groups=apps,resources=statefulsets;statefulsets/finalizers;deployments;deployments/finalizers;daemonsets;replicasets,verbs=get;list;watch;create;update;delete
 //+kubebuilder:rbac:groups=batch,resources=jobs;jobs/finalizers;cronjobs;cronjobs/finalizers,verbs=get;list;watch;create;update;delete;deletecollection
 //+kubebuilder:rbac:groups=*,resources=pods;pods/exec;configmaps;configmaps/finalizers;secrets;secrets/finalizers;services;services/finalizers;persistentvolumeclaims;persistentvolumeclaims/finalizers;endpoints,verbs=get;list;watch;create;update;patch;delete;deletecollection
-//+kubebuilder:rbac:groups=*,resources=events,verbs=get;list;watch;create;update;delete;deletecollection
+//+kubebuilder:rbac:groups=*,resources=events,verbs=create;update;patch
 //+kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets;poddisruptionbudgets/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=*,resources=pods;pods/exec;configmaps;endpoints;services;services/finalizers,verbs=*

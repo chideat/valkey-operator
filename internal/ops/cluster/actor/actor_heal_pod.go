@@ -122,7 +122,8 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 				logger.Error(err, "get service failed", "name", node.GetName())
 				return actor.RequeueWithError(err)
 			}
-			if typ == corev1.ServiceTypeNodePort {
+			switch typ {
+			case corev1.ServiceTypeNodePort:
 				port := util.GetServicePortByName(svc, "client")
 				if port != nil {
 					if int(port.NodePort) != announcePort {
@@ -132,14 +133,14 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 							return actor.RequeueWithError(err)
 						} else {
 							cluster.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
-								"force delete pod with inconsist annotation %s", node.GetName())
+								"force delete pod with inconsist announce %s", node.GetName())
 							return actor.Requeue()
 						}
 					}
 				} else {
 					logger.Error(fmt.Errorf("service port not found"), "service port not found", "name", node.GetName(), "port", "client")
 				}
-			} else if typ == corev1.ServiceTypeLoadBalancer {
+			case corev1.ServiceTypeLoadBalancer:
 				if index := slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(ing corev1.LoadBalancerIngress) bool {
 					return ing.IP == announceIP || ing.Hostname == announceIP
 				}); index < 0 {
@@ -149,7 +150,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 						return actor.RequeueWithError(err)
 					} else {
 						cluster.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
-							"force delete pod with inconsist annotation %s", node.GetName())
+							"force delete pod with inconsist announce %s", node.GetName())
 						return actor.Requeue()
 					}
 				}
