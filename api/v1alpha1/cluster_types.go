@@ -22,6 +22,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ClusterResourceCleanFinalizer = "buf.red/cluster-resource-clean"
+)
+
 type ShardConfig struct {
 	// Slots is the slot range for the shard, eg: 0-1000,1002,1005-1100
 	//+kubebuilder:validation:Pattern:=`^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$`

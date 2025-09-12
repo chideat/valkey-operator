@@ -39,6 +39,8 @@ import (
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/samber/lo"
 
 	"github.com/go-logr/logr"
@@ -345,7 +347,7 @@ func (a *actorEnsureResource) ensureSentinel(ctx context.Context, inst types.Fai
 		logger.Error(err, "get sentinel failed", "target", client.ObjectKeyFromObject(newSen))
 		return actor.RequeueWithError(err)
 	}
-	if !reflect.DeepEqual(newSen.Spec, oldSen.Spec) ||
+	if !cmp.Equal(newSen.Spec, oldSen.Spec, cmpopts.EquateEmpty()) ||
 		!reflect.DeepEqual(newSen.Labels, oldSen.Labels) ||
 		!reflect.DeepEqual(newSen.Annotations, oldSen.Annotations) {
 		oldSen.Spec = newSen.Spec

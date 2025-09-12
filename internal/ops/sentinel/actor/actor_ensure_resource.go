@@ -36,6 +36,8 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -204,7 +206,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, ins
 	} else if err != nil {
 		logger.Error(err, "get poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
 		return actor.NewResultWithError(ops.CommandRequeue, err)
-	} else if !reflect.DeepEqual(oldPdb.Spec, pdb.Spec) {
+	} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) {
 		pdb.ResourceVersion = oldPdb.ResourceVersion
 		if err := a.client.UpdatePodDisruptionBudget(ctx, sen.Namespace, pdb); err != nil {
 			logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))

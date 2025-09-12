@@ -24,17 +24,18 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops"
@@ -58,11 +59,59 @@ func (r *FailoverReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger := log.FromContext(ctx).WithValues("target", req.String())
 
 	var instance v1alpha1.Failover
-	if err := r.Get(ctx, req.NamespacedName, &instance); errors.IsNotFound(err) {
-		return ctrl.Result{}, nil
-	} else if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, &instance); err != nil {
 		logger.Error(err, "get resource failed")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	} else if instance.GetDeletionTimestamp() != nil {
+		if controllerutil.ContainsFinalizer(&instance, builder.ResourceCleanFinalizer) {
+			// check if sts is marked for deletion
+			labels := failoverbuilder.GenerateCommonLabels(instance.GetName())
+			stsList := appsv1.StatefulSetList{}
+			if err := r.List(ctx, &stsList, client.InNamespace(instance.Namespace), client.MatchingLabels(labels)); err != nil {
+				logger.Error(err, "get failover statefulsets failed", "labels", labels)
+				return ctrl.Result{}, err
+			}
+
+			needRequeue := false
+			for _, sts := range stsList.Items {
+				if sts.GetDeletionTimestamp() == nil {
+					if err := r.Delete(ctx, &sts); err != nil {
+						logger.Error(err, "delete failover statefulset failed", "name", sts.GetName())
+					}
+					needRequeue = true
+				}
+			}
+			if needRequeue {
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+			}
+
+			// check if all pods is shutdown
+			podList := corev1.PodList{}
+			if err := r.List(ctx, &podList, client.InNamespace(instance.Namespace), client.MatchingLabels(labels)); err != nil {
+				logger.Error(err, "list pods failed", "namespace", instance.Namespace, "labels", labels)
+				return ctrl.Result{}, err
+			}
+			if len(podList.Items) > 0 {
+				logger.Info("failover pods is not shutdown, waiting for next reconcile", "pods", len(podList.Items))
+				return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+			}
+
+			logger.Info("instance is deleting, remove finalizer", "name", instance.GetName())
+			controllerutil.RemoveFinalizer(&instance, builder.ResourceCleanFinalizer)
+			if err := r.Update(ctx, &instance); err != nil {
+				logger.Error(err, "update instance finalizer failed")
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	if !controllerutil.ContainsFinalizer(&instance, builder.ResourceCleanFinalizer) {
+		controllerutil.AddFinalizer(&instance, builder.ResourceCleanFinalizer)
+		if err := r.Update(ctx, &instance); err != nil {
+			logger.Error(err, "add finalizer failed", "instance", instance.GetName())
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	if crVersion := instance.Annotations[builder.CRVersionKey]; crVersion == "" {

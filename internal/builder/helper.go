@@ -193,3 +193,32 @@ func MergeAnnotations(t, s map[string]string) map[string]string {
 	}
 	return t
 }
+
+func IsPodAnnotationDiff(d map[string]string, s map[string]string) bool {
+	if len(d) != len(s) {
+		return true
+	}
+
+	for k, v := range d {
+		if k == RestartAnnotationKey {
+			if v == "" {
+				continue
+			}
+			targetV := s[RestartAnnotationKey]
+			if targetV == "" {
+				return true
+			}
+			newTime, err1 := time.Parse(time.RFC3339Nano, v)
+			targetTime, err2 := time.Parse(time.RFC3339Nano, targetV)
+			if err1 != nil || err2 != nil {
+				return true
+			}
+			if newTime.After(targetTime) {
+				return true
+			}
+		} else if s[k] != v {
+			return true
+		}
+	}
+	return false
+}

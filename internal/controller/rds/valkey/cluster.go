@@ -27,6 +27,8 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -104,6 +106,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Labels:          labels,
 			Annotations:     annotations,
 			OwnerReferences: util.BuildOwnerReferences(instance),
+			Finalizers:      []string{builder.ResourceCleanFinalizer},
 		},
 		Spec: v1alpha1.ClusterSpec{
 			Image: image,
@@ -139,8 +142,18 @@ func ShouldUpdateCluster(cluster, newCluster *v1alpha1.Cluster, logger logr.Logg
 		!reflect.DeepEqual(cluster.Annotations, newCluster.Annotations) {
 		return true
 	}
+	if !cmp.Equal(cluster.Spec, newCluster.Spec,
+		cmpopts.EquateEmpty(),
+		cmpopts.IgnoreFields(v1alpha1.ClusterSpec{}, "PodAnnotations"),
+	) {
+		return true
+	}
 
-	return !reflect.DeepEqual(cluster.Spec, newCluster.Spec)
+	if builder.IsPodAnnotationDiff(newCluster.Spec.PodAnnotations, cluster.Spec.PodAnnotations) {
+		logger.V(3).Info("pod annotations diff")
+		return true
+	}
+	return false
 }
 
 func ClusterIsUp(cluster *v1alpha1.Cluster) bool {

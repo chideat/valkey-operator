@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -129,11 +131,29 @@ func GetVolumeByName(vols []corev1.Volume, name string) *corev1.Volume {
 	return nil
 }
 
+// isSubmap checks if map 'a' is a submap of map 'b'.
+// It returns true if every key-value pair in 'a' is also present in 'b'.
+func isSubmap[K, V comparable](a, b map[K]V) bool {
+	if len(a) == 0 {
+		return true
+	}
+	if len(b) == 0 {
+		return false
+	}
+	for keyA, valA := range a {
+		valB, ok := b[keyA]
+		if !ok || valA != valB {
+			return false
+		}
+	}
+	return true
+}
+
 // IsStatefulsetChanged
 func IsStatefulsetChanged(newSts, sts *appsv1.StatefulSet, logger logr.Logger) bool {
 	// statefulset check
-	if !reflect.DeepEqual(newSts.GetLabels(), sts.GetLabels()) ||
-		!reflect.DeepEqual(newSts.GetAnnotations(), sts.GetAnnotations()) {
+	if !cmp.Equal(newSts.GetLabels(), sts.GetLabels(), cmpopts.EquateEmpty()) ||
+		!cmp.Equal(newSts.GetAnnotations(), sts.GetAnnotations(), cmpopts.EquateEmpty()) {
 		logger.V(2).Info("labels or annotations diff")
 		return true
 	}
@@ -166,7 +186,7 @@ func IsStatefulsetChanged(newSts, sts *appsv1.StatefulSet, logger logr.Logger) b
 			return true
 		}
 
-		if !reflect.DeepEqual(oldPvc.Spec, newPvc.Spec) {
+		if !cmp.Equal(oldPvc.Spec, newPvc.Spec, cmpopts.EquateEmpty()) {
 			logger.V(2).Info("pvc diff", "name", name, "old", oldPvc.Spec, "new", newPvc.Spec)
 			return true
 		}
@@ -177,9 +197,13 @@ func IsStatefulsetChanged(newSts, sts *appsv1.StatefulSet, logger logr.Logger) b
 
 func IsPodTemplasteChanged(newTplSpec, oldTplSpec *corev1.PodTemplateSpec, logger logr.Logger) bool {
 	if (newTplSpec == nil && oldTplSpec != nil) || (newTplSpec != nil && oldTplSpec == nil) ||
-		!reflect.DeepEqual(newTplSpec.Labels, oldTplSpec.Labels) ||
-		!reflect.DeepEqual(newTplSpec.Annotations, oldTplSpec.Annotations) {
-		logger.V(2).Info("pod labels diff")
+		!cmp.Equal(newTplSpec.Labels, oldTplSpec.Labels, cmpopts.EquateEmpty()) ||
+		!isSubmap(newTplSpec.Annotations, oldTplSpec.Annotations) {
+
+		logger.V(2).Info("pod labels diff",
+			"newLabels", newTplSpec.Labels, "oldLabels", oldTplSpec.Labels,
+			"newAnnotations", newTplSpec.Annotations, "oldAnnotations", oldTplSpec.Annotations,
+		)
 		return true
 	}
 
@@ -191,14 +215,14 @@ func IsPodTemplasteChanged(newTplSpec, oldTplSpec *corev1.PodTemplateSpec, logge
 	}
 
 	// nodeselector
-	if !reflect.DeepEqual(newSpec.NodeSelector, oldSpec.NodeSelector) ||
-		!reflect.DeepEqual(newSpec.Affinity, oldSpec.Affinity) ||
-		!reflect.DeepEqual(newSpec.Tolerations, oldSpec.Tolerations) {
+	if !cmp.Equal(newSpec.NodeSelector, oldSpec.NodeSelector, cmpopts.EquateEmpty()) ||
+		!cmp.Equal(newSpec.Affinity, oldSpec.Affinity, cmpopts.EquateEmpty()) ||
+		!cmp.Equal(newSpec.Tolerations, oldSpec.Tolerations, cmpopts.EquateEmpty()) {
 		logger.V(2).Info("pod nodeselector|affinity|tolerations diff")
 		return true
 	}
 
-	if !reflect.DeepEqual(newSpec.SecurityContext, oldSpec.SecurityContext) ||
+	if !cmp.Equal(newSpec.SecurityContext, oldSpec.SecurityContext, cmpopts.EquateEmpty()) ||
 		newSpec.HostNetwork != oldSpec.HostNetwork ||
 		newSpec.ServiceAccountName != oldSpec.ServiceAccountName {
 		logger.V(2).Info("pod securityContext or hostnetwork or serviceaccount diff",
@@ -248,16 +272,32 @@ func IsPodTemplasteChanged(newTplSpec, oldTplSpec *corev1.PodTemplateSpec, logge
 			return true
 		}
 
+		nLimits, nReqs := newCon.Resources.Limits, newCon.Resources.Requests
+		oLimits, oReqs := oldCon.Resources.Limits, oldCon.Resources.Requests
+		if oLimits.Cpu().Cmp(*nLimits.Cpu()) != 0 || oLimits.Memory().Cmp(*nLimits.Memory()) != 0 ||
+			oReqs.Cpu().Cmp(*nReqs.Cpu()) != 0 || oReqs.Memory().Cmp(*nReqs.Memory()) != 0 ||
+			(!nLimits.StorageEphemeral().IsZero() && oLimits.StorageEphemeral().Cmp(*nLimits.StorageEphemeral()) != 0) ||
+			(!nReqs.StorageEphemeral().IsZero() && oReqs.StorageEphemeral().Cmp(*nReqs.StorageEphemeral()) != 0) {
+			logger.V(2).Info("pod containers resources diff",
+				"CpuLimit", oLimits.Cpu().Cmp(*nLimits.Cpu()),
+				"MemLimit", oLimits.Memory().Cmp(*nLimits.Memory()),
+				"CpuRequest", oReqs.Cpu().Cmp(*nReqs.Cpu()),
+				"MemRequest", oReqs.Memory().Cmp(*nReqs.Memory()),
+				"StorageEphemeralLimit", oLimits.StorageEphemeral().Cmp(*nLimits.StorageEphemeral()),
+				"StorageEphemeralRequest", oReqs.StorageEphemeral().Cmp(*nReqs.StorageEphemeral()),
+			)
+			return true
+		}
+
 		// check almost all fields of container
 		// should make sure that apiserver not return noset default value
 		if oldCon.Image != newCon.Image || oldCon.ImagePullPolicy != newCon.ImagePullPolicy ||
-			!reflect.DeepEqual(oldCon.Resources, newCon.Resources) ||
 			!reflect.DeepEqual(loadEnvs(oldCon.Env), loadEnvs(newCon.Env)) ||
 			!reflect.DeepEqual(oldCon.Command, newCon.Command) ||
 			!reflect.DeepEqual(oldCon.Args, newCon.Args) ||
 			!reflect.DeepEqual(oldCon.Ports, newCon.Ports) ||
-			!reflect.DeepEqual(oldCon.Lifecycle, newCon.Lifecycle) ||
-			!reflect.DeepEqual(oldCon.VolumeMounts, newCon.VolumeMounts) {
+			!cmp.Equal(oldCon.Lifecycle, newCon.Lifecycle, cmpopts.EquateEmpty()) ||
+			!cmp.Equal(oldCon.VolumeMounts, newCon.VolumeMounts, cmpopts.EquateEmpty()) {
 
 			logger.V(2).Info("pod containers config diff",
 				"image", oldCon.Image != newCon.Image,
@@ -273,7 +313,6 @@ func IsPodTemplasteChanged(newTplSpec, oldTplSpec *corev1.PodTemplateSpec, logge
 			return true
 		}
 	}
-
 	return false
 }
 

@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -39,6 +38,8 @@ import (
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/types/user"
 	"github.com/chideat/valkey-operator/pkg/version"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
@@ -659,9 +660,9 @@ func (s *Failover) IsResourceFullfilled(ctx context.Context) (bool, error) {
 			s.logger.Error(err, "get sentinel failed", "target", client.ObjectKeyFromObject(newSen))
 			return false, err
 		}
-		if !reflect.DeepEqual(newSen.Spec, oldSen.Spec) ||
-			!reflect.DeepEqual(newSen.Labels, oldSen.Labels) ||
-			!reflect.DeepEqual(newSen.Annotations, oldSen.Annotations) {
+		if !cmp.Equal(newSen.Spec, oldSen.Spec, cmpopts.EquateEmpty()) ||
+			!cmp.Equal(newSen.Labels, oldSen.Labels, cmpopts.EquateEmpty()) ||
+			!cmp.Equal(newSen.Annotations, oldSen.Annotations, cmpopts.EquateEmpty()) {
 			oldSen.Spec = newSen.Spec
 			oldSen.Labels = newSen.Labels
 			oldSen.Annotations = newSen.Annotations

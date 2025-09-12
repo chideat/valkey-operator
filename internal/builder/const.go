@@ -68,3 +68,7 @@ const (
 
 	OperatorVersionAnnotation = "operatorVersion"
 )
+
+const (
+	ResourceCleanFinalizer = "buf.red/resource-clean"
+)
