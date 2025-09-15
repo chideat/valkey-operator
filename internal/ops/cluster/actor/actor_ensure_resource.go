@@ -322,7 +322,7 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 			newSts.Spec.VolumeClaimTemplates = oldSts.Spec.VolumeClaimTemplates
 
 			// merge restart annotations, if statefulset is more new, not restart statefulset
-			newSts.Spec.Template.Annotations = MergeAnnotations(newSts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
+			newSts.Spec.Template.Annotations = builder.MergeRestartAnnotation(newSts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
 
 			if util.IsStatefulsetChanged(newSts, oldSts, logger) {
 				if err := a.client.UpdateStatefulSet(ctx, cr.GetNamespace(), newSts); err != nil {
@@ -658,33 +658,4 @@ func (a *actorEnsureResource) fetchAllPodBindedServices(ctx context.Context, nam
 		}
 	}
 	return services, nil
-}
-
-func MergeAnnotations(t, s map[string]string) map[string]string {
-	if t == nil {
-		return s
-	}
-	if s == nil {
-		return t
-	}
-
-	for k, v := range s {
-		if k == builder.RestartAnnotationKey {
-			tRestartAnn := t[k]
-			if tRestartAnn == "" && v != "" {
-				t[k] = v
-			}
-
-			tTime, err1 := time.Parse(time.RFC3339Nano, tRestartAnn)
-			sTime, err2 := time.Parse(time.RFC3339Nano, v)
-			if err1 != nil || err2 != nil || sTime.After(tTime) {
-				t[k] = v
-			} else {
-				t[k] = tRestartAnn
-			}
-		} else {
-			t[k] = v
-		}
-	}
-	return t
 }

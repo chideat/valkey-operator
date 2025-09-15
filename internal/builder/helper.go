@@ -165,33 +165,36 @@ func ParsePodShardAndIndex(name string) (shard int, index int, err error) {
 	return shard, index, nil
 }
 
-func MergeAnnotations(t, s map[string]string) map[string]string {
-	if t == nil {
-		return s
-	}
-	if s == nil {
-		return t
+func MergeRestartAnnotation(n, o map[string]string) map[string]string {
+	if n == nil {
+		n = make(map[string]string)
 	}
 
-	for k, v := range s {
-		if k == RestartAnnotationKey {
-			tRestartAnn := t[k]
-			if tRestartAnn == "" && v != "" {
-				t[k] = v
-			}
-
-			tTime, err1 := time.Parse(time.RFC3339Nano, tRestartAnn)
-			sTime, err2 := time.Parse(time.RFC3339Nano, v)
-			if err1 != nil || err2 != nil || sTime.After(tTime) {
-				t[k] = v
-			} else {
-				t[k] = tRestartAnn
-			}
-		} else {
-			t[k] = v
-		}
+	oldTimeStr, exists := o[RestartAnnotationKey]
+	if !exists || oldTimeStr == "" {
+		return n
 	}
-	return t
+	oldTime, err := time.Parse(time.RFC3339Nano, oldTimeStr)
+	if err != nil {
+		return n
+	}
+
+	newTimeStr, exists := n[RestartAnnotationKey]
+	if !exists || newTimeStr == "" {
+		n[RestartAnnotationKey] = oldTimeStr
+		return n
+	}
+	newTime, err := time.Parse(time.RFC3339Nano, newTimeStr)
+	if err != nil {
+		n[RestartAnnotationKey] = oldTimeStr
+		return n
+	}
+
+	if oldTime.After(newTime) {
+		n[RestartAnnotationKey] = oldTimeStr
+		return n
+	}
+	return n
 }
 
 func IsPodAnnotationDiff(d map[string]string, s map[string]string) bool {

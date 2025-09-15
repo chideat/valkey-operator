@@ -142,15 +142,16 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 	if len(inst.Status.MatchLabels) == 0 {
 		inst.Status.MatchLabels = failoverbuilder.GenerateSelectorLabels(inst.Name)
 	}
+	if inst.Spec.PodAnnotations == nil {
+		inst.Spec.PodAnnotations = make(map[string]string)
+	}
 	for key := range vkHandler.GetValkeyConfigsApplyPolicyByVersion(inst.Spec.Version) {
 		if inst.Spec.CustomConfigs[key] != failover.Spec.CustomConfigs[key] {
-			if inst.Spec.PodAnnotations == nil {
-				inst.Spec.PodAnnotations = map[string]string{}
-			}
 			inst.Spec.PodAnnotations[builder.RestartAnnotationKey] = time.Now().Format(time.RFC3339Nano)
 			break
 		}
 	}
+	inst.Spec.PodAnnotations = builder.MergeRestartAnnotation(inst.Spec.PodAnnotations, failover.Spec.PodAnnotations)
 
 	newFailover, err := vkHandler.GenerateFailover(inst)
 	if err != nil {
@@ -227,15 +228,15 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 	if len(inst.Status.MatchLabels) == 0 {
 		inst.Status.MatchLabels = clusterbuilder.GenerateClusterLabels(inst.Name, nil)
 	}
+
 	for key := range vkHandler.GetValkeyConfigsApplyPolicyByVersion(inst.Spec.Version) {
 		if inst.Spec.CustomConfigs[key] != cluster.Spec.CustomConfigs[key] {
-			if inst.Spec.PodAnnotations == nil {
-				inst.Spec.PodAnnotations = map[string]string{}
-			}
 			inst.Spec.PodAnnotations[builder.RestartAnnotationKey] = time.Now().Format(time.RFC3339Nano)
 			break
 		}
 	}
+	inst.Spec.PodAnnotations = builder.MergeRestartAnnotation(inst.Spec.PodAnnotations, cluster.Spec.PodAnnotations)
+
 	newCluster, err := vkHandler.GenerateValkeyCluster(inst)
 	if err != nil {
 		return err

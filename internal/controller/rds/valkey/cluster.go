@@ -29,6 +29,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -122,7 +123,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			NodeSelector:    instance.Spec.NodeSelector,
 			Tolerations:     instance.Spec.Tolerations,
 			SecurityContext: instance.Spec.SecurityContext,
-			PodAnnotations:  instance.Spec.PodAnnotations,
+			PodAnnotations:  lo.Assign(instance.Spec.PodAnnotations),
 			Access:          instance.Spec.Access,
 			Exporter:        exporter,
 			Storage:         instance.Spec.Storage,
