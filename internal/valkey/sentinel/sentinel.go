@@ -189,7 +189,10 @@ func (s *ValkeySentinel) Definition() *v1alpha1.Sentinel {
 }
 
 func (s *ValkeySentinel) Users() types.Users {
-	return nil
+	if s == nil {
+		return nil
+	}
+	return s.users
 }
 
 func (s *ValkeySentinel) Replication() types.SentinelReplication {
