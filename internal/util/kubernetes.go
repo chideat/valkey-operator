@@ -149,6 +149,20 @@ func isSubmap[K, V comparable](a, b map[K]V) bool {
 	return true
 }
 
+func IsStatefulsetChanged2(newSts, sts *appsv1.StatefulSet, logger logr.Logger) (bool, bool) {
+	changed := IsStatefulsetChanged(newSts, sts, logger)
+	if !changed {
+		return false, false
+	}
+
+	immutableChanged := cmp.Equal(newSts.Spec, sts.Spec, cmpopts.EquateEmpty(),
+		cmpopts.IgnoreFields(appsv1.StatefulSetSpec{},
+			"Replicas", "Ordinals", "Template", "UpdateStrategy",
+			"PersistentVolumeClaimRetentionPolicy", "MinReadySeconds"))
+
+	return changed, immutableChanged
+}
+
 // IsStatefulsetChanged
 func IsStatefulsetChanged(newSts, sts *appsv1.StatefulSet, logger logr.Logger) bool {
 	// statefulset check

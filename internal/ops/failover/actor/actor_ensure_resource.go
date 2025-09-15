@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -142,42 +143,55 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 		return actor.RequeueWithError(err)
 	}
 
-	if util.IsStatefulsetChanged(sts, oldSts, logger) {
-		if *oldSts.Spec.Replicas > *sts.Spec.Replicas {
-			// scale down
-			oldSts.Spec.Replicas = sts.Spec.Replicas
-			if err := a.client.UpdateStatefulSet(ctx, cr.Namespace, oldSts); err != nil {
-				logger.Error(err, "scale down statefulset failed", "target", client.ObjectKeyFromObject(oldSts))
-				return actor.RequeueWithError(err)
-			}
-			time.Sleep(time.Second * 3)
-		}
+	sts.Spec.Template.Annotations = builder.MergeRestartAnnotation(sts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
 
-		// patch pods with new labels in selector
-		pods, err := inst.RawNodes(ctx)
-		if err != nil {
-			logger.Error(err, "get pods failed")
-			return actor.RequeueWithError(err)
-		}
-		for _, item := range pods {
-			pod := item.DeepCopy()
-			pod.Labels = lo.Assign(pod.Labels, inst.Selector())
-			if !reflect.DeepEqual(pod.Labels, item.Labels) {
-				if err := a.client.UpdatePod(ctx, pod.GetNamespace(), pod); err != nil {
-					logger.Error(err, "patch pod label failed", "target", client.ObjectKeyFromObject(pod))
+	if changed, ichanged := util.IsStatefulsetChanged2(sts, oldSts, logger); changed {
+		// check if only mutable fields changed
+		if !ichanged {
+			if err := a.client.UpdateStatefulSet(ctx, cr.Namespace, sts); err != nil {
+				if strings.Contains(err.Error(), "updates to statefulset spec for fields other than") {
+					ichanged = true
+				} else {
+					logger.Error(err, "update statefulset failed", "target", client.ObjectKeyFromObject(oldSts))
 					return actor.RequeueWithError(err)
 				}
 			}
 		}
-		time.Sleep(time.Second * 3)
-		if err := a.client.DeleteStatefulSet(ctx, cr.Namespace, sts.Name,
-			client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil && !errors.IsNotFound(err) {
-			logger.Error(err, "delete old statefulset failed", "target", client.ObjectKeyFromObject(sts))
-			return actor.RequeueWithError(err)
-		}
-		if err = a.client.CreateStatefulSet(ctx, cr.Namespace, sts); err != nil && !errors.IsAlreadyExists(err) {
-			logger.Error(err, "update statefulset failed", "target", client.ObjectKeyFromObject(sts))
-			return actor.RequeueWithError(err)
+
+		if ichanged {
+			if *oldSts.Spec.Replicas > *sts.Spec.Replicas {
+				oldSts.Spec.Replicas = sts.Spec.Replicas
+				if err := a.client.UpdateStatefulSet(ctx, cr.Namespace, oldSts); err != nil {
+					logger.Error(err, "scale down statefulset failed", "target", client.ObjectKeyFromObject(oldSts))
+					return actor.RequeueWithError(err)
+				}
+				time.Sleep(time.Second * 3)
+			}
+
+			// patch pods with new labels in selector
+			pods, err := inst.RawNodes(ctx)
+			if err != nil {
+				logger.Error(err, "get pods failed")
+				return actor.RequeueWithError(err)
+			}
+			for _, item := range pods {
+				pod := item.DeepCopy()
+				pod.Labels = lo.Assign(pod.Labels, sts.Spec.Selector.MatchLabels)
+				logger.V(4).Info("check patch pod labels", "pod", item.Name, "labels", pod.Labels)
+				if !reflect.DeepEqual(pod.Labels, item.Labels) {
+					if err := a.client.UpdatePod(ctx, pod.GetNamespace(), pod); err != nil {
+						logger.Error(err, "patch pod label failed", "target", client.ObjectKeyFromObject(pod))
+						return actor.RequeueWithError(err)
+					}
+				}
+			}
+
+			if err := a.client.DeleteStatefulSet(ctx, cr.Namespace, sts.Name,
+				client.PropagationPolicy(metav1.DeletePropagationOrphan)); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "delete old statefulset failed", "target", client.ObjectKeyFromObject(sts))
+				return actor.RequeueWithError(err)
+			}
+			return actor.Requeue()
 		}
 	}
 	return nil

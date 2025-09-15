@@ -551,6 +551,9 @@ func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.Clust
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return true, nil
 	}
+	if oldCm.Annotations[builder.LastAppliedConfigAnnotationKey] != "" {
+		return true, nil
+	}
 	return false, nil
 }
 

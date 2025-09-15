@@ -127,6 +127,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Access:          instance.Spec.Access,
 			Exporter:        exporter,
 			Storage:         instance.Spec.Storage,
+			Modules:         instance.Spec.Modules,
 		},
 	}
 
@@ -143,8 +144,8 @@ func ShouldUpdateCluster(cluster, newCluster *v1alpha1.Cluster, logger logr.Logg
 		!reflect.DeepEqual(cluster.Annotations, newCluster.Annotations) {
 		return true
 	}
-	if !cmp.Equal(cluster.Spec, newCluster.Spec,
-		cmpopts.EquateEmpty(),
+
+	if !cmp.Equal(cluster.Spec, newCluster.Spec, cmpopts.EquateEmpty(),
 		cmpopts.IgnoreFields(v1alpha1.ClusterSpec{}, "PodAnnotations"),
 	) {
 		return true

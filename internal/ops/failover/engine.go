@@ -206,6 +206,9 @@ func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverIns
 	if len(added)+len(changed)+len(deleted) != 0 {
 		return actor.NewResult(CommandUpdateConfig)
 	}
+	if oldCm.Annotations[builder.LastAppliedConfigAnnotationKey] != "" {
+		return actor.NewResult(CommandUpdateConfig)
+	}
 
 	if inst.Monitor().Policy() == v1.SentinelFailoverPolicy {
 		// HACK: check and update sentinel monitor config

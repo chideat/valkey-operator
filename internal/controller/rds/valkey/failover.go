@@ -115,6 +115,7 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 			Exporter:       exporter,
 			Access:         *access,
 			Storage:        instance.Spec.Storage.DeepCopy(),
+			Modules:        instance.Spec.Modules,
 
 			Affinity:        instance.Spec.CustomAffinity,
 			NodeSelector:    instance.Spec.NodeSelector,
