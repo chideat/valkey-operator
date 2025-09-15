@@ -85,7 +85,10 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 		if ret := a.ensurePauseStatefulSet(ctx, sentinel, logger); ret != nil {
 			return ret
 		}
-		return actor.NewResult(ops.CommandPaused)
+		if len(sentinel.Nodes()) == 0 {
+			return actor.Pause()
+		}
+		return actor.Requeue()
 	}
 
 	if ret := a.ensureServiceAccount(ctx, sentinel, logger); ret != nil {

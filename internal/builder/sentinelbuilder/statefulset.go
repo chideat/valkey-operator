@@ -214,7 +214,7 @@ func buildServerContainer(sen *v1alpha1.Sentinel, envs []corev1.EnvVar) (*corev1
 			},
 		},
 		StartupProbe: &corev1.Probe{
-			InitialDelaySeconds: 3,
+			InitialDelaySeconds: 30,
 			TimeoutSeconds:      5,
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{

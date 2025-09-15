@@ -89,7 +89,10 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 		if ret := a.pauseSentinel(ctx, inst, logger); ret != nil {
 			return ret
 		}
-		return actor.Pause()
+		if len(inst.Nodes()) == 0 {
+			return actor.Pause()
+		}
+		return actor.Requeue()
 	}
 
 	if ret := a.ensureValkeySSL(ctx, inst, logger); ret != nil {
