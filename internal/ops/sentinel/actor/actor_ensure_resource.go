@@ -127,7 +127,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 			logger.Error(err, "generate secret sig failed")
 			return actor.NewResultWithError(ops.CommandAbort, err)
 		}
-		sts.Spec.Template.Labels[builder.ChecksumKey("secret")] = secretSig
+		sts.Spec.Template.Annotations[builder.ChecksumKey("secret")] = secretSig
 	}
 
 	configName := sentinelbuilder.SentinelConfigMapName(sen.Name)
