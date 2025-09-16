@@ -13,7 +13,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
 
     - name: Check out code
       uses: actions/checkout@v5
@@ -42,12 +42,53 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
 
     - name: Read version from file
       id: get_version
       run: |
-        ls -la
-        echo "VERSION=$(cat version)" >> $GITHUB_ENV
+        # 1. Fetch all tags
+        git fetch --tags --force
+        
+        # 2. Get the latest tag name
+        latest_tag=$(git tag --sort=-v:refname | head -n 1)
+        
+        # 3. Handle case where no tags exist
+        if [ -z "$latest_tag" ]; then
+          new_tag="v0.1.0"
+        else
+          echo "Latest tag found: $latest_tag"
+          
+          # 4. Remove 'v' prefix for processing
+          if [[ $latest_tag == v* ]]; then
+            prefix="v"
+            version="${latest_tag#v}"
+          else
+            prefix=""
+            version="$latest_tag"
+          fi
+          
+          # 5. Split version into parts
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          # ----------------------------------------------------------- #
+          # NEW: Default missing minor/patch versions to 0 for robustness
+          minor=${minor:-0}
+          patch=${patch:-0}
+          # ----------------------------------------------------------- #
+          
+          # 6. Increment the patch version
+          patch=$((patch + 1))
+          
+          # 7. Assemble the new tag
+          new_tag="${prefix}${major}.${minor}.${patch}"
+        fi
+
+        echo "Calculated new tag: $new_tag"
+        
+        # 8. Set the new tag as a GitHub Action output
+        echo "VERSION=$new_tag" >> "$GITHUB_ENV"
 
     - name: Get branch name
       id: get_branch
@@ -58,7 +99,7 @@ jobs:
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
         fi
         # Replace special characters with hyphens, remove trailing hyphens, and convert to lowercase
-        SANITIZED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr -cs '[:alnum:]' '-' | sed 's/-*$//' | tr '[:upper:]' '[:lower:]')
+        SANITIZED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr -cs '[:alnum:]' '-' | sed 's/[-_]//g' | tr '[:upper:]' '[:lower:]')
         echo "BRANCH_NAME=$SANITIZED_BRANCH_NAME" >> $GITHUB_ENV
 
     - name: Get short commit SHA
@@ -87,6 +128,5 @@ jobs:
         file: ./Dockerfile
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository }}:${{ env.VERSION }}-${{ env.BRANCH_NAME }}-${{ env.COMMIT_SHA }}
+        tags: ghcr.io/${{ github.repository }}:${{ env.VERSION }}-${{ env.BRANCH_NAME }}.g${{ env.COMMIT_SHA }}
         platforms: linux/amd64,linux/arm64
-

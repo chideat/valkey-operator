@@ -1,3 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: valkey-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: system
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,8 +31,6 @@ spec:
         app.kubernetes.io/name: valkey-operator
     spec:
       securityContext:
-        runAsNonRoot: true
-        readOnlyRootFilesystem: true
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -100,5 +106,8 @@ spec:
           requests:
             cpu: 100m
             memory: 64Mi
-      serviceAccountName: controller-manager
+        ports: []
+        volumeMounts: []
+      serviceAccountName: valkey-operator-controller-manager
       terminationGracePeriodSeconds: 10
+      volumes: []

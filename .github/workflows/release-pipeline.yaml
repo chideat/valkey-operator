@@ -3,20 +3,18 @@ name: release-pipeline
 on:
   push:
     tags:
-      - '*'
+      - 'v*'
 
 jobs:
   build:
     name: Build and push Docker image
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+
     steps:
     - name: Check out code
       uses: actions/checkout@v5
-
-    - name: Get the current tag
-      run: |
-        TAG=$(git describe --tags --abbrev=0)
-        echo "TAG=$TAG" >> $GITHUB_ENV
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -47,6 +45,6 @@ jobs:
         context: .
         push: true
         tags: |
-          ${{ vars.DOCKER_USERNAME }}/valkey-operator:${{ env.TAG }}
-          ghcr.io/alauda/valkey-operator:${{ env.TAG }}
+          ${{ vars.DOCKER_USERNAME }}/valkey-operator:${{ env.RELEASE_VERSION }}
+          ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ env.RELEASE_VERSION }}
         platforms: linux/amd64,linux/arm64
