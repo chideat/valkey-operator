@@ -5,12 +5,12 @@ kind: Kustomization
 images:
 - name: controller
   newName: chideat/valkey-operator
-  newTag: v0.1.0-alpha
+  newTag: latest
 commonAnnotations:
   defaultExporterImageName: oliver006/redis_exporter
   defaultExporterVersion: v1.67.0-alpine
   defaultRegistry: ""
   operatorImageName: chideat/valkey-operator
-  operatorVersion: v0.1.0-alpha
+  operatorVersion: latest
   valkeyImageName: valkey/valkey
   valkeyVersionMap: '{}'

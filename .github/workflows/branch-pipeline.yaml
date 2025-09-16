@@ -14,7 +14,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
 
     - name: Check out code
       uses: actions/checkout@v5
@@ -41,11 +41,13 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
 
-    - name: Check for [skip ci] in commit messages or PR title
+    - name: Check for [skip ci] in commit message
       id: check_skip_ci
       run: |
-        if [[ "${{ github.event.head_commit.message }}" =~ \[skip\ ci\] ]] || [[ "${{ github.event.pull_request.title }}" =~ \[skip\ ci\] ]]; then
+        if [[ "${{ github.event.head_commit.message }}" =~ \[skip\ ci\] ]]; then
           echo "CI skip detected, exiting."
           exit 0
         fi
@@ -59,18 +61,20 @@ jobs:
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           VERSION="${BRANCH_NAME#release-}"
           TS=$(date '+%m%d%H%M')
-          LARGEST_TAG=$(git tag --merged $BRANCH_NAME --sort=-v:refname | grep $VERSION | head -n 1)
+          # Get the latest tag matching the release version, looking at all tags now
+          LARGEST_TAG=$(git tag --sort=-v:refname | grep "^v${VERSION}\\.$" | head -n 1)
           if [ -z "$LARGEST_TAG" ]; then
             # No existing tag found, use version from branch name with .0 patch version
             TAG_NAME="v${VERSION}.0-rc.${TS}.${GITHUB_SHA::7}"
           else
-            # Extract and increment patch version from existing tag
+            # Extract and increment patch version from existing tag.
+            # This regex handles both final tags (v1.2.3) and pre-release tags (v1.2.3-rc1)
             if [[ $LARGEST_TAG =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
               MAJOR=${BASH_REMATCH[1]}
               MINOR=${BASH_REMATCH[2]}
               PATCH=${BASH_REMATCH[3]}
               NEW_PATCH=$((PATCH + 1))
-              TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}-rc.${ts}.${GITHUB_SHA::7}"
+              TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}-rc.${TS}.${GITHUB_SHA::7}"
             else
               # Fallback if tag format is unexpected
               TAG_NAME="${LARGEST_TAG}-rc.${TS}.${GITHUB_SHA::7}"

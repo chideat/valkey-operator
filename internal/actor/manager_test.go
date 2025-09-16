@@ -359,7 +359,7 @@ func TestActorManager_Search(t *testing.T) {
 	}
 
 	foundActor := am.Search(CmdFailoverHealPod, inst)
-	assert.Nil(t, foundActor)
+	assert.NotNil(t, foundActor)
 
 	am = nil
 	am.Print()

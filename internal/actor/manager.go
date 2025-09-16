@@ -115,6 +115,10 @@ func (m *ActorManager) Search(cmd Command, inst Object) Actor {
 	if crVersion == "" {
 		crVersion = config.GetOperatorVersion()
 	}
+	if crVersion == "latest" {
+		crVersion = "100.0.0"
+	}
+
 	ver, _ := semver.NewVersion(crVersion)
 	if ver == nil {
 		return nil
