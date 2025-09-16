@@ -189,6 +189,14 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverI
 }
 
 func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
+	// check if all pod fullfilled
+	for _, node := range inst.Nodes() {
+		if node.CurrentVersion() != inst.Version() {
+			logger.V(3).Info("node version not match", "node", node.GetName(), "version", node.CurrentVersion(), "expect", inst.Version())
+			return actor.NewResult(CommandEnsureResource)
+		}
+	}
+
 	newCm, err := failoverbuilder.GenerateConfigMap(inst)
 	if err != nil {
 		return actor.RequeueWithError(err)

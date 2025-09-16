@@ -535,6 +535,17 @@ func (g *RuleEngine) isCustomServerChanged(ctx context.Context, cluster types.Cl
 
 func (g *RuleEngine) isConfigMapChanged(ctx context.Context, cluster types.ClusterInstance) (bool, error) {
 	logger := g.logger.WithName("isConfigMapChanged")
+
+	// check if all pod fullfilled
+	for _, shard := range cluster.Shards() {
+		for _, node := range shard.Nodes() {
+			if node.CurrentVersion() != cluster.Version() {
+				// postpone the configmap check
+				return false, nil
+			}
+		}
+	}
+
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
 	if errors.IsNotFound(err) || (oldCm != nil && oldCm.Data[builder.ValkeyConfigKey] == "") {
