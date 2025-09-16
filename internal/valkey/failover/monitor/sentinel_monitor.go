@@ -152,6 +152,7 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 	var (
 		masterStat      []*Stat
 		masterIds       = map[string]int{}
+		idAddrMap       = map[string][]string{}
 		registeredNodes int
 	)
 	for _, node := range s.nodes {
@@ -186,6 +187,9 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 		}
 		if n.RunId != "" {
 			masterIds[n.RunId] += 1
+			if !slices.Contains(idAddrMap[n.RunId], n.Address()) {
+				idAddrMap[n.RunId] = append(idAddrMap[n.RunId], n.Address())
+			}
 		}
 	}
 	if len(masterStat) == 0 {
@@ -204,6 +208,23 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 			return nil, ErrAddressConflict
 		}
 	}
+
+	for _, node := range s.failover.Nodes() {
+		if !node.IsReady() {
+			s.logger.Info("node not ready, ignored", "node", node.GetName())
+			continue
+		}
+		registeredAddrs := idAddrMap[node.Info().RunId]
+		addr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
+		addr2 := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalPort()))
+		// same runid registered with different addr
+		// TODO: limit service InternalTrafficPolicy to Local
+		if (len(registeredAddrs) == 1 && registeredAddrs[0] != addr && registeredAddrs[0] != addr2) ||
+			len(registeredAddrs) > 1 {
+			return nil, ErrAddressConflict
+		}
+	}
+
 	// masterStat[0].Count == registeredNodes used to check if all nodes are consistent no matter how many sentinel nodes
 	if masterStat[0].Count >= 1+len(s.nodes)/2 || masterStat[0].Count == registeredNodes {
 		return masterStat[0].Node, nil
