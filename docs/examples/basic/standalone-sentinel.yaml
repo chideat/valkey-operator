@@ -4,6 +4,7 @@ metadata:
   name: standalone-sentinel
   namespace: default
 spec:
+  image: valkey/valkey:8.0
   # Number of sentinel instances (must be odd, minimum 3)
   replicas: 3
   
