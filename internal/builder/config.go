@@ -62,7 +62,6 @@ const (
 var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
 	// forbid
 	"include":          Forbid,
-	"loadmodule":       Forbid,
 	"bind":             Forbid,
 	"protected-mode":   Forbid,
 	"port":             Forbid,
@@ -106,6 +105,7 @@ var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
 	"rdbchecksum":         RequireRestart,
 	"io-threads":          RequireRestart,
 	"io-threads-do-reads": RequireRestart,
+	"loadmodule":          RequireRestart,
 }
 
 type ValkeyConfigValues []string
@@ -124,7 +124,7 @@ type ValkeyConfig map[string]ValkeyConfigValues
 // LoadValkeyConfig
 func LoadValkeyConfig(data string) (ValkeyConfig, error) {
 	conf := ValkeyConfig{}
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

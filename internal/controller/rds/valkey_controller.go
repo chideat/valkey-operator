@@ -68,13 +68,9 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	inst := &rdsv1alpha1.Valkey{}
 	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
-		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
-		}
 		logger.Error(err, "Fail to get valkey instance")
-		return reconcile.Result{}, err
-	}
-	if inst.GetDeletionTimestamp() != nil {
+		return reconcile.Result{}, client.IgnoreNotFound(err)
+	} else if inst.GetDeletionTimestamp() != nil {
 		if err := r.processFinalizer(inst); err != nil {
 			logger.Error(err, "fail to process finalizer")
 			return r.updateInstanceStatus(ctx, inst, err, logger)
@@ -139,20 +135,23 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 		return nil
 	} else if err != nil {
 		return err
+	} else if failover.GetDeletionTimestamp() != nil {
+		return fmt.Errorf("redis failover %s is deleting, waiting for it to be deleted", failover.Name)
 	}
 
 	if len(inst.Status.MatchLabels) == 0 {
 		inst.Status.MatchLabels = failoverbuilder.GenerateSelectorLabels(inst.Name)
 	}
+	if inst.Spec.PodAnnotations == nil {
+		inst.Spec.PodAnnotations = make(map[string]string)
+	}
 	for key := range vkHandler.GetValkeyConfigsApplyPolicyByVersion(inst.Spec.Version) {
 		if inst.Spec.CustomConfigs[key] != failover.Spec.CustomConfigs[key] {
-			if inst.Spec.PodAnnotations == nil {
-				inst.Spec.PodAnnotations = map[string]string{}
-			}
 			inst.Spec.PodAnnotations[builder.RestartAnnotationKey] = time.Now().Format(time.RFC3339Nano)
 			break
 		}
 	}
+	inst.Spec.PodAnnotations = builder.MergeRestartAnnotation(inst.Spec.PodAnnotations, failover.Spec.PodAnnotations)
 
 	newFailover, err := vkHandler.GenerateFailover(inst)
 	if err != nil {
@@ -220,20 +219,24 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 		return nil
 	} else if err != nil {
 		return err
+	} else if cluster.GetDeletionTimestamp() != nil {
+		// wait old resource deleted
+		logger.V(3).Info("redis cluster is deleting, waiting for it to be deleted")
+		return fmt.Errorf("redis cluster %s is deleting, waiting for it to be deleted", cluster.Name)
 	}
 
 	if len(inst.Status.MatchLabels) == 0 {
 		inst.Status.MatchLabels = clusterbuilder.GenerateClusterLabels(inst.Name, nil)
 	}
+
 	for key := range vkHandler.GetValkeyConfigsApplyPolicyByVersion(inst.Spec.Version) {
 		if inst.Spec.CustomConfigs[key] != cluster.Spec.CustomConfigs[key] {
-			if inst.Spec.PodAnnotations == nil {
-				inst.Spec.PodAnnotations = map[string]string{}
-			}
 			inst.Spec.PodAnnotations[builder.RestartAnnotationKey] = time.Now().Format(time.RFC3339Nano)
 			break
 		}
 	}
+	inst.Spec.PodAnnotations = builder.MergeRestartAnnotation(inst.Spec.PodAnnotations, cluster.Spec.PodAnnotations)
+
 	newCluster, err := vkHandler.GenerateValkeyCluster(inst)
 	if err != nil {
 		return err

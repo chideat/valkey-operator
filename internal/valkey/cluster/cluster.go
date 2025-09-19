@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
@@ -31,6 +32,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	clientset "github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/security/acl"
@@ -422,6 +424,21 @@ func (c *ValkeyCluster) Shards() []types.ClusterShard {
 	return c.shards
 }
 
+func (c *ValkeyCluster) Shard(index int) types.ClusterShard {
+	if c == nil {
+		return nil
+	}
+	if index < 0 || index >= int(c.Definition().Spec.Replicas.Shards) {
+		return nil
+	}
+	for _, shard := range c.shards {
+		if shard.Index() == index {
+			return shard
+		}
+	}
+	return nil
+}
+
 func (c *ValkeyCluster) Nodes() []types.ValkeyNode {
 	var ret []types.ValkeyNode
 	for _, shard := range c.shards {
@@ -673,6 +690,17 @@ func (c *ValkeyCluster) IsResourceFullfilled(ctx context.Context) (bool, error) 
 			} else if err != nil {
 				c.logger.Error(err, "get resource failed", "target", util.ObjectKey(c.GetNamespace(), name))
 				return false, err
+			}
+
+			if obj.GroupVersionKind() == serviceKey {
+				ts := obj.GetCreationTimestamp()
+				typ, _, _ := unstructured.NestedString(obj.Object, "spec", "type")
+				lbs, _, _ := unstructured.NestedSlice(obj.Object, "status", "loadBalancer", "ingress")
+				if typ == string(corev1.ServiceTypeLoadBalancer) && len(lbs) == 0 &&
+					time.Since(ts.Time) >= config.LoadbalancerReadyTimeout() {
+					c.logger.V(3).Info("load balancer service not ready", "target", util.ObjectKey(c.GetNamespace(), name), "createdAt", ts.Time)
+					return false, nil
+				}
 			}
 		}
 	}

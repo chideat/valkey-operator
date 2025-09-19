@@ -40,6 +40,7 @@ type FailoverInstance interface {
 	Instance
 
 	Definition() *v1alpha1.Failover
+	Replication() Replication
 	Masters() []ValkeyNode
 	Nodes() []ValkeyNode
 	RawNodes(ctx context.Context) ([]corev1.Pod, error)

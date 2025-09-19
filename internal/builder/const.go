@@ -25,12 +25,13 @@ const (
 	AppComponentLabelKey = "app.kubernetes.io/component"
 	AppNameLabelKey      = "app.kubernetes.io/name"
 
-	ArchLabelKey          = "valkeyarch"
-	RoleLabelKey          = "valkey.buf.red/role"
-	AnnounceIPLabelKey    = "valkey.buf.red/announce_ip"
-	AnnouncePortLabelKey  = "valkey.buf.red/announce_port"
-	AnnounceIPortLabelKey = "valkey.buf.red/announce_iport"
-	ChecksumLabelKey      = "valkey.buf.red/checksum"
+	ArchLabelKey                   = "valkeyarch"
+	RoleLabelKey                   = "valkey.buf.red/role"
+	AnnounceIPLabelKey             = "valkey.buf.red/announce_ip"
+	AnnouncePortLabelKey           = "valkey.buf.red/announce_port"
+	AnnounceIPortLabelKey          = "valkey.buf.red/announce_iport"
+	ChecksumLabelKey               = "valkey.buf.red/checksum"
+	LastAppliedConfigAnnotationKey = "valkey.buf.red/last-applied-config"
 
 	InstanceTypeLabelKey = "buf.red/type"
 	InstanceNameLabelKey = "buf.red/name"
@@ -67,4 +68,8 @@ const (
 	CRVersionKey = "buf.red/crVersion"
 
 	OperatorVersionAnnotation = "operatorVersion"
+)
+
+const (
+	ResourceCleanFinalizer = "buf.red/resource-clean"
 )

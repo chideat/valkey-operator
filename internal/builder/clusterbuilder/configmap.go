@@ -45,6 +45,7 @@ func NewConfigMapForCR(cluster types.ClusterInstance) (*corev1.ConfigMap, error)
 			Name:            ValkeyConfigMapName(cluster.GetName()),
 			Namespace:       cluster.GetNamespace(),
 			Labels:          GenerateClusterLabels(cluster.GetName(), nil),
+			Annotations:     map[string]string{},
 			OwnerReferences: util.BuildOwnerReferences(cluster.Definition()),
 		},
 		Data: map[string]string{
@@ -159,6 +160,11 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 			}
 			buffer.WriteString(fmt.Sprintf("%s %s\n", k, v))
 		}
+	}
+
+	for _, mod := range cr.Spec.Modules {
+		args := append([]string{"loadmodule", mod.Path}, mod.Args...)
+		buffer.WriteString(strings.Join(args, " ") + "\n")
 	}
 	return buffer.String(), nil
 }

@@ -189,12 +189,20 @@ func (g *RuleEngine) isPasswordChanged(ctx context.Context, inst types.FailoverI
 }
 
 func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
+	// check if all pod fullfilled
+	for _, node := range inst.Nodes() {
+		if node.CurrentVersion() != inst.Version() {
+			logger.V(3).Info("node version not match", "node", node.GetName(), "version", node.CurrentVersion(), "expect", inst.Version())
+			return actor.NewResult(CommandEnsureResource)
+		}
+	}
+
 	newCm, err := failoverbuilder.GenerateConfigMap(inst)
 	if err != nil {
 		return actor.RequeueWithError(err)
 	}
 	oldCm, err := g.client.GetConfigMap(ctx, newCm.GetNamespace(), newCm.GetName())
-	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
+	if errors.IsNotFound(err) || (oldCm != nil && oldCm.Data[builder.ValkeyConfigKey] == "") {
 		err := fmt.Errorf("configmap %s not found", newCm.GetName())
 		return actor.NewResultWithError(CommandEnsureResource, err)
 	} else if err != nil {
@@ -204,6 +212,9 @@ func (g *RuleEngine) isConfigChanged(ctx context.Context, inst types.FailoverIns
 	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
 	added, changed, deleted := oldConf.Diff(newConf)
 	if len(added)+len(changed)+len(deleted) != 0 {
+		return actor.NewResult(CommandUpdateConfig)
+	}
+	if oldCm.Annotations[builder.LastAppliedConfigAnnotationKey] != "" {
 		return actor.NewResult(CommandUpdateConfig)
 	}
 
@@ -232,7 +243,13 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			} else if err != nil {
 				return actor.RequeueWithError(err)
 			}
-			if typ == corev1.ServiceTypeNodePort {
+
+			if svc.Spec.Type != typ {
+				return actor.NewResult(CommandEnsureResource)
+			}
+
+			switch typ {
+			case corev1.ServiceTypeNodePort:
 				port := util.GetServicePortByName(svc, "client")
 				if port != nil {
 					if int(port.NodePort) != announcePort {
@@ -241,7 +258,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 				} else {
 					logger.Error(fmt.Errorf("service %s not found", node.GetName()), "failed to get service, which should not happen")
 				}
-			} else if typ == corev1.ServiceTypeLoadBalancer {
+			case corev1.ServiceTypeLoadBalancer:
 				if slices.IndexFunc(svc.Status.LoadBalancer.Ingress, func(i corev1.LoadBalancerIngress) bool {
 					return i.IP == announceIP
 				}) < 0 {

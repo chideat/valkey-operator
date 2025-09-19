@@ -39,6 +39,7 @@ import (
 )
 
 var (
+	ErrNoUseableNode   = fmt.Errorf("no usable sentinel node")
 	ErrNoMaster        = fmt.Errorf("no master")
 	ErrDoFailover      = fmt.Errorf("sentinel doing failover")
 	ErrMultipleMaster  = fmt.Errorf("multiple master without majority agreement")
@@ -151,6 +152,7 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 	var (
 		masterStat      []*Stat
 		masterIds       = map[string]int{}
+		idAddrMap       = map[string][]string{}
 		registeredNodes int
 	)
 	for _, node := range s.nodes {
@@ -185,6 +187,9 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 		}
 		if n.RunId != "" {
 			masterIds[n.RunId] += 1
+			if !slices.Contains(idAddrMap[n.RunId], n.Address()) {
+				idAddrMap[n.RunId] = append(idAddrMap[n.RunId], n.Address())
+			}
 		}
 	}
 	if len(masterStat) == 0 {
@@ -203,6 +208,23 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 			return nil, ErrAddressConflict
 		}
 	}
+
+	for _, node := range s.failover.Nodes() {
+		if !node.IsReady() {
+			s.logger.Info("node not ready, ignored", "node", node.GetName())
+			continue
+		}
+		registeredAddrs := idAddrMap[node.Info().RunId]
+		addr := net.JoinHostPort(node.DefaultIP().String(), strconv.Itoa(node.Port()))
+		addr2 := net.JoinHostPort(node.DefaultInternalIP().String(), strconv.Itoa(node.InternalPort()))
+		// same runid registered with different addr
+		// TODO: limit service InternalTrafficPolicy to Local
+		if (len(registeredAddrs) == 1 && registeredAddrs[0] != addr && registeredAddrs[0] != addr2) ||
+			len(registeredAddrs) > 1 {
+			return nil, ErrAddressConflict
+		}
+	}
+
 	// masterStat[0].Count == registeredNodes used to check if all nodes are consistent no matter how many sentinel nodes
 	if masterStat[0].Count >= 1+len(s.nodes)/2 || masterStat[0].Count == registeredNodes {
 		return masterStat[0].Node, nil
@@ -315,7 +337,7 @@ func (s *SentinelMonitor) Replicas(ctx context.Context) ([]*vkcli.SentinelMonito
 
 func (s *SentinelMonitor) Inited(ctx context.Context) (bool, error) {
 	if s == nil || len(s.nodes) == 0 {
-		return false, fmt.Errorf("no sentinel nodes")
+		return false, ErrNoUseableNode
 	}
 
 	for _, node := range s.nodes {
@@ -333,7 +355,7 @@ func (s *SentinelMonitor) Inited(ctx context.Context) (bool, error) {
 // AllNodeMonitored checks if all sentinel nodes are monitoring all the master and replicas
 func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 	if s == nil || len(s.nodes) == 0 {
-		return false, fmt.Errorf("no sentinel nodes")
+		return false, ErrNoUseableNode
 	}
 
 	var (
@@ -409,7 +431,7 @@ func (s *SentinelMonitor) AllNodeMonitored(ctx context.Context) (bool, error) {
 
 func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]string) error {
 	if s == nil || len(s.nodes) == 0 {
-		return fmt.Errorf("no sentinel nodes")
+		return ErrNoUseableNode
 	}
 	logger := s.logger.WithName("UpdateConfig")
 
@@ -455,7 +477,7 @@ func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]st
 
 func (s *SentinelMonitor) Failover(ctx context.Context) error {
 	if s == nil || len(s.nodes) == 0 {
-		return fmt.Errorf("no sentinel nodes")
+		return ErrNoUseableNode
 	}
 	logger := s.logger.WithName("failover")
 

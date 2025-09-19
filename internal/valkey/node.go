@@ -742,7 +742,7 @@ func (n *ValkeyNode) InternalPort() int {
 
 func (n *ValkeyNode) DefaultIP() net.IP {
 	if value := n.Pod.Labels[builder.AnnounceIPLabelKey]; value != "" {
-		address := strings.Replace(value, "-", ":", -1)
+		address := strings.ReplaceAll(value, "-", ":")
 		return net.ParseIP(address)
 	}
 	return n.DefaultInternalIP()

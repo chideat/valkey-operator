@@ -40,6 +40,9 @@ func loadAnnounceAddress(filepath string, logger logr.Logger) string {
 	}
 	data, err := os.ReadFile(filepath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
 		logger.Error(err, "read announce file failed", "path", filepath)
 		return ""
 	}

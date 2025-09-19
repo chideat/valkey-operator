@@ -57,5 +57,6 @@ type ClusterInstance interface {
 	Nodes() []ValkeyNode
 	RawNodes(ctx context.Context) ([]corev1.Pod, error)
 	Shards() []ClusterShard
+	Shard(index int) ClusterShard
 	RewriteShards(ctx context.Context, shards []*v1alpha1.ClusterShards) error
 }

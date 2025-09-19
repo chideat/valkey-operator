@@ -28,10 +28,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops"
 )
@@ -54,11 +56,60 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	logger := log.FromContext(ctx).WithValues("target", req.String())
 
 	var instance v1alpha1.Cluster
-	if err := r.Get(ctx, req.NamespacedName, &instance); errors.IsNotFound(err) {
-		return ctrl.Result{}, nil
-	} else if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, &instance); err != nil {
 		logger.Error(err, "get resource failed")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	} else if instance.GetDeletionTimestamp() != nil {
+		if controllerutil.ContainsFinalizer(&instance, builder.ResourceCleanFinalizer) {
+			// check if all pods is shutdown
+			labels := clusterbuilder.GenerateClusterLabels(instance.GetName(), nil)
+			stsList := appsv1.StatefulSetList{}
+			if err := r.List(ctx, &stsList, client.InNamespace(instance.Namespace), client.MatchingLabels(labels)); err != nil {
+				logger.Error(err, "get cluster statefulsets failed", "labels", labels)
+				return ctrl.Result{}, err
+			}
+
+			needRequeue := false
+			for _, sts := range stsList.Items {
+				if sts.GetDeletionTimestamp() == nil {
+					if err := r.Delete(ctx, &sts); err != nil {
+						logger.Error(err, "delete cluster statefulset failed", "name", sts.GetName())
+					}
+					needRequeue = true
+				}
+			}
+			if needRequeue {
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+			}
+
+			podList := corev1.PodList{}
+			if err := r.List(ctx, &podList, client.InNamespace(instance.Namespace), client.MatchingLabels(labels)); err != nil {
+				logger.Error(err, "list pods failed", "namespace", instance.Namespace, "labels", labels)
+				return ctrl.Result{}, err
+			} else if len(podList.Items) > 0 {
+				// still has pods running, wait for them to shutdown
+				logger.Info("instance is deleting, but still has pods running, wait for them to shutdown")
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+			}
+
+			// all pods is shutdown, remove finalizer
+			controllerutil.RemoveFinalizer(&instance, builder.ResourceCleanFinalizer)
+			if err := r.Update(ctx, &instance); err != nil {
+				logger.Error(err, "remove finalizer failed", "instance", instance.GetName())
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if !controllerutil.ContainsFinalizer(&instance, builder.ResourceCleanFinalizer) {
+		// add finalizer
+		controllerutil.AddFinalizer(&instance, builder.ResourceCleanFinalizer)
+		if err := r.Update(ctx, &instance); err != nil {
+			logger.Error(err, "add finalizer failed", "instance", instance.GetName())
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	// update default status

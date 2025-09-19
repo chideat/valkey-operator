@@ -72,7 +72,10 @@ type ValkeySpec struct {
 	// for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
-	// Modules defines the module settings for Valkey
+	// Modules defines a list of modules to be loaded into the valkey instance.
+	// Each module is specified by its name and version.
+	// Modules are loaded at startup and can extend Redis functionality.
+	// +optional
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
 
 	// Storage defines the storage settings for Valkey

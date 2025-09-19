@@ -140,12 +140,18 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 		}
 	}
 
+	for _, mod := range rf.Spec.Modules {
+		args := append([]string{"loadmodule", mod.Path}, mod.Args...)
+		buffer.WriteString(strings.Join(args, " ") + "\n")
+	}
+
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            ConfigMapName(rf.Name),
 			Namespace:       rf.Namespace,
 			Labels:          GenerateCommonLabels(rf.Name),
 			OwnerReferences: util.BuildOwnerReferences(rf),
+			Annotations:     map[string]string{},
 		},
 		Data: map[string]string{
 			builder.ValkeyConfigKey: buffer.String(),
