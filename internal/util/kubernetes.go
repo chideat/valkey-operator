@@ -155,7 +155,7 @@ func IsStatefulsetChanged2(newSts, sts *appsv1.StatefulSet, logger logr.Logger) 
 		return false, false
 	}
 
-	immutableChanged := cmp.Equal(newSts.Spec, sts.Spec, cmpopts.EquateEmpty(),
+	immutableChanged := !cmp.Equal(newSts.Spec, sts.Spec, cmpopts.EquateEmpty(),
 		cmpopts.IgnoreFields(appsv1.StatefulSetSpec{},
 			"Replicas", "Ordinals", "Template", "UpdateStrategy",
 			"PersistentVolumeClaimRetentionPolicy", "MinReadySeconds"))
