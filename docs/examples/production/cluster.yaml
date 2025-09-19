@@ -2,7 +2,6 @@ apiVersion: rds.valkey.buf.red/v1alpha1
 kind: Valkey
 metadata:
   name: production-cluster
-  namespace: valkey-production
 spec:
   # Valkey version, supports 7.2, 8.0, 8.1
   version: "8.0"
@@ -34,13 +33,6 @@ spec:
   # LoadBalancer for external access
   access:
     serviceType: LoadBalancer
-    loadBalancerSourceRanges:
-      - "10.0.0.0/8"
-      - "172.16.0.0/12"
-      - "192.168.0.0/16"
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
   
   # Production Valkey configuration
   customConfigs:
@@ -81,12 +73,6 @@ spec:
         memory: "128Mi"
         cpu: "100m"
   
-  # Pod annotations for monitoring
-  podAnnotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "9121"
-    prometheus.io/path: "/metrics"
-  
   # Anti-affinity for high availability
   affinityPolicy: AntiAffinity
   
@@ -105,22 +91,3 @@ spec:
   nodeSelector:
     node-type: "memory-optimized"
     storage-type: "ssd"
-  
-  # Security context
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 999
-    runAsGroup: 999
-    fsGroup: 999
-    seccompProfile:
-      type: RuntimeDefault
-
----
-# Namespace for production deployment
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: valkey-production
-  labels:
-    name: valkey-production
-    tier: production
