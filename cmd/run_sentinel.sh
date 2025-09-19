@@ -15,9 +15,6 @@ if [ -n "${password}" ]; then
 fi
 
 # Append announce configuration to sentinel configuration if it exists
-if [ -z "${SERVICE_TYPE}" ] || [ "${SERVICE_TYPE}" = "ClusterIP" ]; then
-    rm -f ${ANNOUNCE_CONFIG_FILE}
-fi
 if [ -f ${ANNOUNCE_CONFIG_FILE} ]; then
     echo "# append announce conf to sentinel config"
     cat "${ANNOUNCE_CONFIG_FILE}" | grep "announce" | sed "s/^/sentinel /" >> ${VALKEY_SENTINEL_CONFIG_FILE}

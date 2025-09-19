@@ -21,7 +21,6 @@ import (
 
 	"github.com/chideat/valkey-operator/cmd/helper/commands"
 	"github.com/urfave/cli/v2"
-	corev1 "k8s.io/api/core/v1"
 )
 
 func NewCommand(ctx context.Context) *cli.Command {
@@ -48,11 +47,6 @@ func NewCommand(ctx context.Context) *cli.Command {
 				Name:    "pod-uid",
 				Usage:   "The id of current pod",
 				EnvVars: []string{"POD_UID"},
-			},
-			&cli.StringFlag{
-				Name:    "service-name",
-				Usage:   "Service name of the statefulset",
-				EnvVars: []string{"SERVICE_NAME"},
 			},
 			&cli.StringFlag{
 				Name:    "operator-username",
@@ -108,12 +102,6 @@ func NewCommand(ctx context.Context) *cli.Command {
 				Usage:   "IP_FAMILY for servie access",
 				EnvVars: []string{"IP_FAMILY_PREFER"},
 			},
-			&cli.StringFlag{
-				Name:    "service-type",
-				Usage:   "Service type for sentinel service",
-				EnvVars: []string{"SERVICE_TYPE"},
-				Value:   "ClusterIP",
-			},
 		},
 		Subcommands: []*cli.Command{
 			{
@@ -122,10 +110,9 @@ func NewCommand(ctx context.Context) *cli.Command {
 				Flags: []cli.Flag{},
 				Action: func(c *cli.Context) error {
 					var (
-						namespace   = c.String("namespace")
-						podName     = c.String("pod-name")
-						ipFamily    = c.String("ip-family")
-						serviceType = corev1.ServiceType(c.String("service-type"))
+						namespace = c.String("namespace")
+						podName   = c.String("pod-name")
+						ipFamily  = c.String("ip-family")
 					)
 					if namespace == "" {
 						return cli.Exit("require namespace", 1)
@@ -142,7 +129,7 @@ func NewCommand(ctx context.Context) *cli.Command {
 						return cli.Exit(err, 1)
 					}
 
-					if err := Access(ctx, client, namespace, podName, ipFamily, serviceType, logger); err != nil {
+					if err := Access(ctx, client, namespace, podName, ipFamily, logger); err != nil {
 						logger.Error(err, "enable nodeport service access failed")
 						return cli.Exit(err, 1)
 					}

@@ -196,19 +196,13 @@ func GetPod(ctx context.Context, client *kubernetes.Clientset, namespace, name s
 	return pod, nil
 }
 
-func RetryGetService(ctx context.Context, clientset *kubernetes.Clientset, svcNamespace, svcName string, typ corev1.ServiceType,
-	count int, logger logr.Logger) (*corev1.Service, error) {
-
-	serviceChecker := func(svc *corev1.Service, typ corev1.ServiceType) error {
+func RetryGetService(ctx context.Context, clientset *kubernetes.Clientset, svcNamespace, svcName string, count int, logger logr.Logger) (*corev1.Service, error) {
+	serviceChecker := func(svc *corev1.Service) error {
 		if svc == nil {
 			return fmt.Errorf("service not found")
 		}
 		if len(svc.Spec.Ports) < 1 {
 			return fmt.Errorf("service port not found")
-		}
-
-		if svc.Spec.Type != typ {
-			return fmt.Errorf("service type not match")
 		}
 
 		switch svc.Spec.Type {
@@ -233,13 +227,13 @@ func RetryGetService(ctx context.Context, clientset *kubernetes.Clientset, svcNa
 	}
 
 	logger.Info("retry get service", "target", fmt.Sprintf("%s/%s", svcNamespace, svcName), "count", count)
-	for i := 0; i < count+1; i++ {
+	for range count + 1 {
 		svc, err := clientset.CoreV1().Services(svcNamespace).Get(ctx, svcName, metav1.GetOptions{})
 		if err != nil {
 			logger.Error(err, "get service failed", "target", fmt.Sprintf("%s/%s", svcNamespace, svcName))
 			return nil, err
 		}
-		if serviceChecker(svc, typ) != nil {
+		if serviceChecker(svc) != nil {
 			logger.Error(err, "service check failed", "target", fmt.Sprintf("%s/%s", svcNamespace, svcName))
 		} else {
 			return svc, nil

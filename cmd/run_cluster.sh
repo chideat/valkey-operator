@@ -43,9 +43,6 @@ if [ -n "${password}" ]; then
 fi
 
 # Handle announcement configuration
-if [ -z "${SERVICE_TYPE}" ] || [ "${SERVICE_TYPE}" = "ClusterIP" ]; then
-    rm -f "${ANNOUNCE_CONFIG_FILE}"
-fi
 if [ -f "${ANNOUNCE_CONFIG_FILE}" ]; then
     cat "${ANNOUNCE_CONFIG_FILE}" >> "${VALKEY_CONFIG_FILE}"
     echo "" >> "${VALKEY_CONFIG_FILE}"

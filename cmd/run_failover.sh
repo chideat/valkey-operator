@@ -23,10 +23,6 @@ if [ "$MONITOR_POLICY" = "sentinel" ]; then
     ANNOUNCE_IP=""
     ANNOUNCE_PORT=""
 
-    if [ -z "${SERVICE_TYPE}" ] || [ "${SERVICE_TYPE}" = "ClusterIP" ]; then
-        rm -f ${ANNOUNCE_CONFIG_FILE}
-    fi
-
     if [ -f "$ANNOUNCE_CONFIG_FILE" ]; then
         echo "" >> "$VALKEY_CONFIG_FILE"
         cat "$ANNOUNCE_CONFIG_FILE" >> "$VALKEY_CONFIG_FILE"
