@@ -7,7 +7,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/gomodule/redigo v1.9.2
 	github.com/onsi/ginkgo/v2 v2.23.3
 	github.com/onsi/gomega v1.36.3
