@@ -365,10 +365,32 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 	time.Sleep(time.Second * 30)
 
 	logger.Info("do shutdown node")
-	// NOTE: here set timeout to 300s, which will try best to do a shutdown snapshot
-	// if the data is too large, this snapshot may not be completed
-	if _, err := valkeyClient.DoWithTimeout(ctx, time.Second*300, "SHUTDOWN"); err != nil && !errors.Is(err, io.EOF) {
-		logger.Error(err, "graceful shutdown failed")
+	if shutdownErr := shutdownNode(ctx, valkeyClient, logger); shutdownErr != nil {
+		logger.Error(shutdownErr, "graceful shutdown failed")
 	}
 	return err
+}
+
+// shutdownNode re-checks dbsize before issuing SHUTDOWN.
+// If dbsize == 0 (e.g. memory was cleared by a failed cross-version fullsync),
+// SHUTDOWN NOSAVE is used to preserve the existing dump.rdb on disk.
+// Otherwise, normal SHUTDOWN is issued to persist the current dataset.
+// Uses a 300s timeout to accommodate large RDB snapshots.
+func shutdownNode(ctx context.Context, valkeyClient valkey.ValkeyClient, logger logr.Logger) error {
+	dbsize, _ := valkey.Int64(valkeyClient.Do(ctx, "DBSIZE"))
+	if dbsize == 0 {
+		logger.Info("dbsize is 0, using SHUTDOWN NOSAVE to preserve existing dump.rdb")
+		_, err := valkeyClient.DoWithTimeout(ctx, time.Second*300, "SHUTDOWN", "NOSAVE")
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		return nil
+	}
+	// NOTE: here set timeout to 300s, which will try best to do a shutdown snapshot
+	// if the data is too large, this snapshot may not be completed
+	_, err := valkeyClient.DoWithTimeout(ctx, time.Second*300, "SHUTDOWN")
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
