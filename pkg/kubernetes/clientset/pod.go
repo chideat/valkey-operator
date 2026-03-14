@@ -80,7 +80,7 @@ func NewPod(kubeClient client.Client, restConfig *rest.Config, logger logr.Logge
 	}
 
 	if restConfig != nil {
-		restClient, err := apiutil.RESTClientForGVK(corev1.SchemeGroupVersion.WithKind("Pod"), false, restConfig, scheme.Codecs, http.DefaultClient)
+		restClient, err := apiutil.RESTClientForGVK(corev1.SchemeGroupVersion.WithKind("Pod"), false, false, restConfig, scheme.Codecs, http.DefaultClient)
 		if err != nil {
 			panic(err)
 		}
