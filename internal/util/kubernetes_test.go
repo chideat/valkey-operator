@@ -1497,6 +1497,179 @@ func TestLoadEnvs(t *testing.T) {
 	}
 }
 
+func TestIsStatefulsetChanged2(t *testing.T) {
+	logger := zap.New()
+
+	base := func() *appsv1.StatefulSet {
+		return &appsv1.StatefulSet{
+			Spec: appsv1.StatefulSetSpec{
+				Replicas:    ptr.To(int32(2)),
+				ServiceName: "test-svc",
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "valkey"},
+				},
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "valkey", Image: "valkey:7.2"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name              string
+		modify            func(sts *appsv1.StatefulSet)
+		wantChanged       bool
+		wantImmutable     bool
+	}{
+		{
+			name:          "identical statefulsets",
+			modify:        func(_ *appsv1.StatefulSet) {},
+			wantChanged:   false,
+			wantImmutable: false,
+		},
+		{
+			name: "replica count change (mutable)",
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.Replicas = ptr.To(int32(3))
+			},
+			wantChanged:   true,
+			wantImmutable: false,
+		},
+		{
+			name: "volume claim template name change (immutable)",
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
+					{ObjectMeta: metav1.ObjectMeta{Name: "data-new"}},
+				}
+			},
+			wantChanged:   true,
+			wantImmutable: true,
+		},
+		{
+			name: "container image change (pod template, mutable)",
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.Template.Spec.Containers[0].Image = "valkey:8.0"
+			},
+			wantChanged:   true,
+			wantImmutable: false,
+		},
+		{
+			name: "service name change (immutable)",
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.ServiceName = "new-svc"
+			},
+			wantChanged:   true,
+			wantImmutable: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := base()
+			newSts := base()
+			tt.modify(newSts)
+			changed, immutableChanged := IsStatefulsetChanged2(newSts, old, logger)
+			assert.Equal(t, tt.wantChanged, changed, "changed mismatch")
+			assert.Equal(t, tt.wantImmutable, immutableChanged, "immutableChanged mismatch")
+		})
+	}
+}
+
+func TestIsServiceChanged(t *testing.T) {
+	logger := zap.New()
+
+	base := func() *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels:      map[string]string{"app": "valkey"},
+				Annotations: map[string]string{"note": "test"},
+			},
+			Spec: corev1.ServiceSpec{
+				Type:     corev1.ServiceTypeClusterIP,
+				Selector: map[string]string{"app": "valkey"},
+				Ports: []corev1.ServicePort{
+					{Name: "redis", Port: 6379, Protocol: corev1.ProtocolTCP},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		modify   func(svc *corev1.Service)
+		expected bool
+	}{
+		{
+			name:     "identical services",
+			modify:   func(_ *corev1.Service) {},
+			expected: false,
+		},
+		{
+			name: "port added",
+			modify: func(svc *corev1.Service) {
+				svc.Spec.Ports = append(svc.Spec.Ports, corev1.ServicePort{Name: "extra", Port: 6380})
+			},
+			expected: true,
+		},
+		{
+			name: "port removed",
+			modify: func(svc *corev1.Service) {
+				svc.Spec.Ports = []corev1.ServicePort{}
+			},
+			expected: true,
+		},
+		{
+			name: "port protocol change",
+			modify: func(svc *corev1.Service) {
+				svc.Spec.Ports[0].Protocol = corev1.ProtocolUDP
+			},
+			expected: true,
+		},
+		{
+			name: "annotation change",
+			modify: func(svc *corev1.Service) {
+				svc.Annotations["note"] = "changed"
+			},
+			expected: true,
+		},
+		{
+			name: "label change",
+			modify: func(svc *corev1.Service) {
+				svc.Labels["new-key"] = "new-val"
+			},
+			expected: true,
+		},
+		{
+			name: "selector change",
+			modify: func(svc *corev1.Service) {
+				svc.Spec.Selector["env"] = "prod"
+			},
+			expected: true,
+		},
+		{
+			name: "type change",
+			modify: func(svc *corev1.Service) {
+				svc.Spec.Type = corev1.ServiceTypeNodePort
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := base()
+			newSvc := base()
+			tt.modify(newSvc)
+			result := IsServiceChanged(newSvc, old, logger)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestRetryOnTimeout(t *testing.T) {
 	t.Run("success on first try", func(t *testing.T) {
 		calls := 0
