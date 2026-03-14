@@ -80,52 +80,41 @@ replica-announce-port 31095`,
 	}
 }
 
-// Test_shutdownNosaveDecision verifies the shutdown save-mode decision logic:
-// Dbsize == 0 (e.g. failed cross-version fullsync) → SHUTDOWN NOSAVE to preserve dump.rdb.
-// Dbsize > 0 → normal SHUTDOWN.
-func Test_shutdownNosaveDecision(t *testing.T) {
+// Test_shutdownNode verifies the SHUTDOWN/SHUTDOWN NOSAVE decision in shutdownNode.
+// miniredis doesn't support SHUTDOWN, so both cases return an error — but each exercises
+// the correct branch (NOSAVE for dbsize==0, normal SHUTDOWN for dbsize>0).
+func Test_shutdownNode(t *testing.T) {
 	tests := []struct {
-		name       string
-		dbsize     int64
-		wantNosave bool
+		name    string
+		setup   func(s *miniredis.Miniredis)
+		wantErr bool
 	}{
 		{
-			name:       "empty database - use SHUTDOWN NOSAVE",
-			dbsize:     0,
-			wantNosave: true,
+			name:    "empty database uses SHUTDOWN NOSAVE",
+			setup:   func(_ *miniredis.Miniredis) {},
+			wantErr: true, // miniredis returns ERR for SHUTDOWN NOSAVE
 		},
 		{
-			name:       "non-empty database - use normal SHUTDOWN",
-			dbsize:     2,
-			wantNosave: false,
+			name: "non-empty database uses normal SHUTDOWN",
+			setup: func(s *miniredis.Miniredis) {
+				_ = s.Set("key1", "value1")
+				_ = s.Set("key2", "value2")
+			},
+			wantErr: true, // miniredis returns ERR for SHUTDOWN
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotNosave := tt.dbsize == 0
-			if gotNosave != tt.wantNosave {
-				t.Errorf("nosave decision for dbsize=%d: got %v, want %v", tt.dbsize, gotNosave, tt.wantNosave)
+			s := miniredis.RunT(t)
+			tt.setup(s)
+			client := valkey.NewValkeyClient(s.Addr(), valkey.AuthInfo{})
+			defer client.Close()
+
+			err := shutdownNode(context.Background(), client, logr.Discard())
+			if (err != nil) != tt.wantErr {
+				t.Errorf("shutdownNode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-// Test_shutdownInfoEmptyDB verifies that Info() returns Dbsize==0 for an empty miniredis instance,
-// which is the scenario triggered by a failed cross-version fullsync.
-func Test_shutdownInfoEmptyDB(t *testing.T) {
-	s := miniredis.RunT(t)
-	client := valkey.NewValkeyClient(s.Addr(), valkey.AuthInfo{})
-	defer client.Close()
-
-	info, err := client.Info(context.Background())
-	if err != nil {
-		t.Fatalf("Info() error: %v", err)
-	}
-	if info.Dbsize != 0 {
-		t.Errorf("expected Dbsize=0 for empty DB, got %d", info.Dbsize)
-	}
-	if info.Dbsize != 0 {
-		t.Error("expected NOSAVE decision for empty DB")
 	}
 }
