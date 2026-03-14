@@ -29,6 +29,7 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -144,6 +145,20 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 
 	if len(failedShards) > 0 {
 		for _, shard := range failedShards {
+			for _, node := range shard.Replicas() {
+				if !node.IsReady() {
+					continue
+				}
+
+				if node.ClusterInfo().ClusterState != valkey.ClusterStateOk {
+					logger.Info("node is not in cluster state", "node", node.GetName(), "state", node.ClusterInfo().ClusterState)
+					if err := a.meetNode(ctx, cluster, node, logger); err != nil {
+						time.Sleep(time.Second * 2)
+					}
+				}
+
+			}
+
 			if err := shard.Refresh(ctx); err != nil {
 				logger.Error(err, "refresh shard info failed", "shard", shard.GetName())
 				continue
@@ -153,8 +168,13 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 			}
 
 			for _, node := range shard.Replicas() {
-				if !node.IsReady() && node.Role() != core.NodeRoleReplica {
+				if !node.IsReady() {
 					continue
+				}
+
+				if node.ClusterInfo().ClusterState != valkey.ClusterStateOk {
+					logger.Info("node is not in cluster state", "node", node.GetName(), "state", node.ClusterInfo().ClusterState)
+					_ = a.meetNode(ctx, cluster, node, logger)
 				}
 
 				// disable takeover when shard in importing or migrating
@@ -256,19 +276,39 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 	return nil
 }
 
+func (a *actorEnsureSlots) meetNode(ctx context.Context, cluster types.ClusterInstance, node types.ValkeyNode, logger logr.Logger) error {
+	if cluster == nil || node == nil {
+		return fmt.Errorf("cluster or node is nil")
+	}
+
+	arg := []any{"CLUSTER", "MEET", node.DefaultInternalIP().String(), node.InternalPort(), node.InternalIPort()}
+	for _, shard := range cluster.Shards() {
+		for _, snode := range shard.Nodes() {
+			if snode.ID() == node.ID() {
+				continue
+			}
+			if err := snode.Setup(ctx, arg); err != nil {
+				logger.Error(err, "meet node failed", "node", snode.GetName())
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (a *actorEnsureSlots) doFailover(ctx context.Context, node types.ValkeyNode, retry int, ensure bool, logger logr.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	args := []any{"CLUSTER", "FAILOVER", "FORCE"}
 	for i := 0; i < retry+1; i++ {
-		logger.Info("do shard failover", "node", node.GetName(), "action", args[2])
+		logger.Info("do shard force failover", "node", node.GetName(), "action", args[2])
 		if err := node.Setup(ctx, args); err != nil {
 			logger.Error(err, "do failover failed", "node", node.GetName())
 			return err
 		}
 
-		for j := 0; j < 3; j++ {
+		for range 3 {
 			time.Sleep(time.Second * 2)
 			if err := node.Refresh(ctx); err != nil {
 				logger.Error(err, "refresh node info failed")
@@ -287,13 +327,13 @@ func (a *actorEnsureSlots) doFailover(ctx context.Context, node types.ValkeyNode
 		}
 
 		args[2] = "TAKEOVER"
-		logger.Info("do shard failover", "node", node.GetName(), "action", args[2])
+		logger.Info("do shard takeover failover", "node", node.GetName(), "action", args[2])
 		if err := node.Setup(ctx, args); err != nil {
 			logger.Error(err, "do failover failed", "node", node.GetName())
 			return err
 		}
 
-		for j := 0; j < 3; j++ {
+		for range 3 {
 			time.Sleep(time.Second * 2)
 			if err := node.Refresh(ctx); err != nil {
 				logger.Error(err, "refresh node info failed")

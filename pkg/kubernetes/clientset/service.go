@@ -27,6 +27,8 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -129,8 +131,8 @@ func (s *ServiceOption) CreateOrUpdateIfServiceChanged(ctx context.Context, name
 		return err
 	}
 	if !reflect.DeepEqual(oldSvc.Labels, service.Labels) ||
-		!reflect.DeepEqual(oldSvc.Spec.Selector, service.Spec.Selector) ||
-		len(oldSvc.Spec.Ports) != len(service.Spec.Ports) {
+		!reflect.DeepEqual(oldSvc.Annotations, service.Annotations) ||
+		!cmp.Equal(oldSvc.Spec, service.Spec, cmpopts.EquateEmpty()) {
 
 		return s.UpdateService(ctx, namespace, service)
 	}

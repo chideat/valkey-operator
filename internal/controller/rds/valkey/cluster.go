@@ -27,7 +27,9 @@ import (
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -78,18 +80,6 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 		if exporter.Image == "" {
 			exporter.Image = config.GetValkeyExporterImage(nil)
 		}
-		if exporter.Resources == nil || exporter.Resources.Limits.Cpu().IsZero() || exporter.Resources.Limits.Memory().IsZero() {
-			exporter.Resources = &corev1.ResourceRequirements{
-				Requests: map[corev1.ResourceName]resource.Quantity{
-					corev1.ResourceCPU:    resource.MustParse("100m"),
-					corev1.ResourceMemory: resource.MustParse("300Mi"),
-				},
-				Limits: map[corev1.ResourceName]resource.Quantity{
-					corev1.ResourceCPU:    resource.MustParse("100m"),
-					corev1.ResourceMemory: resource.MustParse("300Mi"),
-				},
-			}
-		}
 	}
 
 	shardsConf := instance.Spec.Replicas.ShardsConfig
@@ -104,6 +94,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Labels:          labels,
 			Annotations:     annotations,
 			OwnerReferences: util.BuildOwnerReferences(instance),
+			Finalizers:      []string{builder.ResourceCleanFinalizer},
 		},
 		Spec: v1alpha1.ClusterSpec{
 			Image: image,
@@ -119,10 +110,11 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			NodeSelector:    instance.Spec.NodeSelector,
 			Tolerations:     instance.Spec.Tolerations,
 			SecurityContext: instance.Spec.SecurityContext,
-			PodAnnotations:  instance.Spec.PodAnnotations,
+			PodAnnotations:  lo.Assign(instance.Spec.PodAnnotations),
 			Access:          instance.Spec.Access,
 			Exporter:        exporter,
 			Storage:         instance.Spec.Storage,
+			Modules:         instance.Spec.Modules,
 		},
 	}
 
@@ -140,7 +132,17 @@ func ShouldUpdateCluster(cluster, newCluster *v1alpha1.Cluster, logger logr.Logg
 		return true
 	}
 
-	return !reflect.DeepEqual(cluster.Spec, newCluster.Spec)
+	if !cmp.Equal(cluster.Spec, newCluster.Spec, cmpopts.EquateEmpty(),
+		cmpopts.IgnoreFields(v1alpha1.ClusterSpec{}, "PodAnnotations"),
+	) {
+		return true
+	}
+
+	if builder.IsPodAnnotationDiff(newCluster.Spec.PodAnnotations, cluster.Spec.PodAnnotations) {
+		logger.V(3).Info("pod annotations diff")
+		return true
+	}
+	return false
 }
 
 func ClusterIsUp(cluster *v1alpha1.Cluster) bool {

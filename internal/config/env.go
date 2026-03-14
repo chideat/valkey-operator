@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -128,4 +129,14 @@ func GetValkeyExporterImage(obj v1.Object) string {
 	imgName := Getenv("DEFAULT_EXPORTER_IMAGE_NAME", "oliver006/redis_exporter")
 	imgVersion := Getenv("DEFAULT_EXPORTER_VERSION", "v1.67.0-alpine")
 	return GetFullImageURL(imgName, imgVersion)
+}
+
+func LoadbalancerReadyTimeout() time.Duration {
+	timeout := os.Getenv("LOADBALANCER_WAIT_TIMEOUT")
+	if timeout != "" {
+		if d, err := time.ParseDuration(timeout); err == nil {
+			return d
+		}
+	}
+	return 2 * time.Minute
 }

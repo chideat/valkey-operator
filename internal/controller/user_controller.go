@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/controller/user"
 	"github.com/chideat/valkey-operator/internal/util"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
+	tuser "github.com/chideat/valkey-operator/pkg/types/user"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -70,17 +72,45 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	logger := log.FromContext(ctx).WithName("User").WithValues("target", req.String())
 
 	instance := v1alpha1.User{}
-	err := r.Client.Get(ctx, req.NamespacedName, &instance)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
-		}
+	if err := r.Client.Get(ctx, req.NamespacedName, &instance); err != nil {
 		logger.Error(err, "get valkey user failed")
-		return reconcile.Result{}, err
-	}
+		return reconcile.Result{}, client.IgnoreNotFound(err)
+	} else if instance.GetDeletionTimestamp() != nil {
+		if slices.Contains([]string{tuser.DefaultOperatorUserName}, instance.Spec.Username) {
+			switch instance.Spec.Arch {
+			case core.ValkeyReplica, core.ValkeyFailover:
+				rf := &v1alpha1.Failover{}
+				if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: instance.Spec.InstanceName}, rf); err != nil {
+					if !errors.IsNotFound(err) {
+						logger.Error(err, "get instance failed", "name", instance.Name)
+						return ctrl.Result{}, err
+					}
+				} else {
+					if rf.GetDeletionTimestamp() != nil {
+						logger.Info("failover is deleting, skip remove finalizer", "name", instance.Spec.InstanceName)
+						return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+					}
+					// this should not happen, but we still return a requeue result
+					return ctrl.Result{RequeueAfter: time.Minute}, nil
+				}
+			case core.ValkeyCluster:
+				cluster := &v1alpha1.Cluster{}
+				if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: instance.Spec.InstanceName}, cluster); err != nil {
+					if !errors.IsNotFound(err) {
+						logger.Error(err, "get instance failed", "name", instance.Name)
+						return ctrl.Result{}, err
+					}
+				} else {
+					if cluster.GetDeletionTimestamp() != nil {
+						logger.Info("instance is deleting, skip remove finalizer", "name", instance.Spec.InstanceName)
+						return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+					}
+					// this should not happen, but we still return a requeue result
+					return ctrl.Result{RequeueAfter: time.Minute}, nil
+				}
+			}
+		}
 
-	if instance.GetDeletionTimestamp() != nil {
-		logger.Info("user is being deleted", "instance", req.NamespacedName)
 		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
 			if instance.Status.Message != err.Error() {
 				instance.Status.Phase = v1alpha1.UserFail
@@ -91,12 +121,36 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				}
 			}
 			return ctrl.Result{RequeueAfter: time.Second * 10}, err
-		} else {
-			controllerutil.RemoveFinalizer(&instance, UserFinalizer)
-			if err := r.Update(ctx, &instance); err != nil {
-				logger.Error(err, "remove finalizer failed", "instance", req.NamespacedName)
-				return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+		}
+
+		for _, name := range instance.Spec.PasswordSecrets {
+			if name == "" {
+				continue
 			}
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
+				if errors.IsNotFound(err) {
+					logger.Info("secret not found, skip remove finalizer", "name", name)
+					continue
+				}
+				logger.Error(err, "get secret failed", "secret name", name)
+				return ctrl.Result{}, err
+			}
+
+			if slices.Contains(secret.GetFinalizers(), UserFinalizer) {
+				controllerutil.RemoveFinalizer(secret, UserFinalizer)
+				if err := r.Update(ctx, secret); err != nil {
+					logger.Error(err, "remove finalizer from secret failed", "secret name", name)
+					return ctrl.Result{}, err
+				}
+			}
+		}
+
+		logger.Info("RemoveFinalizer", "instance", req.NamespacedName)
+		controllerutil.RemoveFinalizer(&instance, UserFinalizer)
+		if err := r.Update(ctx, &instance); err != nil {
+			logger.Error(err, "remove finalizer failed", "instance", req.NamespacedName)
+			return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 		}
 		return ctrl.Result{}, nil
 	}
@@ -131,10 +185,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			continue
 		}
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, types.NamespacedName{
-			Namespace: instance.Namespace,
-			Name:      name,
-		}, secret); err != nil {
+		if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
 			logger.Error(err, "get secret failed", "secret name", name)
 			instance.Status.Message = err.Error()
 			instance.Status.Phase = v1alpha1.UserFail
@@ -157,12 +208,14 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			secret.SetLabels(map[string]string{})
 		}
 		if secret.Labels[builder.InstanceNameLabelKey] != vkName ||
-			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() {
+			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() ||
+			controllerutil.ContainsFinalizer(secret, UserFinalizer) {
 
 			secret.Labels[builder.ManagedByLabelKey] = config.AppName
 			secret.Labels[builder.InstanceNameLabelKey] = vkName
 			secret.OwnerReferences = util.BuildOwnerReferences(&instance)
-			if err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			controllerutil.AddFinalizer(secret, UserFinalizer)
+			if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				return r.Update(ctx, secret)
 			}); err != nil {
 				logger.Error(err, "update secret owner failed", "secret", secret.Name)

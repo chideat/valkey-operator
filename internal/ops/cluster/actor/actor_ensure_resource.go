@@ -38,6 +38,8 @@ import (
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -79,7 +81,10 @@ func (a *actorEnsureResource) Do(ctx context.Context, val types.Instance) *actor
 		if ret := a.pauseStatefulSet(ctx, cluster, logger); ret != nil {
 			return ret
 		}
-		return actor.NewResult(cops.CommandPaused)
+		if len(cluster.Nodes()) == 0 {
+			return actor.Pause()
+		}
+		return actor.Requeue()
 	}
 
 	if ret := a.ensureServiceAccount(ctx, cluster, logger); ret != nil {
@@ -283,7 +288,7 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 		} else if err != nil {
 			logger.Error(err, "get poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
 			return actor.RequeueWithError(err)
-		} else if !reflect.DeepEqual(oldPdb.Spec, pdb.Spec) {
+		} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) {
 			pdb.ResourceVersion = oldPdb.ResourceVersion
 			if err = a.client.UpdatePodDisruptionBudget(ctx, cr.GetNamespace(), pdb); err != nil {
 				logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
@@ -320,7 +325,7 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 			newSts.Spec.VolumeClaimTemplates = oldSts.Spec.VolumeClaimTemplates
 
 			// merge restart annotations, if statefulset is more new, not restart statefulset
-			newSts.Spec.Template.Annotations = MergeAnnotations(newSts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
+			newSts.Spec.Template.Annotations = builder.MergeRestartAnnotation(newSts.Spec.Template.Annotations, oldSts.Spec.Template.Annotations)
 
 			if util.IsStatefulsetChanged(newSts, oldSts, logger) {
 				if err := a.client.UpdateStatefulSet(ctx, cr.GetNamespace(), newSts); err != nil {
@@ -656,33 +661,4 @@ func (a *actorEnsureResource) fetchAllPodBindedServices(ctx context.Context, nam
 		}
 	}
 	return services, nil
-}
-
-func MergeAnnotations(t, s map[string]string) map[string]string {
-	if t == nil {
-		return s
-	}
-	if s == nil {
-		return t
-	}
-
-	for k, v := range s {
-		if k == builder.RestartAnnotationKey {
-			tRestartAnn := t[k]
-			if tRestartAnn == "" && v != "" {
-				t[k] = v
-			}
-
-			tTime, err1 := time.Parse(time.RFC3339Nano, tRestartAnn)
-			sTime, err2 := time.Parse(time.RFC3339Nano, v)
-			if err1 != nil || err2 != nil || sTime.After(tTime) {
-				t[k] = v
-			} else {
-				t[k] = tRestartAnn
-			}
-		} else {
-			t[k] = v
-		}
-	}
-	return t
 }

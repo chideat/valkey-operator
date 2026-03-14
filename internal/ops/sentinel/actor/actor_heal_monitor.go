@@ -26,6 +26,7 @@ import (
 	ops "github.com/chideat/valkey-operator/internal/ops/sentinel"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
+	ptypes "github.com/chideat/valkey-operator/pkg/types/user"
 	"github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -79,6 +80,10 @@ func (a *actorHealMonitor) Do(ctx context.Context, val types.Instance) *actor.Ac
 			user = inst.Users().GetOpUser()
 			tls  = inst.TLSConfig()
 		)
+		if user == nil {
+			user = &ptypes.User{}
+		}
+
 		for name, nodes := range unknownSentinels {
 			// set sentinels
 			for _, node := range inst.Nodes() {

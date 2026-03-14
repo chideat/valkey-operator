@@ -129,7 +129,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 							return actor.RequeueWithError(err)
 						} else {
 							inst.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
-								"force delete pod with inconsist annotation %s", node.GetName())
+								"force delete pod with inconsist announce %s", node.GetName())
 							return actor.Requeue()
 						}
 					}
@@ -145,7 +145,7 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 						return actor.RequeueWithError(err)
 					} else {
 						inst.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
-							"force delete pod with inconsist annotation %s", node.GetName())
+							"force delete pod with inconsist announce %s", node.GetName())
 						return actor.Requeue()
 					}
 				}

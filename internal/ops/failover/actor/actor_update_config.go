@@ -72,57 +72,85 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	if errors.IsNotFound(err) || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		return actor.NewResultWithError(ops.CommandEnsureResource, fmt.Errorf("configmap %s not found", newCm.GetName()))
 	} else if err != nil {
-		return actor.NewResultWithError(ops.CommandRequeue, err)
+		return actor.RequeueWithError(err)
 	}
-	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+
+	var (
+		newConf builder.ValkeyConfig
+		oldConf builder.ValkeyConfig
+	)
+	if lastAppliedConf := oldCm.Annotations[builder.LastAppliedConfigAnnotationKey]; lastAppliedConf != "" {
+		newConf, _ = builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+		oldConf, _ = builder.LoadValkeyConfig(lastAppliedConf)
+	} else {
+		newConf, _ = builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+		oldConf, _ = builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	}
+
 	added, changed, deleted := oldConf.Diff(newConf)
-	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
-		// NOTE: update configmap first may cause the hot config fail for it will not retry again
-		if err := a.client.UpdateConfigMap(ctx, newCm.GetNamespace(), newCm); err != nil {
-			logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(newCm))
-			return actor.NewResultWithError(ops.CommandRequeue, err)
-		}
-	}
 	maps.Copy(changed, added)
 
-	foundRestartApplyConfig := false
-	for key := range changed {
-		if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
-			foundRestartApplyConfig = true
-			break
+	if len(deleted)+len(changed) > 0 {
+		conf := newCm.DeepCopy()
+		if lastAppliedConf := oldCm.Annotations[builder.LastAppliedConfigAnnotationKey]; lastAppliedConf != "" {
+			conf.Annotations[builder.LastAppliedConfigAnnotationKey] = lastAppliedConf
+		} else {
+			conf.Annotations[builder.LastAppliedConfigAnnotationKey] = oldCm.Data[builder.ValkeyConfigKey]
 		}
-	}
-	if foundRestartApplyConfig {
-		err := st.Restart(ctx)
-		if err != nil {
-			logger.Error(err, "restart instance failed")
+
+		// update configmap with last applied config
+		if err := a.client.UpdateConfigMap(ctx, conf.GetNamespace(), conf); err != nil {
+			logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(conf))
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
-	} else {
-		var margs [][]any
-		for key, vals := range changed {
-			logger.V(2).Info("hot config ", "key", key, "value", vals.String())
-			margs = append(margs, []any{"config", "set", key, vals.String()})
-		}
-		var (
-			isUpdateFailed = false
-			err            error
-		)
-		for _, node := range st.Nodes() {
-			if node.ContainerStatus() == nil || !node.ContainerStatus().Ready ||
-				node.IsTerminating() {
-				continue
-			}
-			if err = node.Setup(ctx, margs...); err != nil {
-				isUpdateFailed = true
+	}
+
+	if len(changed) > 0 {
+		foundRestartApplyConfig := false
+		for key := range changed {
+			if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
+				foundRestartApplyConfig = true
 				break
 			}
 		}
+		if foundRestartApplyConfig {
+			err := st.Restart(ctx)
+			if err != nil {
+				logger.Error(err, "restart redis failed")
+				return actor.NewResultWithError(ops.CommandRequeue, err)
+			}
+		} else {
+			var margs [][]any
+			for key, vals := range changed {
+				logger.V(2).Info("hot config ", "key", key, "value", vals.String())
+				margs = append(margs, []any{"config", "set", key, vals.String()})
+			}
+			var (
+				isUpdateFailed = false
+				err            error
+			)
+			for _, node := range st.Nodes() {
+				if node.ContainerStatus() == nil || !node.ContainerStatus().Ready ||
+					node.IsTerminating() {
+					continue
+				}
+				if err = node.Setup(ctx, margs...); err != nil {
+					isUpdateFailed = true
+					break
+				}
+			}
 
-		if !isUpdateFailed {
-			return actor.NewResultWithError(ops.CommandRequeue, err)
+			if isUpdateFailed {
+				return actor.NewResultWithError(ops.CommandRequeue, err)
+			}
 		}
 	}
+
+	// update configmap without last applied config
+	if err := a.client.UpdateConfigMap(ctx, newCm.GetNamespace(), newCm); err != nil {
+		logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(newCm))
+		return actor.NewResultWithError(ops.CommandRequeue, err)
+	}
+
 	return nil
 }

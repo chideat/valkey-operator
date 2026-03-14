@@ -34,8 +34,20 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podName, ipfamily string, serviceType corev1.ServiceType, logger logr.Logger) error {
-	logger.Info("service access", "serviceType", serviceType, "ipfamily", ipfamily, "podName", podName)
+func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podName, ipfamily string, logger logr.Logger) error {
+	podSvc, err := commands.RetryGetService(ctx, client, namespace, podName, 20, logger)
+	if errors.IsNotFound(err) {
+		if podSvc, err = commands.RetryGetService(ctx, client, namespace, podName, 20, logger); err != nil {
+			logger.Error(err, "get service failed", "target", fmt.Sprintf("%s/%s", namespace, podName))
+			return err
+		}
+	} else if err != nil {
+		logger.Error(err, "get service failed", "target", fmt.Sprintf("%s/%s", namespace, podName))
+		return err
+	}
+	serviceType := podSvc.Spec.Type
+
+	logger.Info("check pod service type", "serviceType", serviceType, "ipfamily", ipfamily, "podName", podName)
 	pod, err := commands.GetPod(ctx, client, namespace, podName, logger)
 	if err != nil {
 		logger.Error(err, "get pods failed", "namespace", namespace, "name", podName)
@@ -51,16 +63,6 @@ func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podNam
 		announcePort int32 = 26379
 	)
 	if serviceType == corev1.ServiceTypeNodePort {
-		podSvc, err := commands.RetryGetService(ctx, client, namespace, podName, corev1.ServiceTypeNodePort, 20, logger)
-		if errors.IsNotFound(err) {
-			if podSvc, err = commands.RetryGetService(ctx, client, namespace, podName, corev1.ServiceTypeNodePort, 20, logger); err != nil {
-				logger.Error(err, "get service failed", "target", fmt.Sprintf("%s/%s", namespace, podName))
-				return err
-			}
-		} else if err != nil {
-			logger.Error(err, "get service failed", "target", fmt.Sprintf("%s/%s", namespace, podName))
-			return err
-		}
 		for _, v := range podSvc.Spec.Ports {
 			if v.Name == "sentinel" {
 				announcePort = v.NodePort
@@ -115,17 +117,6 @@ func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podNam
 			return err
 		}
 	} else if serviceType == corev1.ServiceTypeLoadBalancer {
-		podSvc, err := commands.RetryGetService(ctx, client, namespace, podName, corev1.ServiceTypeLoadBalancer, 20, logger)
-		if errors.IsNotFound(err) {
-			if podSvc, err = commands.RetryGetService(ctx, client, namespace, podName, corev1.ServiceTypeLoadBalancer, 20, logger); err != nil {
-				logger.Error(err, "retry get lb service failed")
-				return err
-			}
-		} else if err != nil {
-			logger.Error(err, "get lb service failed", "target", fmt.Sprintf("%s/%s", namespace, podName))
-			return err
-		}
-
 		for _, v := range podSvc.Status.LoadBalancer.Ingress {
 			if v.IP == "" {
 				continue
@@ -161,13 +152,13 @@ func Access(ctx context.Context, client *kubernetes.Clientset, namespace, podNam
 		}
 	}
 
-	format_announceIp := strings.Replace(announceIp, ":", "-", -1)
-	if strings.HasSuffix(format_announceIp, "-") {
-		format_announceIp = fmt.Sprintf("%s0", format_announceIp)
+	fAnnounceIp := strings.ReplaceAll(announceIp, ":", "-")
+	if strings.HasSuffix(fAnnounceIp, "-") {
+		fAnnounceIp = fmt.Sprintf("%s0", fAnnounceIp)
 	}
 	labelPatch := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"add","path":"/metadata/labels/%s","value":"%s"}]`,
-		strings.Replace(builder.AnnounceIPLabelKey, "/", "~1", -1), format_announceIp,
-		strings.Replace(builder.AnnouncePortLabelKey, "/", "~1", -1), strconv.Itoa(int(announcePort)))
+		strings.ReplaceAll(builder.AnnounceIPLabelKey, "/", "~1"), fAnnounceIp,
+		strings.ReplaceAll(builder.AnnouncePortLabelKey, "/", "~1"), strconv.Itoa(int(announcePort)))
 
 	logger.Info(labelPatch)
 	_, err = client.CoreV1().Pods(pod.Namespace).Patch(ctx, podName, types.JSONPatchType, []byte(labelPatch), metav1.PatchOptions{})

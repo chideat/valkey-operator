@@ -182,6 +182,10 @@ func (m *MockClusterInstance) Shards() []types.ClusterShard {
 	return nil
 }
 
+func (m *MockClusterInstance) Shard(i int) types.ClusterShard {
+	return nil
+}
+
 func (m *MockClusterInstance) RewriteShards(ctx context.Context, shards []*v1alpha1.ClusterShards) error {
 	return nil
 }

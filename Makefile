@@ -61,7 +61,7 @@ OPERATOR_SDK_VERSION ?= v1.38.0
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.30.0
+ENVTEST_K8S_VERSION = 1.31.0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -121,12 +121,27 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -vE "/test|/e2e|mocks|_generated") -coverprofile coverage.txt
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path --use-deprecated-gcs=false)" go test $$(go list ./... | grep -vE "/test|/e2e|mocks|_generated") -coverprofile coverage.txt
+
+KIND_CLUSTER ?= valkey-operator
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
 	SKIP_DEPLOY_OPERATOR=1 SKIP_DEPLOY_PROMETHEUS=1 SKIP_DEPLOY_CERT_MANAGER=1 go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
+
+.PHONY: kind-setup
+kind-setup: ## Create a local Kind cluster if it does not already exist.
+	kind get clusters | grep -q "^$(KIND_CLUSTER)$$" || \
+	  kind create cluster --name $(KIND_CLUSTER) --config config/kind/kind-config.yaml
+
+.PHONY: kind-load
+kind-load: docker-build kind-setup ## Build the operator image and load it into the Kind cluster.
+	kind load docker-image ${IMG} --name $(KIND_CLUSTER)
+
+.PHONY: test-e2e-local
+test-e2e-local: kind-load install deploy ## Run e2e tests against a local Kind cluster (installs dependencies automatically).
+	go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter

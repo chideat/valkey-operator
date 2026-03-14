@@ -419,7 +419,7 @@ func TestParsePodShardAndIndex(t *testing.T) {
 	}
 }
 
-func TestMergeAnnotations(t *testing.T) {
+func TestMergeRestartAnnotation(t *testing.T) {
 	now := time.Now()
 	older := now.Add(-1 * time.Hour)
 	newer := now.Add(1 * time.Hour)
@@ -434,7 +434,7 @@ func TestMergeAnnotations(t *testing.T) {
 			name: "nil target",
 			t:    nil,
 			s:    map[string]string{"key": "value"},
-			want: map[string]string{"key": "value"},
+			want: map[string]string{},
 		},
 		{
 			name: "nil source",
@@ -446,12 +446,12 @@ func TestMergeAnnotations(t *testing.T) {
 			name: "merge regular keys",
 			t:    map[string]string{"key1": "value1"},
 			s:    map[string]string{"key2": "value2"},
-			want: map[string]string{"key1": "value1", "key2": "value2"},
+			want: map[string]string{"key1": "value1"},
 		},
 		{
 			name: "source overwrites target",
-			t:    map[string]string{"key": "old"},
-			s:    map[string]string{"key": "new"},
+			t:    map[string]string{"key": "new"},
+			s:    map[string]string{"key": "old"},
 			want: map[string]string{"key": "new"},
 		},
 		{
@@ -482,9 +482,9 @@ func TestMergeAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MergeAnnotations(tt.t, tt.s)
+			got := MergeRestartAnnotation(tt.t, tt.s)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MergeAnnotations() = %v, want %v", got, tt.want)
+				t.Errorf("MergeRestartAnnotation() = %v, want %v", got, tt.want)
 			}
 		})
 	}

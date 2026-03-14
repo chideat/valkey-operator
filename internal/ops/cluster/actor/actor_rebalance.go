@@ -131,8 +131,8 @@ type SlotMigrateStatus struct {
 // 槽迁移实现
 // 由于槽迁移是一个标记然后后台任务一直执行的过程，为了槽迁移的健壮性，将槽迁移的任务进行拆分
 // 1. operator 部分：operator 只负责标记哪些槽要迁移
-// 2. sidecar: sidercar 用于按照标记信息迁移槽，并在数据迁移完成之后，清理标记
-// 3. 即使在槽迁移过程中 node 重启或者关机(可能会数据丢失)，operator 会重新标记，sidecar 会重新进行迁移
+// 2. agent: agent 用于按照标记信息迁移槽，并在数据迁移完成之后，清理标记
+// 3. 即使在槽迁移过程中 node 重启或者关机(可能会数据丢失)，operator 会重新标记，agent 会重新进行迁移
 func (a *actorRebalance) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
 	cluster := val.(types.ClusterInstance)
 	logger := val.Logger().WithValues("actor", cops.CommandRebalance.String())

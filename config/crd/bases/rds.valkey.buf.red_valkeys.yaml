@@ -1317,7 +1317,10 @@ spec:
                     type: object
                 type: object
               modules:
-                description: Modules defines the module settings for Valkey
+                description: |-
+                  Modules defines a list of modules to be loaded into the valkey instance.
+                  Each module is specified by its name and version.
+                  Modules are loaded at startup and can extend Redis functionality.
                 items:
                   description: ValkeyModule defines the module for Valkey
                   properties:

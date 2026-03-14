@@ -619,8 +619,7 @@ func (c *valkeyClient) ClusterInfo(ctx context.Context) (*ClusterNodeInfo, error
 
 	parseInfo := func(data string) *ClusterNodeInfo {
 		info := ClusterNodeInfo{}
-		lines := strings.Split(data, "\n")
-		for _, line := range lines {
+		for line := range strings.SplitSeq(data, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
@@ -677,7 +676,7 @@ func (c *valkeyClient) Nodes(ctx context.Context) (ClusterNodes, error) {
 	}
 
 	var nodes ClusterNodes
-	for _, line := range strings.Split(strings.TrimSpace(data), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(data), "\n") {
 		line = strings.TrimSpace(line)
 		if node, err := ParseNodeFromClusterNode(line); err != nil {
 			return nil, err

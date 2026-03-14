@@ -1,0 +1,98 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30000
+    hostPort: 30000
+    listenAddress: "127.0.0.1"
+  - containerPort: 30001
+    hostPort: 30001
+    listenAddress: "127.0.0.1"
+  - containerPort: 30002
+    hostPort: 30002
+    listenAddress: "127.0.0.1"
+  - containerPort: 30003
+    hostPort: 30003
+    listenAddress: "127.0.0.1"
+  - containerPort: 30004
+    hostPort: 30004
+    listenAddress: "127.0.0.1"
+  - containerPort: 30005
+    hostPort: 30005
+    listenAddress: "127.0.0.1"
+  - containerPort: 30006
+    hostPort: 30006
+    listenAddress: "127.0.0.1"
+  - containerPort: 30007
+    hostPort: 30007
+    listenAddress: "127.0.0.1"
+  - containerPort: 30008
+    hostPort: 30008
+    listenAddress: "127.0.0.1"
+  - containerPort: 30009
+    hostPort: 30009
+    listenAddress: "127.0.0.1"
+  - containerPort: 30010
+    hostPort: 30010
+    listenAddress: "127.0.0.1"
+  - containerPort: 30011
+    hostPort: 30011
+    listenAddress: "127.0.0.1"
+  - containerPort: 30012
+    hostPort: 30012
+    listenAddress: "127.0.0.1"
+  - containerPort: 30013
+    hostPort: 30013
+    listenAddress: "127.0.0.1"
+  - containerPort: 30014
+    hostPort: 30014
+    listenAddress: "127.0.0.1"
+  - containerPort: 30015
+    hostPort: 30015
+    listenAddress: "127.0.0.1"
+  - containerPort: 30016
+    hostPort: 30016
+    listenAddress: "127.0.0.1"
+  - containerPort: 30017
+    hostPort: 30017
+    listenAddress: "127.0.0.1"
+  - containerPort: 30018
+    hostPort: 30018
+    listenAddress: "127.0.0.1"
+  - containerPort: 30019
+    hostPort: 30019
+    listenAddress: "127.0.0.1"
+  - containerPort: 30020
+    hostPort: 30020
+    listenAddress: "127.0.0.1"
+  - containerPort: 30021
+    hostPort: 30021
+    listenAddress: "127.0.0.1"
+  - containerPort: 30022
+    hostPort: 30022
+    listenAddress: "127.0.0.1"
+  - containerPort: 30023
+    hostPort: 30023
+    listenAddress: "127.0.0.1"
+  - containerPort: 30024
+    hostPort: 30024
+    listenAddress: "127.0.0.1"
+  - containerPort: 30025
+    hostPort: 30025
+    listenAddress: "127.0.0.1"
+  - containerPort: 30026
+    hostPort: 30026
+    listenAddress: "127.0.0.1"
+  - containerPort: 30027
+    hostPort: 30027
+    listenAddress: "127.0.0.1"
+  - containerPort: 30028
+    hostPort: 30028
+    listenAddress: "127.0.0.1"
+  - containerPort: 30029
+    hostPort: 30029
+    listenAddress: "127.0.0.1"
+  - containerPort: 30030
+    hostPort: 30030
+    listenAddress: "127.0.0.1"

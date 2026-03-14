@@ -103,7 +103,15 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 					onlineNodeCount += 1
 				}
 			}
-		} else if !errors.Is(err, monitor.ErrNoMaster) && !errors.Is(err, monitor.ErrAddressConflict) {
+		} else if errors.Is(err, monitor.ErrAddressConflict) {
+			// do failover to force sentinel update node's announce info
+			if err := instMonitor.Failover(ctx); err != nil {
+				logger.Error(err, "do manual failover failed")
+				// continue with master setup
+			} else {
+				return actor.RequeueAfter(time.Second * 10)
+			}
+		} else if !errors.Is(err, monitor.ErrNoMaster) {
 			logger.Error(err, "failed to get master node")
 			return actor.RequeueWithError(err)
 		}

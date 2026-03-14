@@ -18,13 +18,14 @@ package actor
 
 import (
 	"context"
+	"maps"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
-	cops "github.com/chideat/valkey-operator/internal/ops/cluster"
+	ops "github.com/chideat/valkey-operator/internal/ops/cluster"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/go-logr/logr"
@@ -53,7 +54,7 @@ type actorUpdateConfig struct {
 
 // SupportedCommands
 func (a *actorUpdateConfig) SupportedCommands() []actor.Command {
-	return []actor.Command{cops.CommandUpdateConfig}
+	return []actor.Command{ops.CommandUpdateConfig}
 }
 
 func (a *actorUpdateConfig) Version() *semver.Version {
@@ -65,83 +66,100 @@ func (a *actorUpdateConfig) Version() *semver.Version {
 // two type config: hotconfig and restartconfig
 // use cm to check the difference of the config
 func (a *actorUpdateConfig) Do(ctx context.Context, val types.Instance) *actor.ActorResult {
-	logger := val.Logger().WithValues("actor", cops.CommandUpdateConfig.String())
+	logger := val.Logger().WithValues("actor", ops.CommandUpdateConfig.String())
 
 	cluster := val.(types.ClusterInstance)
 	newCm, _ := clusterbuilder.NewConfigMapForCR(cluster)
 	oldCm, err := a.client.GetConfigMap(ctx, newCm.Namespace, newCm.Name)
 	if err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "get configmap failed", "target", client.ObjectKeyFromObject(newCm))
-		return actor.NewResultWithError(cops.CommandRequeue, err)
+		return actor.NewResultWithError(ops.CommandRequeue, err)
 	} else if oldCm == nil || oldCm.Data[builder.ValkeyConfigKey] == "" {
 		if err = a.client.CreateConfigMap(ctx, cluster.GetNamespace(), newCm); err != nil {
 			logger.Error(err, "create configmap failed", "target", client.ObjectKeyFromObject(newCm))
-			return actor.NewResultWithError(cops.CommandRequeue, err)
+			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 		return nil
 	}
 
-	// check if config changed
-	newConf, _ := builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
-	oldConf, _ := builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
-	added, changed, deleted := oldConf.Diff(newConf)
-
-	if len(deleted) > 0 || len(added) > 0 || len(changed) > 0 {
-		// NOTE: update configmap first may cause the hot config fail for it will not retry again
-		if err := a.client.UpdateConfigMap(ctx, cluster.GetNamespace(), newCm); err != nil {
-			logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(newCm))
-			return actor.NewResultWithError(cops.CommandRequeue, err)
-		}
-	}
-
-	for k, v := range added {
-		changed[k] = v
-	}
-	if len(changed) == 0 {
-		return nil
-	}
-
-	foundRestartApplyConfig := false
-	for key := range changed {
-		if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
-			foundRestartApplyConfig = true
-			break
-		}
-	}
-
-	if foundRestartApplyConfig {
-		logger.Info("rolling restart all shard")
-		// NOTE: the restart is done by RDS
-		// rolling update all statefulset
-		// if err := cluster.Restart(ctx); err != nil {
-		// 	logger.Error(err, "restart instance failed")
-		// }
-		return actor.NewResult(cops.CommandEnsureResource)
+	var (
+		newConf builder.ValkeyConfig
+		oldConf builder.ValkeyConfig
+	)
+	if lastAppliedConf := oldCm.Annotations[builder.LastAppliedConfigAnnotationKey]; lastAppliedConf != "" {
+		newConf, _ = builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+		oldConf, _ = builder.LoadValkeyConfig(lastAppliedConf)
 	} else {
-		var margs [][]any
-		for key, vals := range changed {
-			logger.V(2).Info("hot config ", "key", key, "value", vals.String())
-			margs = append(margs, []any{"config", "set", key, vals.String()})
+		newConf, _ = builder.LoadValkeyConfig(newCm.Data[builder.ValkeyConfigKey])
+		oldConf, _ = builder.LoadValkeyConfig(oldCm.Data[builder.ValkeyConfigKey])
+	}
+
+	added, changed, deleted := oldConf.Diff(newConf)
+	maps.Copy(changed, added)
+
+	if len(deleted)+len(changed) > 0 {
+		conf := newCm.DeepCopy()
+		if lastAppliedConf := oldCm.Annotations[builder.LastAppliedConfigAnnotationKey]; lastAppliedConf != "" {
+			conf.Annotations[builder.LastAppliedConfigAnnotationKey] = lastAppliedConf
+		} else {
+			conf.Annotations[builder.LastAppliedConfigAnnotationKey] = oldCm.Data[builder.ValkeyConfigKey]
 		}
 
-		var (
-			isUpdateFailed = false
-			err            error
-		)
-		for _, node := range cluster.Nodes() {
-			if node.ContainerStatus() == nil || !node.ContainerStatus().Ready ||
-				node.IsTerminating() {
-				continue
-			}
-			if err = node.Setup(ctx, margs...); err != nil {
-				isUpdateFailed = true
+		// update configmap with last applied config
+		if err := a.client.UpdateConfigMap(ctx, conf.GetNamespace(), conf); err != nil {
+			logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(conf))
+			return actor.RequeueWithError(err)
+		}
+	}
+
+	if len(changed) > 0 {
+		foundRestartApplyConfig := false
+		for key := range changed {
+			if policy := builder.ValkeyConfigRestartPolicy[key]; policy == builder.RequireRestart {
+				foundRestartApplyConfig = true
 				break
 			}
 		}
+		if foundRestartApplyConfig {
+			logger.Info("rolling restart all shard")
+			// NOTE: the restart is done by RDS
+			// rolling update all statefulset
+			if err := cluster.Restart(ctx); err != nil {
+				logger.Error(err, "restart instance failed")
+				return actor.NewResultWithError(ops.CommandRequeue, err)
+			}
+		} else {
+			var margs [][]any
+			for key, vals := range changed {
+				logger.V(2).Info("hot config ", "key", key, "value", vals.String())
+				margs = append(margs, []any{"config", "set", key, vals.String()})
+			}
 
-		if !isUpdateFailed {
-			return actor.NewResultWithError(cops.CommandRequeue, err)
+			var (
+				isUpdateFailed = false
+				err            error
+			)
+			for _, node := range cluster.Nodes() {
+				if node.ContainerStatus() == nil || !node.ContainerStatus().Ready ||
+					node.IsTerminating() {
+					continue
+				}
+				if err = node.Setup(ctx, margs...); err != nil {
+					isUpdateFailed = true
+					break
+				}
+			}
+			if isUpdateFailed {
+				return actor.NewResultWithError(ops.CommandRequeue, err)
+			}
 		}
 	}
+
+	// update configmap without last applied config
+	if err := a.client.UpdateConfigMap(ctx, cluster.GetNamespace(), newCm); err != nil {
+		logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(newCm))
+		return actor.NewResultWithError(ops.CommandRequeue, err)
+	}
+
 	return nil
 }
