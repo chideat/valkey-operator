@@ -18,7 +18,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valkey-io/valkey-go v1.0.67
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
