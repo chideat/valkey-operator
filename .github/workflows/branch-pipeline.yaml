@@ -84,7 +84,7 @@ jobs:
         echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
 
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@v4
 
     - name: Docker Setup Buildx
       id: buildx
