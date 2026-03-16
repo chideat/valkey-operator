@@ -70,6 +70,9 @@ type UserCustomDefaulter struct {
 var _ admission.Defaulter[*valkeybufredv1alpha1.User] = &UserCustomDefaulter{}
 
 func (d *UserCustomDefaulter) Default(ctx context.Context, inst *valkeybufredv1alpha1.User) (err error) {
+	if inst == nil {
+		return fmt.Errorf("expected User object but got nil")
+	}
 	{
 		var oldInst valkeybufredv1alpha1.User
 		if err := d.mgrClient.Get(ctx, client.ObjectKeyFromObject(inst), &oldInst); err != nil && !errors.IsNotFound(err) {
@@ -152,6 +155,9 @@ type UserCustomValidator struct {
 var _ admission.Validator[*valkeybufredv1alpha1.User] = &UserCustomValidator{}
 
 func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
+	if inst == nil {
+		return nil, fmt.Errorf("expected User object but got nil")
+	}
 	logger.V(3).Info("Validation for User upon creation", "name", inst.GetName())
 
 	rule, err := user.NewRule(strings.ToLower(inst.Spec.AclRules))
@@ -228,6 +234,9 @@ func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newIn
 
 // ValidateDelete implements admission.Validator so a webhook will be registered for the type User.
 func (v *UserCustomValidator) ValidateDelete(ctx context.Context, inst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
+	if inst == nil {
+		return nil, fmt.Errorf("expected User object but got nil")
+	}
 	logger.V(3).Info("Validation for User upon deletion", "name", inst.GetName())
 
 	// TODO: added support of safely deleting default user
