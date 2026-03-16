@@ -14,7 +14,7 @@ require (
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.86.1
 	github.com/rafaeljusto/redigomock/v3 v3.1.2
-	github.com/samber/lo v1.51.0
+	github.com/samber/lo v1.53.0
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valkey-io/valkey-go v1.0.67
