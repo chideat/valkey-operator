@@ -8,7 +8,7 @@ require (
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-logr/logr v1.4.3
-	github.com/gomodule/redigo v1.9.2
+	github.com/gomodule/redigo v1.9.3
 	github.com/google/go-cmp v0.7.0
 	github.com/onsi/ginkgo/v2 v2.25.1
 	github.com/onsi/gomega v1.38.2
