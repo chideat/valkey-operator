@@ -10,12 +10,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-rds-inst-buf-red-v1alpha1-inst
+      path: /mutate-rds-valkey-buf-red-v1alpha1-valkey
   failurePolicy: Fail
   name: mvalkey-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - rds.inst.buf.red
+    - rds.valkey.buf.red
     apiVersions:
     - v1alpha1
     operations:
@@ -57,12 +57,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-rds-inst-buf-red-v1alpha1-inst
+      path: /validate-rds-valkey-buf-red-v1alpha1-valkey
   failurePolicy: Fail
   name: vvalkey-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - rds.inst.buf.red
+    - rds.valkey.buf.red
     apiVersions:
     - v1alpha1
     operations:
