@@ -19,14 +19,11 @@ package v1alpha1
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
@@ -38,7 +35,7 @@ var failoverlog = logf.Log.WithName("failover-resource")
 
 // SetupFailoverWebhookWithManager registers the webhook for Failover in the manager.
 func SetupFailoverWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&valkeybufredv1alpha1.Failover{}).
+	return ctrl.NewWebhookManagedBy(mgr, &valkeybufredv1alpha1.Failover{}).
 		WithValidator(&FailoverCustomValidator{}).
 		Complete()
 }
@@ -53,14 +50,10 @@ func SetupFailoverWebhookWithManager(mgr ctrl.Manager) error {
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type FailoverCustomValidator struct{}
 
-var _ webhook.CustomValidator = &FailoverCustomValidator{}
+var _ admission.Validator[*valkeybufredv1alpha1.Failover] = &FailoverCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Failover.
-func (v *FailoverCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	failover, ok := obj.(*valkeybufredv1alpha1.Failover)
-	if !ok {
-		return nil, fmt.Errorf("expected a Failover object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type Failover.
+func (v *FailoverCustomValidator) ValidateCreate(ctx context.Context, failover *valkeybufredv1alpha1.Failover) (admission.Warnings, error) {
 	failoverlog.Info("Validation for Failover upon creation", "name", failover.GetName())
 
 	if index := slices.IndexFunc(failover.GetOwnerReferences(), func(ownerRef v1.OwnerReference) bool {
@@ -71,12 +64,12 @@ func (v *FailoverCustomValidator) ValidateCreate(ctx context.Context, obj runtim
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Failover.
-func (v *FailoverCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type Failover.
+func (v *FailoverCustomValidator) ValidateUpdate(ctx context.Context, oldFailover, newFailover *valkeybufredv1alpha1.Failover) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Failover.
-func (v *FailoverCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type Failover.
+func (v *FailoverCustomValidator) ValidateDelete(ctx context.Context, failover *valkeybufredv1alpha1.Failover) (admission.Warnings, error) {
 	return nil, nil
 }

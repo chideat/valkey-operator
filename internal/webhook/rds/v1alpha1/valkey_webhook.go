@@ -34,10 +34,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -49,8 +47,8 @@ const actionKey = "action"
 
 // SetupValkeyWebhookWithManager registers the webhook for inst in the manager.
 func SetupValkeyWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&rdsv1alpha1.Valkey{}).
-		WithValidator(&ValkeyCustomValidator{}).
+	return ctrl.NewWebhookManagedBy(mgr, &rdsv1alpha1.Valkey{}).
+		WithValidator(&ValkeyCustomValidator{mgrClient: mgr.GetClient()}).
 		WithDefaulter(&ValkeyCustomDefaulter{}).
 		Complete()
 }
@@ -64,14 +62,10 @@ func SetupValkeyWebhookWithManager(mgr ctrl.Manager) error {
 // as it is used only for temporary operations and does not need to be deeply copied.
 type ValkeyCustomDefaulter struct{}
 
-var _ webhook.CustomDefaulter = &ValkeyCustomDefaulter{}
+var _ admission.Defaulter[*rdsv1alpha1.Valkey] = &ValkeyCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind inst.
-func (d *ValkeyCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	inst, ok := obj.(*rdsv1alpha1.Valkey)
-	if !ok {
-		return fmt.Errorf("expected an inst object but got %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the Kind inst.
+func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.Valkey) error {
 	if inst.Annotations == nil {
 		inst.Annotations = make(map[string]string)
 	}
@@ -170,14 +164,10 @@ type ValkeyCustomValidator struct {
 	mgrClient client.Client
 }
 
-var _ webhook.CustomValidator = &ValkeyCustomValidator{}
+var _ admission.Validator[*rdsv1alpha1.Valkey] = &ValkeyCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type inst.
-func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
-	inst, ok := obj.(*rdsv1alpha1.Valkey)
-	if !ok {
-		return warns, fmt.Errorf("expected a inst object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type inst.
+func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
 	logger.Info("Validation for inst upon creation", "name", inst.GetName())
 
 	if inst.Spec.Replicas == nil {
@@ -283,13 +273,13 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 	return
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type inst.
-func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type inst.
+func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newInst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
 	ctx = context.WithValue(ctx, actionKey, "update")
-	return v.ValidateCreate(ctx, newObj)
+	return v.ValidateCreate(ctx, newInst)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type inst.
-func (v *ValkeyCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type inst.
+func (v *ValkeyCustomValidator) ValidateDelete(ctx context.Context, inst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
 	return
 }

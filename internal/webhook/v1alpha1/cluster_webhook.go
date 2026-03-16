@@ -19,14 +19,11 @@ package v1alpha1
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
@@ -38,7 +35,7 @@ var clusterlog = logf.Log.WithName("cluster-resource")
 
 // SetupClusterWebhookWithManager registers the webhook for Cluster in the manager.
 func SetupClusterWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&valkeybufredv1alpha1.Cluster{}).
+	return ctrl.NewWebhookManagedBy(mgr, &valkeybufredv1alpha1.Cluster{}).
 		WithValidator(&ClusterCustomValidator{}).
 		Complete()
 }
@@ -53,15 +50,10 @@ func SetupClusterWebhookWithManager(mgr ctrl.Manager) error {
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ClusterCustomValidator struct{}
 
-var _ webhook.CustomValidator = &ClusterCustomValidator{}
+var _ admission.Validator[*valkeybufredv1alpha1.Cluster] = &ClusterCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cluster, ok := obj.(*valkeybufredv1alpha1.Cluster)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cluster object but got %T", obj)
-	}
-
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type Cluster.
+func (v *ClusterCustomValidator) ValidateCreate(ctx context.Context, cluster *valkeybufredv1alpha1.Cluster) (admission.Warnings, error) {
 	if index := slices.IndexFunc(cluster.GetOwnerReferences(), func(ownerRef v1.OwnerReference) bool {
 		return ownerRef.Kind == "Valkey"
 	}); index < 0 {
@@ -70,12 +62,12 @@ func (v *ClusterCustomValidator) ValidateCreate(ctx context.Context, obj runtime
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type Cluster.
+func (v *ClusterCustomValidator) ValidateUpdate(ctx context.Context, oldCluster, newCluster *valkeybufredv1alpha1.Cluster) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type Cluster.
+func (v *ClusterCustomValidator) ValidateDelete(ctx context.Context, cluster *valkeybufredv1alpha1.Cluster) (admission.Warnings, error) {
 	return nil, nil
 }

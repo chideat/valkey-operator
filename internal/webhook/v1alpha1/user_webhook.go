@@ -24,12 +24,10 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -48,7 +46,7 @@ var logger = logf.Log.WithName("user-webhook")
 
 // SetupUserWebhookWithManager registers the webhook for User in the manager.
 func SetupUserWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&valkeybufredv1alpha1.User{}).
+	return ctrl.NewWebhookManagedBy(mgr, &valkeybufredv1alpha1.User{}).
 		WithValidator(&UserCustomValidator{mgrClient: mgr.GetClient()}).
 		WithDefaulter(&UserCustomDefaulter{mgrClient: mgr.GetClient()}).
 		Complete()
@@ -69,14 +67,9 @@ type UserCustomDefaulter struct {
 	mgrClient client.Client
 }
 
-var _ webhook.CustomDefaulter = &UserCustomDefaulter{}
+var _ admission.Defaulter[*valkeybufredv1alpha1.User] = &UserCustomDefaulter{}
 
-func (d *UserCustomDefaulter) Default(ctx context.Context, obj runtime.Object) (err error) {
-	inst, ok := obj.(*valkeybufredv1alpha1.User)
-	if !ok {
-		return fmt.Errorf("expected User object but got %T", obj)
-	}
-
+func (d *UserCustomDefaulter) Default(ctx context.Context, inst *valkeybufredv1alpha1.User) (err error) {
 	{
 		var oldInst valkeybufredv1alpha1.User
 		if err := d.mgrClient.Get(ctx, client.ObjectKeyFromObject(inst), &oldInst); err != nil && !errors.IsNotFound(err) {
@@ -156,13 +149,9 @@ type UserCustomValidator struct {
 	mgrClient client.Client
 }
 
-var _ webhook.CustomValidator = &UserCustomValidator{}
+var _ admission.Validator[*valkeybufredv1alpha1.User] = &UserCustomValidator{}
 
-func (v *UserCustomValidator) validate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
-	inst, ok := newObj.(*valkeybufredv1alpha1.User)
-	if !ok {
-		return nil, fmt.Errorf("expected User object but got %T", newObj)
-	}
+func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
 	logger.V(3).Info("Validation for User upon creation", "name", inst.GetName())
 
 	rule, err := user.NewRule(strings.ToLower(inst.Spec.AclRules))
@@ -202,7 +191,7 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldObj, newObj runti
 		}
 	}
 
-	if oldObj == nil {
+	if oldInst == nil {
 		switch inst.Spec.Arch {
 		case core.ValkeyFailover, core.ValkeyReplica:
 			vf := &v1alpha1.Failover{}
@@ -225,24 +214,20 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldObj, newObj runti
 	return
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type User.
-func (v *UserCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type User.
+func (v *UserCustomValidator) ValidateCreate(ctx context.Context, inst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
 	ctx = context.WithValue(ctx, actionKey, "create")
-	return v.validate(ctx, nil, obj)
+	return v.validate(ctx, nil, inst)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type User.
-func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (warns admission.Warnings, err error) {
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type User.
+func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newInst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
 	ctx = context.WithValue(ctx, actionKey, "update")
-	return v.validate(ctx, oldObj, newObj)
+	return v.validate(ctx, oldInst, newInst)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type User.
-func (v *UserCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (warns admission.Warnings, err error) {
-	inst, ok := obj.(*valkeybufredv1alpha1.User)
-	if !ok {
-		return nil, fmt.Errorf("expected User object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type User.
+func (v *UserCustomValidator) ValidateDelete(ctx context.Context, inst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
 	logger.V(3).Info("Validation for User upon deletion", "name", inst.GetName())
 
 	// TODO: added support of safely deleting default user
