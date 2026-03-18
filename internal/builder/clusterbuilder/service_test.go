@@ -360,7 +360,7 @@ func TestGenerateNodePortService(t *testing.T) {
 			}
 
 			// Generate the NodePort service
-			svc := GenerateNodePortSerivce(cluster, tt.nodeName, labels, tt.nodePort)
+			svc := GenerateNodePortService(cluster, tt.nodeName, labels, tt.nodePort)
 
 			// Verify the service
 			require.NotNil(t, svc)

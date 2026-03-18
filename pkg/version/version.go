@@ -28,6 +28,11 @@ import (
 var (
 	MinTLSSupportedVersion, _ = semver.NewVersion("7.4.0")
 	MinACLSupportedVersion, _ = semver.NewVersion("7.4.0")
+
+	// ValkeyVersion-typed gates (used with IsAtLeast)
+	MinVectorSetsVersion        = ValkeyVersion("8.0")
+	MinLatencyTrackingVersion   = ValkeyVersion("9.0")
+	MinLazyfreeUserFlushVersion = ValkeyVersion("9.0")
 )
 
 type ValkeyVersion string
@@ -47,31 +52,44 @@ func (v ValkeyVersion) CustomConfigs(arch core.Arch) map[string]string {
 		return nil
 	}
 
-	ret := map[string]string{}
-	ret["ignore-warnings"] = "ARM64-COW-BUG"
+	ret := map[string]string{
+		"ignore-warnings": "ARM64-COW-BUG",
+	}
+
 	if arch == core.ValkeyCluster {
 		ret["cluster-allow-replica-migration"] = "no"
 		ret["cluster-migration-barrier"] = "10"
 	}
+
+	// Valkey 9.0+: latency tracking on by default upstream; make explicit
+	if v.IsAtLeast(MinLatencyTrackingVersion) {
+		ret["latency-tracking"] = "yes"
+	}
+
+	// Valkey 9.0+: lazyfree-lazy-user-flush default changed
+	if v.IsAtLeast(MinLazyfreeUserFlushVersion) {
+		ret["lazyfree-lazy-user-flush"] = "yes"
+	}
+
 	return ret
 }
 
-// Compare conpare two version
+// Compare compares two versions.
 //
 // if v > other, return 1
 // if v < other, return -1
 // if v == other, return 0
 // if error occurred, return -2
 func (v ValkeyVersion) Compare(other ValkeyVersion) int {
+	if v == "" && other == "" {
+		return 0
+	}
 	if v == "" {
-		if other == "" {
-			return 0
-		}
 		return -1
-	} else if other == "" {
+	}
+	if other == "" {
 		return 1
 	}
-
 	v1, err := semver.NewVersion(string(v))
 	if err != nil {
 		return -2
@@ -80,17 +98,12 @@ func (v ValkeyVersion) Compare(other ValkeyVersion) int {
 	if err != nil {
 		return -2
 	}
-	if v1.Major() > v2.Major() {
-		return 1
-	} else if v1.Major() < v2.Major() {
-		return -1
-	}
-	if v1.Minor() > v2.Minor() {
-		return 1
-	} else if v1.Minor() < v2.Minor() {
-		return -1
-	}
-	return 0
+	return v1.Compare(v2)
+}
+
+// IsAtLeast returns true if v >= minVersion. Returns false if either version is empty or invalid.
+func (v ValkeyVersion) IsAtLeast(minVersion ValkeyVersion) bool {
+	return v.Compare(minVersion) >= 0
 }
 
 // ParseVersion
