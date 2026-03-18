@@ -276,16 +276,20 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 
 // ValidateUpdate implements admission.Validator so a webhook will be registered for the type inst.
 func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newInst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
+	var oldVersion string
+	if oldInst != nil {
+		oldVersion = oldInst.Spec.Version
+	}
 	logger.Info("Validation for inst upon update", "name", newInst.GetName(),
-		"oldVersion", oldInst.Spec.Version, "newVersion", newInst.Spec.Version)
+		"oldVersion", oldVersion, "newVersion", newInst.Spec.Version)
 
-	oldVer, oldErr := version.ParseValkeyVersion(oldInst.Spec.Version)
+	oldVer, oldErr := version.ParseValkeyVersion(oldVersion)
 	newVer, newErr := version.ParseValkeyVersion(newInst.Spec.Version)
 	if oldErr == nil && newErr == nil && newVer.Compare(oldVer) < 0 {
 		return warns, fmt.Errorf(
 			"version downgrade from %s to %s is not allowed; "+
 				"delete and recreate the instance to downgrade",
-			oldInst.Spec.Version, newInst.Spec.Version)
+			oldVersion, newInst.Spec.Version)
 	}
 
 	ctx = context.WithValue(ctx, actionKey, "update")
