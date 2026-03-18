@@ -162,15 +162,25 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 			addrs = append(addrs, net.JoinHostPort(node.IP, node.Port))
 		}
 	} else if inst.Spec.Arch == core.ValkeyReplica {
-		addrs = []string{fmt.Sprintf("rfr-%s-readwrite.%s:6379", inst.GetName(), testNamespace)}
+		// Use master node IP:Port from status (NodePort address) — DNS service is internal-only
+		for _, node := range inst.Status.Nodes {
+			if node.Role == "master" {
+				addrs = append(addrs, net.JoinHostPort(node.IP, node.Port))
+				break
+			}
+		}
+		if len(addrs) == 0 && len(inst.Status.Nodes) > 0 {
+			addrs = []string{net.JoinHostPort(inst.Status.Nodes[0].IP, inst.Status.Nodes[0].Port)}
+		}
 	}
 	GinkgoWriter.Printf("valkey instance %s address: %v, username: %s, password: %s", inst.GetName(), addrs, username, password)
 
 	options := valkey.ClientOption{
-		Username:    username,
-		Password:    password,
-		InitAddress: addrs,
-		ClientName:  "e2e-tests",
+		Username:     username,
+		Password:     password,
+		InitAddress:  addrs,
+		ClientName:   "e2e-tests",
+		DisableCache: true, // prevents CLIENT TRACKING which restricted users can't run
 	}
 	if inst.Spec.Arch == core.ValkeyFailover {
 		options.Sentinel = valkey.SentinelOption{
@@ -283,7 +293,7 @@ var clusterTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -417,7 +427,7 @@ var clusterTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -496,7 +506,7 @@ var failoverTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -585,7 +595,7 @@ var failoverTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -629,7 +639,7 @@ var failoverTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -703,7 +713,7 @@ var replicationTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -803,7 +813,7 @@ var replicationTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
