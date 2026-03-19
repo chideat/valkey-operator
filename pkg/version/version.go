@@ -101,7 +101,7 @@ func (v ValkeyVersion) Compare(other ValkeyVersion) int {
 	return v1.Compare(v2)
 }
 
-// IsAtLeast returns true if v >= minVersion. Returns false if either version is empty or invalid.
+// IsAtLeast returns true if v >= minVersion according to Compare.
 func (v ValkeyVersion) IsAtLeast(minVersion ValkeyVersion) bool {
 	return v.Compare(minVersion) >= 0
 }
