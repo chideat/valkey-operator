@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -209,7 +210,7 @@ var _ = Describe("controller", Ordered, func() {
 				inst.Spec.Version = "8.1"
 				updateErr = k8sClient.Update(ctx, inst)
 				// Retry only on optimistic-concurrency conflict; any other result is final.
-				return updateErr == nil || !strings.Contains(updateErr.Error(), "object has been modified")
+				return updateErr == nil || !apierrors.IsConflict(updateErr)
 			}).WithTimeout(time.Minute).WithPolling(time.Second * 2).Should(BeTrue(),
 				"update did not get a definitive response (kept getting conflict errors)")
 			Expect(updateErr).To(HaveOccurred(), "version downgrade should have been rejected by webhook")
