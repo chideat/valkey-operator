@@ -31,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -139,9 +140,16 @@ func skipIfVersionLessThan(inst *rdsv1alpha1.Valkey, minVersion string) {
 // patchInstanceVersion patches spec.version and waits for the rolling upgrade to complete.
 func patchInstanceVersion(ctx context.Context, inst *rdsv1alpha1.Valkey, newVersion string, timeout time.Duration) {
 	By(fmt.Sprintf("patching instance version to %s", newVersion))
-	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-	inst.Spec.Version = newVersion
-	Expect(k8sClient.Update(ctx, inst)).To(Succeed())
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		current := &rdsv1alpha1.Valkey{}
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), current); err != nil {
+			return err
+		}
+		current.Spec.Version = newVersion
+		return k8sClient.Update(ctx, current)
+	})
+	Expect(err).To(Succeed())
 
 	time.Sleep(time.Minute)
 	waitInstanceStatusReady(ctx, inst, timeout)
