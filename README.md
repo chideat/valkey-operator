@@ -1,70 +1,91 @@
-# ValkeyOperator
+# Valkey Operator
 
 [![Coverage Status](https://coveralls.io/repos/github/chideat/valkey-operator/badge.svg?branch=main)](https://coveralls.io/github/chideat/valkey-operator?branch=main)
 [![Go Report Card](https://goreportcard.com/badge/github.com/chideat/valkey-operator)](https://goreportcard.com/report/github.com/chideat/valkey-operator)
 
-**ValkeyOperator** is a production-ready kubernetes operator to deploy and manage high available [Valkey Sentinel](https://valkey.io/topics/sentinel/) and [Valkey Cluster](https://valkey.io/topics/cluster-spec/) instances. This repository contains multi [Custom Resource Definition (CRD)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) designed for the lifecycle of Valkey standalone, sentinel or cluster instance.
+**Valkey Operator** is a production-grade Kubernetes operator for deploying and managing highly available [Valkey](https://valkey.io/) instances. It provides a unified `Valkey` [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) that supports **Cluster**, **Failover** (Sentinel-based HA), and **Standalone** (Replica) architectures, as well as fine-grained CRDs (`Cluster`, `Failover`, `Sentinel`, `User`) for advanced use cases.
 
 ## Features
 
-* Standalone/Sentinel/Cluster valkey arch supported.
-* Valkey ACL supported.
-* Nodeport/LB access supported; nodeport assignement also supported.
-* IPv4/IPv6 supported.
-* Online scale up/down.
-* Graceful version upgrade.
-* Nodeselector, toleration and affinity supported.
-* High available in production environment.
+* **Multiple architectures** — Cluster (sharded), Failover (Sentinel-based HA), and Standalone/Replica modes.
+* **Unified `Valkey` CRD** — A single high-level resource to manage any architecture via the `rds.valkey.buf.red` API group.
+* **ACL management** — Dedicated `User` CRD for managing Valkey ACL rules, roles, and permissions.
+* **TLS encryption** — Native TLS support with cert-manager integration.
+* **Monitoring** — Built-in Prometheus exporter sidecar ([oliver006/redis_exporter](https://github.com/oliver006/redis_exporter)).
+* **Persistent storage** — Configurable PersistentVolumeClaims with storage class and retention policies.
+* **Networking** — ClusterIP, NodePort, and LoadBalancer service types; IPv4/IPv6 dual-stack support.
+* **Valkey modules** — Load custom Valkey modules (Valkey 8.0+).
+* **Online scaling** — Horizontal scale-up/down with automatic slot rebalancing for Cluster mode.
+* **Graceful upgrades** — Rolling version upgrades with zero downtime.
+* **Scheduling control** — Node selectors, tolerations, and multiple affinity policies (SoftAntiAffinity, AntiAffinityInShard, AntiAffinity, Custom).
+* **Multi-architecture images** — Supports `linux/amd64` and `linux/arm64`.
 
 ## Quickstart
 
-If you have a Kubernetes cluster and `kubectl` configured to access it, run the following commands to deploy the operator and create a simple cluster:
+With a Kubernetes cluster and `kubectl` configured:
 
 ```bash
-# Install the ValkeyOperator
+# Install the operator (requires cert-manager for webhook TLS)
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 
-# Deploy a Valkey cluster
+# Deploy a 3-shard Valkey Cluster
 kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/cluster.yaml
 
-# Check the cluster status
+# Watch the cluster converge
 kubectl get valkey valkey-cluster -w
+```
+
+Other quick examples:
+
+```bash
+# Deploy a Sentinel-based failover instance
+kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/failover.yaml
+
+# Deploy a standalone instance
+kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/standalone.yaml
 ```
 
 For detailed installation and configuration instructions, see the [User Guide](./docs/guides/user-guide.md).
 
 ## Supported Versions
 
-| Version | K8s Versions | Supported |
-|---------|:-------------|-----------|
-| 7.2.x   | 1.31         | Yes       |
-|         | 1.32         | Yes       |
-| 8.0.x   | 1.31         | Yes       |
-|         | 1.32         | Yes       |
-| 8.1.x   | 1.31         | Yes       |
-|         | 1.32         | Yes       |
+| Valkey Version | K8s 1.31 | K8s 1.32 | K8s 1.33 | Status |
+|:--------------:|:--------:|:--------:|:--------:|:------:|
+| 7.2.x          | ✅       | ✅       |          | Stable |
+| 8.0.x          | ✅       | ✅       |          | Stable |
+| 8.1.x          | ✅       | ✅       |          | Stable |
+| 8.2.x          |          | ✅       | ✅       | Stable |
+| 9.0.x          |          | ✅       | ✅       | Stable |
+| 9.1.x          |          | ✅       | ✅       | Preview |
+
+## API Groups
+
+The operator ships two API groups at different abstraction levels:
+
+| API Group | CRDs | Purpose |
+|-----------|------|---------|
+| `rds.valkey.buf.red/v1alpha1` | `Valkey` | Unified high-level resource — recommended for most users |
+| `valkey.buf.red/v1alpha1` | `Cluster`, `Failover`, `Sentinel`, `User` | Fine-grained control for advanced use cases |
+
+Shared types (Storage, Access, Exporter, etc.) are defined in the `api/core` package and reused across both groups.
 
 ## Documentation
 
-ValkeyOperator is covered by comprehensive documentation:
-
-* **[Operator Overview](./docs/guides/operator-overview.md)** - Architecture and core concepts
-* **[User Guide](./docs/guides/user-guide.md)** - Complete installation and usage guide
-* **[API Reference](./docs/api/index.md)** - Detailed API documentation
-* **[Examples](./docs/examples/)** - Ready-to-use configuration examples
-
-For a complete list of features and configuration options, see the [documentation directory](./docs/).
-
-In addition, practical [examples](./docs/examples) and [configuration samples](./config/samples) can be found in this repository.
+* **[Operator Overview](./docs/guides/operator-overview.md)** — Architecture and core concepts
+* **[User Guide](./docs/guides/user-guide.md)** — Installation, configuration, and usage
+* **[Best Practices](./docs/guides/best-practices.md)** — Production deployment recommendations
+* **[API Reference](./docs/api/index.md)** — Detailed CRD and type documentation
+* **[Examples](./docs/examples/)** — Ready-to-use manifests (basic, production, ACL users)
+* **[Configuration Samples](./config/samples/)** — Minimal CRD samples for each resource
 
 ## Contributing
 
-This project follows the typical GitHub pull request model. Before starting any work, please either comment on an [existing issue](https://github.com/chideat/valkey-operator/issues), or file a new one. For more details, please refer to the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
+This project follows the typical GitHub pull request model. Before starting any work, please comment on an [existing issue](https://github.com/chideat/valkey-operator/issues) or file a new one. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## Releasing
 
-To release a new version of the ValkeyOperator, create a versioned tag (e.g. `v0.1.0`) of the repo, and the release pipeline will generate a new draft release, along side release artefacts.
+Create a versioned tag (e.g. `v2.0.0`) and push it. The release pipeline builds multi-architecture Docker images and publishes them to Docker Hub and GitHub Container Registry.
 
 ## License
 
-[Licensed under Apache 2.0](LICENSE)
+[Apache License 2.0](LICENSE)

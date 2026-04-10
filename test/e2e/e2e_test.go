@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -47,7 +48,7 @@ var (
 )
 
 var (
-	supportedVersions = []string{"7.2", "8.0", "8.1"}
+	supportedVersions = []string{"7.2", "8.0", "8.1", "8.2", "9.0", "9.1"}
 )
 
 func init() {
@@ -186,6 +187,38 @@ var _ = Describe("controller", Ordered, func() {
 				return nil
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
+	Context("webhook validation", Label("webhook"), func() {
+		It("webhook rejects version downgrade", SpecTimeout(time.Minute*5), func(ctx context.Context) {
+			inst := newClusterInstance("9.0", corev1.ServiceTypeNodePort)
+			By("create valkey instance at version 9.0")
+			Expect(k8sClient.Create(ctx, inst)).To(Succeed())
+			// No need to wait for ready — we only need the CR to exist in the API server.
+			// The webhook fires on the UPDATE request regardless of instance readiness.
+
+			By("attempt to downgrade version to 8.1 (retry on conflict until webhook responds)")
+			// The operator reconciles the CR concurrently, causing resourceVersion conflicts.
+			// Kubernetes checks resourceVersion before calling admission webhooks, so we must
+			// retry with a fresh Get until we get a definitive response (webhook rejection or success).
+			var updateErr error
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst); err != nil {
+					return false
+				}
+				inst.Spec.Version = "8.1"
+				updateErr = k8sClient.Update(ctx, inst)
+				// Retry only on optimistic-concurrency conflict; any other result is final.
+				return updateErr == nil || !apierrors.IsConflict(updateErr)
+			}).WithTimeout(time.Minute).WithPolling(time.Second * 2).Should(BeTrue(),
+				"update did not get a definitive response (kept getting conflict errors)")
+			Expect(updateErr).To(HaveOccurred(), "version downgrade should have been rejected by webhook")
+			Expect(updateErr.Error()).To(ContainSubstring("downgrade"))
+
+			By("cleanup")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+			deleteInstance(ctx, inst)
 		})
 	})
 

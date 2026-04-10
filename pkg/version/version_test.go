@@ -17,6 +17,7 @@ limitations under the License.
 package version
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -174,10 +175,71 @@ func TestValkeyVersion_CustomConfigs(t *testing.T) {
 				"ignore-warnings": "ARM64-COW-BUG",
 			},
 		},
+		{
+			name: "8.2 cluster - no latency-tracking keys",
+			v:    "8.2",
+			arch: core.ValkeyCluster,
+			want: map[string]string{
+				"ignore-warnings":                 "ARM64-COW-BUG",
+				"cluster-allow-replica-migration": "no",
+				"cluster-migration-barrier":       "10",
+			},
+		},
+		{
+			name: "9.0 cluster - has latency-tracking and lazyfree keys plus cluster keys",
+			v:    "9.0",
+			arch: core.ValkeyCluster,
+			want: map[string]string{
+				"ignore-warnings":                 "ARM64-COW-BUG",
+				"cluster-allow-replica-migration": "no",
+				"cluster-migration-barrier":       "10",
+				"latency-tracking":                "yes",
+				"lazyfree-lazy-user-flush":        "yes",
+			},
+		},
+		{
+			name: "9.0 failover - has latency-tracking and lazyfree keys, no cluster keys",
+			v:    "9.0",
+			arch: core.ValkeyFailover,
+			want: map[string]string{
+				"ignore-warnings":          "ARM64-COW-BUG",
+				"latency-tracking":         "yes",
+				"lazyfree-lazy-user-flush": "yes",
+			},
+		},
+		{
+			name: "9.1 failover - same as 9.0",
+			v:    "9.1",
+			arch: core.ValkeyFailover,
+			want: map[string]string{
+				"ignore-warnings":          "ARM64-COW-BUG",
+				"latency-tracking":         "yes",
+				"lazyfree-lazy-user-flush": "yes",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.v.CustomConfigs(tt.arch)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValkeyVersion_IsAtLeast(t *testing.T) {
+	tests := []struct {
+		v          ValkeyVersion
+		minVersion ValkeyVersion
+		want       bool
+	}{
+		{v: "9.0", minVersion: "9.0", want: true},
+		{v: "9.1", minVersion: "9.0", want: true},
+		{v: "8.2", minVersion: "9.0", want: false},
+		{v: "", minVersion: "9.0", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s>=%s", tt.v, tt.minVersion), func(t *testing.T) {
+			got := tt.v.IsAtLeast(tt.minVersion)
 			assert.Equal(t, tt.want, got)
 		})
 	}

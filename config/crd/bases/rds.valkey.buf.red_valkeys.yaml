@@ -3323,9 +3323,10 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists and Equal. Defaults to Equal.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-
@@ -3395,9 +3396,10 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
+                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
+                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-
@@ -3415,11 +3417,17 @@ spec:
                   type: object
                 type: array
               version:
-                description: Version supports 7.2, 8.0, 8.1
+                description: |-
+                  Version specifies the Valkey version to deploy.
+                  Stable: 7.2, 8.0, 8.1, 8.2, 9.0
+                  Preview/RC (not recommended for production): 9.1
                 enum:
                 - "7.2"
                 - "8.0"
                 - "8.1"
+                - "8.2"
+                - "9.0"
+                - "9.1"
                 type: string
             required:
             - arch

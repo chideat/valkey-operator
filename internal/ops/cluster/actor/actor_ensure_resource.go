@@ -477,7 +477,7 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 					continue
 				}
 				port := newPorts[0]
-				svc := clusterbuilder.GenerateNodePortSerivce(cr, serviceName, labels, port)
+				svc := clusterbuilder.GenerateNodePortService(cr, serviceName, labels, port)
 				if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 					a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 					return actor.NewResultWithValue(cops.CommandRequeue, err)
