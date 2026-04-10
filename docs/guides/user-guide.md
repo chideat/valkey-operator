@@ -1,4 +1,4 @@
-# ValkeyOperator User Guide
+# Valkey Operator User Guide
 
 ## Table of Contents
 
@@ -13,20 +13,21 @@
 
 ## Getting Started
 
-ValkeyOperator is a Kubernetes operator that automates the deployment and management of Valkey instances. It supports multiple architectures:
+Valkey Operator is a Kubernetes operator that automates the deployment and management of Valkey instances. It supports multiple architectures:
 
-- **Cluster Mode** - High-performance distributed Valkey clusters
+- **Cluster Mode** - High-performance distributed Valkey clusters with automatic sharding
 - **Failover Mode** - High-availability using Sentinel
-- **Sentinel Mode** - Standalone sentinel instances
-- **RDS Mode** - Simplified managed instances
+- **Replica Mode** - Standalone or primary-replica architecture
+- **Sentinel Mode** - Standalone sentinel instances for monitoring external deployments
 
 ## Installing the Operator
 
 ### Prerequisites
 
-- Kubernetes 1.31+ or 1.32+
+- Kubernetes 1.31+
 - kubectl configured to access your cluster
 - Cluster administrator permissions
+- cert-manager installed (for webhook TLS certificates)
 
 ### Installation Methods
 
@@ -196,9 +197,9 @@ spec:
     replicasOfShard: 1
   access:
     serviceType: ClusterIP
-    tls:
-      enabled: true
-      secretName: valkey-tls-cert
+    enableTLS: true
+    certIssuer: my-cluster-issuer
+    certIssuerType: ClusterIssuer
 ---
 apiVersion: valkey.buf.red/v1alpha1
 kind: User
