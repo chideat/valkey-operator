@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "valkey-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    control-plane: controller-manager
+    {{- include "valkey-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      {{- include "valkey-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        defaultRegistry: {{ .Values.operatorConfig.defaultRegistry | quote }}
+        operatorImageName: {{ include "valkey-operator.image" . | quote }}
+        operatorVersion: {{ .Chart.AppVersion | quote }}
+        defaultExporterImageName: {{ .Values.operatorConfig.defaultExporterImageName | quote }}
+        defaultExporterVersion: {{ .Values.operatorConfig.defaultExporterVersion | quote }}
+        valkeyImageName: {{ .Values.operatorConfig.valkeyImageName | quote }}
+        valkeyVersionMap: {{ .Values.operatorConfig.valkeyVersionMap | quote }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        control-plane: controller-manager
+        {{- include "valkey-operator.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "valkey-operator.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      containers:
+      - name: manager
+        image: {{ include "valkey-operator.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /manager
+        args:
+        {{- if .Values.leaderElect.enabled }}
+        - --leader-elect
+        {{- end }}
+        - --health-probe-bind-address={{ .Values.healthProbe.bindAddress }}
+        {{- if .Values.metrics.enabled }}
+        - --metrics-bind-address={{ .Values.metrics.bindAddress }}
+        {{- end }}
+        {{- if .Values.webhook.enabled }}
+        - --webhook-cert-path={{ .Values.webhook.certPath }}
+        {{- end }}
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIPs
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: DEFAULT_REGISTRY
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['defaultRegistry']
+        - name: OPERATOR_IMAGE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['operatorImageName']
+        - name: OPERATOR_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['operatorVersion']
+        - name: DEFAULT_EXPORTER_IMAGE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['defaultExporterImageName']
+        - name: DEFAULT_EXPORTER_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['defaultExporterVersion']
+        - name: VALKEY_IMAGE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['valkeyImageName']
+        - name: VALKEY_VERSION_MAP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['valkeyVersionMap']
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        ports:
+        {{- if .Values.metrics.enabled }}
+        - containerPort: 8443
+          name: metrics
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.webhook.enabled }}
+        - containerPort: {{ .Values.webhook.port }}
+          name: webhook-server
+          protocol: TCP
+        {{- end }}
+        volumeMounts:
+        {{- if .Values.webhook.enabled }}
+        - mountPath: {{ .Values.webhook.certPath }}
+          name: webhook-certs
+          readOnly: true
+        {{- end }}
+      volumes:
+      {{- if .Values.webhook.enabled }}
+      - name: webhook-certs
+        secret:
+          secretName: {{ include "valkey-operator.webhookCertSecret" . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

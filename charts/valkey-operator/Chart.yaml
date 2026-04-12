@@ -1,0 +1,18 @@
+apiVersion: v2
+name: valkey-operator
+description: A Helm chart for deploying the Valkey Operator on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0-alpha"
+keywords:
+  - valkey
+  - redis
+  - operator
+  - kubernetes
+home: https://github.com/chideat/valkey-operator
+sources:
+  - https://github.com/chideat/valkey-operator
+maintainers:
+  - name: chideat
+    url: https://github.com/chideat
+icon: https://valkey.io/img/valkey-horizontal-color-logo.svg

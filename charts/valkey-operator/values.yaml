@@ -1,0 +1,144 @@
+# Default values for valkey-operator.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+## @section Global parameters
+## @param nameOverride Override the name of the chart
+nameOverride: ""
+
+## @param fullnameOverride Override the full name of the chart
+fullnameOverride: ""
+
+## @section Operator image parameters
+image:
+  ## @param image.registry Image registry
+  registry: docker.io
+  ## @param image.repository Image repository
+  repository: chideat/valkey-operator
+  ## @param image.tag Image tag (defaults to the chart appVersion)
+  tag: ""
+  ## @param image.pullPolicy Image pull policy
+  pullPolicy: IfNotPresent
+
+## @param imagePullSecrets Secrets to use when pulling the image
+imagePullSecrets: []
+
+## @section Service account parameters
+serviceAccount:
+  ## @param serviceAccount.create Whether to create a service account
+  create: true
+  ## @param serviceAccount.name Name of the service account (auto-generated if empty)
+  name: ""
+  ## @param serviceAccount.annotations Annotations to add to the service account
+  annotations: {}
+
+## @section Deployment parameters
+## @param replicaCount Number of operator replicas
+replicaCount: 1
+
+## @param resources Resource requests and limits for the operator
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+## @param nodeSelector Node selector for the operator pod
+nodeSelector: {}
+
+## @param tolerations Tolerations for the operator pod
+tolerations: []
+
+## @param affinity Affinity rules for the operator pod
+affinity: {}
+
+## @param podAnnotations Extra annotations for the operator pod
+podAnnotations: {}
+
+## @param podLabels Extra labels for the operator pod
+podLabels: {}
+
+## @param podSecurityContext Security context for the operator pod
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+## @param securityContext Security context for the operator container
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - "ALL"
+
+## @param terminationGracePeriodSeconds Termination grace period for the operator pod
+terminationGracePeriodSeconds: 10
+
+## @section Leader election
+leaderElect:
+  ## @param leaderElect.enabled Enable leader election (recommended for HA deployments)
+  enabled: true
+
+## @section Webhook parameters
+webhook:
+  ## @param webhook.enabled Enable admission webhooks
+  enabled: true
+  ## @param webhook.port Webhook server port
+  port: 9443
+  ## @param webhook.certPath Path to the webhook TLS certificate directory
+  certPath: /tmp/k8s-webhook-server/serving-certs
+
+## @section Metrics parameters
+metrics:
+  ## @param metrics.enabled Enable metrics endpoint
+  enabled: true
+  ## @param metrics.bindAddress Metrics bind address
+  bindAddress: ":8443"
+  ## @param metrics.service.port Metrics service port
+  service:
+    port: 8443
+
+## @section Health probe parameters
+healthProbe:
+  ## @param healthProbe.bindAddress Health probe bind address
+  bindAddress: ":8081"
+
+## @section Cert-manager parameters
+certManager:
+  ## @param certManager.enabled Enable cert-manager integration for webhook TLS certificates.
+  ## When enabled, a self-signed Issuer and Certificate are created.
+  ## Requires cert-manager to be installed in the cluster.
+  enabled: false
+
+## @section Prometheus ServiceMonitor parameters
+serviceMonitor:
+  ## @param serviceMonitor.enabled Enable Prometheus ServiceMonitor
+  ## Requires the Prometheus Operator to be installed in the cluster.
+  enabled: false
+  ## @param serviceMonitor.interval Prometheus scrape interval
+  interval: 30s
+  ## @param serviceMonitor.scrapeTimeout Prometheus scrape timeout
+  scrapeTimeout: 10s
+  ## @param serviceMonitor.labels Additional labels for the ServiceMonitor
+  labels: {}
+
+## @section Operator default image settings
+## These values are passed to the operator at startup and define the default images
+## used when creating Valkey instances.
+operatorConfig:
+  ## @param operatorConfig.defaultRegistry Default image registry for Valkey images
+  defaultRegistry: ""
+  ## @param operatorConfig.valkeyImageName Default Valkey image name
+  valkeyImageName: "valkey/valkey"
+  ## @param operatorConfig.valkeyVersionMap JSON map of supported Valkey versions to image tags
+  valkeyVersionMap: "{}"
+  ## @param operatorConfig.defaultExporterImageName Default exporter image name
+  defaultExporterImageName: "oliver006/redis_exporter"
+  ## @param operatorConfig.defaultExporterVersion Default exporter image version
+  defaultExporterVersion: "v1.67.0-alpine"
+
+## @section RBAC parameters
+rbac:
+  ## @param rbac.create Whether to create RBAC resources
+  create: true
