@@ -3,10 +3,15 @@
 {{- /*
   Preflight check: verify that cert-manager CRDs are present in the cluster.
   If not, abort the install with a clear error message.
+  This check can be disabled for offline rendering, such as CI or GitOps
+  workflows using `helm template` without a live cluster connection.
 */}}
+{{- $certManagerPreflightEnabled := dig "certManager" "preflightCheck" "enabled" true .Values }}
+{{- if $certManagerPreflightEnabled }}
 {{- $certCRD := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "certificates.cert-manager.io" }}
 {{- if not $certCRD }}
-{{- fail "cert-manager is not installed in this cluster.\nInstall cert-manager first: https://cert-manager.io/docs/installation/\nOr disable the integration: --set certManager.enabled=false" }}
+{{- fail "cert-manager is not installed in this cluster.\nInstall cert-manager first: https://cert-manager.io/docs/installation/\nOr disable the integration: --set certManager.enabled=false\nOr skip this preflight during offline rendering: --set certManager.preflightCheck.enabled=false" }}
+{{- end }}
 {{- end }}
 ---
 apiVersion: cert-manager.io/v1
