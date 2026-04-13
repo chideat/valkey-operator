@@ -1,5 +1,13 @@
 {{- if .Values.certManager.enabled }}
 {{- if .Values.webhook.enabled }}
+{{- /*
+  Preflight check: verify that cert-manager CRDs are present in the cluster.
+  If not, abort the install with a clear error message.
+*/}}
+{{- $certCRD := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "certificates.cert-manager.io" }}
+{{- if not $certCRD }}
+{{- fail "cert-manager is not installed in this cluster.\nInstall cert-manager first: https://cert-manager.io/docs/installation/\nOr disable the integration: --set certManager.enabled=false" }}
+{{- end }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Issuer

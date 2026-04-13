@@ -23,10 +23,10 @@
 If you have a Kubernetes cluster and `kubectl` configured to access it, the easiest way to install ValkeyOperator is via Helm:
 
 ```bash
-# Install the ValkeyOperator with cert-manager handling webhook TLS
+# Install the ValkeyOperator (cert-manager integration is enabled by default)
+# Requires cert-manager to be installed: https://cert-manager.io/docs/installation/
 helm install valkey-operator charts/valkey-operator \
-  --namespace valkey-system --create-namespace \
-  --set certManager.enabled=true
+  --namespace valkey-system --create-namespace
 
 # Deploy a Valkey cluster
 kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/cluster.yaml
@@ -35,7 +35,7 @@ kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/
 kubectl get valkey valkey-cluster -w
 ```
 
-> **Note:** The Helm chart requires [cert-manager](https://cert-manager.io/docs/installation/) to be installed in the cluster when `certManager.enabled=true` (recommended). Alternatively, disable webhooks with `--set webhook.enabled=false` if you don't need them.
+> **Note:** The Helm chart uses [cert-manager](https://cert-manager.io/docs/installation/) to manage webhook TLS by default. Ensure cert-manager is installed before running `helm install`. Alternatively, disable webhooks with `--set webhook.enabled=false` if you don't need them.
 
 ### Using Kustomize
 

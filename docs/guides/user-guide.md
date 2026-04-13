@@ -35,14 +35,13 @@ ValkeyOperator is a Kubernetes operator that automates the deployment and manage
 [Helm](https://helm.sh/) is the recommended way to install ValkeyOperator. It provides easy configuration, upgrades, and rollbacks.
 
 ```bash
-# Add the chart (from the repository root)
-# Install with cert-manager managing webhook TLS certificates (recommended)
+# Install with cert-manager managing webhook TLS certificates (default)
+# Requires cert-manager: https://cert-manager.io/docs/installation/
 helm install valkey-operator charts/valkey-operator \
-  --namespace valkey-system --create-namespace \
-  --set certManager.enabled=true
+  --namespace valkey-system --create-namespace
 ```
 
-> **Prerequisites:** [cert-manager](https://cert-manager.io/docs/installation/) must be installed when using `certManager.enabled=true`.
+> **Prerequisites:** [cert-manager](https://cert-manager.io/docs/installation/) must be installed. cert-manager integration is enabled by default (`certManager.enabled=true`).
 
 If you don't have cert-manager, you can disable webhooks:
 
@@ -61,7 +60,7 @@ All configuration options are documented in `charts/valkey-operator/values.yaml`
 | `image.repository` | Operator image repository | `chideat/valkey-operator` |
 | `image.tag` | Operator image tag | Chart `appVersion` |
 | `replicaCount` | Number of operator replicas | `1` |
-| `certManager.enabled` | Enable cert-manager for webhook TLS | `false` |
+| `certManager.enabled` | Enable cert-manager for webhook TLS | `true` |
 | `webhook.enabled` | Enable admission webhooks | `true` |
 | `metrics.enabled` | Enable metrics endpoint | `true` |
 | `serviceMonitor.enabled` | Enable Prometheus ServiceMonitor | `false` |

@@ -73,10 +73,10 @@ spec:
 ### Using Helm (Recommended)
 
 ```bash
-# Install the operator with cert-manager managing webhook TLS
+# Install the operator (cert-manager integration is enabled by default)
+# Requires cert-manager: https://cert-manager.io/docs/installation/
 helm install valkey-operator charts/valkey-operator \
-  --namespace valkey-system --create-namespace \
-  --set certManager.enabled=true
+  --namespace valkey-system --create-namespace
 
 # Deploy a standalone Valkey instance
 kubectl apply -f docs/examples/basic/standalone.yaml
@@ -85,7 +85,7 @@ kubectl apply -f docs/examples/basic/standalone.yaml
 kubectl get valkey valkey-standalone -w
 ```
 
-> Requires [cert-manager](https://cert-manager.io/docs/installation/) when `certManager.enabled=true`. Alternatively, disable webhooks: `--set webhook.enabled=false`
+> Requires [cert-manager](https://cert-manager.io/docs/installation/) (enabled by default). Alternatively, disable webhooks: `--set webhook.enabled=false`
 
 ### Using Kustomize
 

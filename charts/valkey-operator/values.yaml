@@ -108,8 +108,9 @@ healthProbe:
 certManager:
   ## @param certManager.enabled Enable cert-manager integration for webhook TLS certificates.
   ## When enabled, a self-signed Issuer and Certificate are created.
-  ## Requires cert-manager to be installed in the cluster.
-  enabled: false
+  ## Requires cert-manager to be installed in the cluster (https://cert-manager.io/docs/installation/).
+  ## Set to false and configure webhook.tlsSecretName manually if cert-manager is not available.
+  enabled: true
 
 ## @section Prometheus ServiceMonitor parameters
 serviceMonitor:
