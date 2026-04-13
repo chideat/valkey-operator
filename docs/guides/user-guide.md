@@ -30,14 +30,67 @@ ValkeyOperator is a Kubernetes operator that automates the deployment and manage
 
 ### Installation Methods
 
-#### Method 1: Using Kustomize (Recommended)
+#### Method 1: Using Helm (Recommended)
+
+[Helm](https://helm.sh/) is the recommended way to install ValkeyOperator. It provides easy configuration, upgrades, and rollbacks.
+
+```bash
+# Add the chart (from the repository root)
+# Install with cert-manager managing webhook TLS certificates (recommended)
+helm install valkey-operator charts/valkey-operator \
+  --namespace valkey-system --create-namespace \
+  --set certManager.enabled=true
+```
+
+> **Prerequisites:** [cert-manager](https://cert-manager.io/docs/installation/) must be installed when using `certManager.enabled=true`.
+
+If you don't have cert-manager, you can disable webhooks:
+
+```bash
+helm install valkey-operator charts/valkey-operator \
+  --namespace valkey-system --create-namespace \
+  --set webhook.enabled=false
+```
+
+##### Customizing the Helm installation
+
+All configuration options are documented in `charts/valkey-operator/values.yaml`. Common overrides:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.repository` | Operator image repository | `chideat/valkey-operator` |
+| `image.tag` | Operator image tag | Chart `appVersion` |
+| `replicaCount` | Number of operator replicas | `1` |
+| `certManager.enabled` | Enable cert-manager for webhook TLS | `false` |
+| `webhook.enabled` | Enable admission webhooks | `true` |
+| `metrics.enabled` | Enable metrics endpoint | `true` |
+| `serviceMonitor.enabled` | Enable Prometheus ServiceMonitor | `false` |
+
+##### Upgrading
+
+```bash
+helm upgrade valkey-operator charts/valkey-operator \
+  --namespace valkey-system
+```
+
+##### Uninstalling
+
+```bash
+helm uninstall valkey-operator --namespace valkey-system
+
+# CRDs are not removed automatically; remove them manually if needed:
+kubectl delete crd clusters.valkey.buf.red failovers.valkey.buf.red \
+  sentinels.valkey.buf.red users.valkey.buf.red valkeys.rds.valkey.buf.red
+```
+
+#### Method 2: Using Kustomize
 
 ```bash
 # Install CRDs and operator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 ```
 
-#### Method 2: Using Manifests
+#### Method 3: Using Manifests
 
 ```bash
 # Download and apply manifests

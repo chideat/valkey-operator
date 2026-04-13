@@ -18,17 +18,30 @@
 
 ## Quickstart
 
-If you have a Kubernetes cluster and `kubectl` configured to access it, run the following commands to deploy the operator and create a simple cluster:
+### Using Helm (Recommended)
+
+If you have a Kubernetes cluster and `kubectl` configured to access it, the easiest way to install ValkeyOperator is via Helm:
 
 ```bash
-# Install the ValkeyOperator
-kubectl apply -k https://github.com/chideat/valkey-operator/config/default
+# Install the ValkeyOperator with cert-manager handling webhook TLS
+helm install valkey-operator charts/valkey-operator \
+  --namespace valkey-system --create-namespace \
+  --set certManager.enabled=true
 
 # Deploy a Valkey cluster
 kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/docs/examples/basic/cluster.yaml
 
 # Check the cluster status
 kubectl get valkey valkey-cluster -w
+```
+
+> **Note:** The Helm chart requires [cert-manager](https://cert-manager.io/docs/installation/) to be installed in the cluster when `certManager.enabled=true` (recommended). Alternatively, disable webhooks with `--set webhook.enabled=false` if you don't need them.
+
+### Using Kustomize
+
+```bash
+# Install the ValkeyOperator
+kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 ```
 
 For detailed installation and configuration instructions, see the [User Guide](./docs/guides/user-guide.md).

@@ -70,6 +70,25 @@ spec:
 
 ## Quick Installation
 
+### Using Helm (Recommended)
+
+```bash
+# Install the operator with cert-manager managing webhook TLS
+helm install valkey-operator charts/valkey-operator \
+  --namespace valkey-system --create-namespace \
+  --set certManager.enabled=true
+
+# Deploy a standalone Valkey instance
+kubectl apply -f docs/examples/basic/standalone.yaml
+
+# Check status
+kubectl get valkey valkey-standalone -w
+```
+
+> Requires [cert-manager](https://cert-manager.io/docs/installation/) when `certManager.enabled=true`. Alternatively, disable webhooks: `--set webhook.enabled=false`
+
+### Using Kustomize
+
 ```bash
 # Install the operator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
