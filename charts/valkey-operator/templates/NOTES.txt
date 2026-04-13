@@ -8,7 +8,7 @@ To check the status of the operator deployment:
   kubectl get deployment {{ include "valkey-operator.fullname" . }} -n {{ .Release.Namespace }}
 
 To view the operator logs:
-  kubectl logs -l app.kubernetes.io/name={{ include "valkey-operator.name" . }} -n {{ .Release.Namespace }} -f
+  kubectl logs -l app.kubernetes.io/name={{ include "valkey-operator.name" . }},app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }} -f
 
 {{- if .Values.webhook.enabled }}
 
