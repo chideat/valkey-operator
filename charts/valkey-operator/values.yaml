@@ -12,7 +12,7 @@ fullnameOverride: ""
 ## @section Operator image parameters
 image:
   ## @param image.registry Image registry
-  registry: docker.io
+  registry: ghcr.io
   ## @param image.repository Image repository
   repository: chideat/valkey-operator
   ## @param image.tag Image tag (defaults to the chart appVersion)
