@@ -1,4 +1,7 @@
 {{- if .Values.webhook.enabled }}
+{{- if and (not .Values.certManager.enabled) (not .Values.webhook.caBundle) }}
+{{- fail "webhook.enabled=true with certManager.enabled=false requires a base64-encoded CA bundle supplied via webhook.caBundle, or set webhook.enabled=false" }}
+{{- end }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -14,6 +17,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
@@ -34,6 +40,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
@@ -67,6 +76,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
@@ -87,6 +99,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
@@ -106,6 +121,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
@@ -125,6 +143,9 @@ webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
+    {{- if and (not .Values.certManager.enabled) .Values.webhook.caBundle }}
+    caBundle: {{ .Values.webhook.caBundle }}
+    {{- end }}
     service:
       name: {{ include "valkey-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}

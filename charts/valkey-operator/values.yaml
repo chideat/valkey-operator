@@ -88,6 +88,10 @@ webhook:
   port: 9443
   ## @param webhook.certPath Path to the webhook TLS certificate directory
   certPath: /tmp/k8s-webhook-server/serving-certs
+  ## @param webhook.caBundle Base64-encoded CA bundle used by the API server to validate the webhook server's TLS certificate.
+  ## Required when webhook.enabled=true and certManager.enabled=false.
+  ## If certManager.enabled=true this is ignored — cert-manager injects the CA automatically.
+  caBundle: ""
 
 ## @section Metrics parameters
 metrics:
@@ -111,6 +115,10 @@ certManager:
   ## Requires cert-manager to be installed in the cluster (https://cert-manager.io/docs/installation/).
   ## Set to false if cert-manager is not available; in that case, webhook TLS must be managed externally.
   enabled: true
+  preflightCheck:
+    ## @param certManager.preflightCheck.enabled Verify that cert-manager CRDs are present before installing.
+    ## Set to false for offline rendering (e.g. helm template in CI/GitOps without a live cluster).
+    enabled: true
 
 ## @section Prometheus ServiceMonitor parameters
 serviceMonitor:
