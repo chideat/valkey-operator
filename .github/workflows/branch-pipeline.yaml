@@ -92,6 +92,12 @@ jobs:
       with:
         platforms: linux/amd64,linux/arm64
 
+    - name: Docker Login
+      uses: docker/login-action@v4
+      with:
+        username: ${{ vars.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
+
     - name: GitHub Login
       uses: docker/login-action@v4
       with:
@@ -105,7 +111,9 @@ jobs:
         file: ./Dockerfile
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ env.TAG_NAME }}
+        tags: |
+          ${{ vars.DOCKER_USERNAME }}/valkey-operator:${{ env.TAG_NAME }}
+          ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ env.TAG_NAME }}
         platforms: linux/amd64,linux/arm64
 
     - name: Update Chart.yaml appVersion
