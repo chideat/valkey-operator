@@ -28,6 +28,8 @@ jobs:
   e2e:
     name: E2E tests (kind)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - name: Check out code
@@ -92,8 +94,8 @@ jobs:
         SKIP_DEPLOY_CERT_MANAGER: "1"
         SKIP_DEPLOY_PROMETHEUS: "1"
         SKIP_CLUSTER_TESTS: ${{ inputs.skip_cluster_tests == true && '1' || '' }}
-        SKIP_FAILOVER_TESTS: ${{ inputs.skip_failover_tests != false && '1' || '' }}
-        SKIP_REPLICATION_TESTS: ${{ inputs.skip_replication_tests != false && '1' || '' }}
+        SKIP_FAILOVER_TESTS: ${{ inputs.skip_failover_tests == true && '1' || '' }}
+        SKIP_REPLICATION_TESTS: ${{ inputs.skip_replication_tests == true && '1' || '' }}
         SKIP_VERSIONS: ${{ inputs.skip_versions || '8.0,8.1' }}
       run: go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
 
