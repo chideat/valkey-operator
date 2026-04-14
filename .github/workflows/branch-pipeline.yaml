@@ -6,6 +6,9 @@ on:
       - main
       - release-*
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Test with Coverage
@@ -43,6 +46,7 @@ jobs:
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        token: ${{ secrets.GH_TOKEN }}
 
     - name: Check for [skip ci] in commit message
       id: check_skip_ci
