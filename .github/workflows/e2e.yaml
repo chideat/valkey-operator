@@ -1,0 +1,112 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_cluster_tests:
+        description: "Skip cluster tests"
+        required: false
+        default: false
+        type: boolean
+      skip_failover_tests:
+        description: "Skip failover tests (slow)"
+        required: false
+        default: true
+        type: boolean
+      skip_replication_tests:
+        description: "Skip replication tests (slow)"
+        required: false
+        default: true
+        type: boolean
+      skip_versions:
+        description: "Comma-separated Valkey versions to skip (e.g. 8.0,8.1)"
+        required: false
+        default: "8.0,8.1"
+        type: string
+
+jobs:
+  e2e:
+    name: E2E tests (kind)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Install kind
+      run: |
+        curl -Lo /usr/local/bin/kind \
+          https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+        chmod +x /usr/local/bin/kind
+
+    - name: Create kind cluster
+      run: |
+        kind create cluster \
+          --name valkey-operator \
+          --config config/kind/kind-config.yaml
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+
+    - name: Build operator image
+      run: make docker-build IMG=valkey-operator:e2e
+
+    - name: Load image into kind cluster
+      run: kind load docker-image valkey-operator:e2e --name valkey-operator
+
+    - name: Install cert-manager
+      run: |
+        kubectl apply -f \
+          https://github.com/jetstack/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+        kubectl wait deployment.apps/cert-manager-webhook \
+          --for condition=Available \
+          --namespace cert-manager \
+          --timeout 5m
+
+    - name: Deploy operator via Helm
+      run: |
+        helm install valkey-operator charts/valkey-operator \
+          --namespace valkey-system \
+          --create-namespace \
+          --set image.registry="" \
+          --set image.repository=valkey-operator \
+          --set image.tag=e2e \
+          --set image.pullPolicy=Never \
+          --set certManager.preflightCheck.enabled=false
+        kubectl wait deployment/valkey-operator \
+          --for condition=Available \
+          --namespace valkey-system \
+          --timeout 5m
+
+    - name: Run e2e tests
+      env:
+        SKIP_DEPLOY_OPERATOR: "1"
+        SKIP_DEPLOY_CERT_MANAGER: "1"
+        SKIP_DEPLOY_PROMETHEUS: "1"
+        SKIP_CLUSTER_TESTS: ${{ inputs.skip_cluster_tests == true && '1' || '' }}
+        SKIP_FAILOVER_TESTS: ${{ inputs.skip_failover_tests == true && '1' || '' }}
+        SKIP_REPLICATION_TESTS: ${{ inputs.skip_replication_tests == true && '1' || '' }}
+        SKIP_VERSIONS: ${{ inputs.skip_versions || '8.0,8.1' }}
+        KIND_CLUSTER: valkey-operator
+      run: go test -v -timeout 6h ./test/e2e/ -ginkgo.v
+
+    - name: Collect diagnostics on failure
+      if: failure()
+      run: |
+        echo "=== Operator pod logs ==="
+        kubectl logs -l app.kubernetes.io/name=valkey-operator \
+          -n valkey-system --tail=100 || true
+        echo "=== Operator pod events ==="
+        kubectl get events -n valkey-system --sort-by='.lastTimestamp' || true
+        echo "=== All pods ==="
+        kubectl get pods -A || true

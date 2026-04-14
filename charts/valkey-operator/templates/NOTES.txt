@@ -1,0 +1,40 @@
+Thank you for installing {{ .Chart.Name }} v{{ .Chart.AppVersion }}!
+
+The Valkey Operator has been deployed in the {{ .Release.Namespace }} namespace.
+
+** Please be patient while the chart is being deployed **
+
+To check the status of the operator deployment:
+  kubectl get deployment {{ include "valkey-operator.fullname" . }} -n {{ .Release.Namespace }}
+
+To view the operator logs:
+  kubectl logs -l app.kubernetes.io/name={{ include "valkey-operator.name" . }},app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }} -f
+
+{{- if .Values.webhook.enabled }}
+
+Admission webhooks are ENABLED.
+{{- if not .Values.certManager.enabled }}
+
+WARNING: cert-manager integration is disabled (certManager.enabled=false).
+You must manually create the TLS secret "{{ include "valkey-operator.webhookCertSecret" . }}"
+in the "{{ .Release.Namespace }}" namespace before the operator can start.
+
+  kubectl create secret tls {{ include "valkey-operator.webhookCertSecret" . }} \
+    --cert=/path/to/tls.crt \
+    --key=/path/to/tls.key \
+    -n {{ .Release.Namespace }}
+
+Alternatively, enable cert-manager integration with:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set certManager.enabled=true
+{{- else }}
+
+cert-manager integration is enabled. A self-signed certificate will be
+automatically provisioned for the webhook server.
+{{- end }}
+{{- end }}
+
+To create a Valkey cluster instance:
+  kubectl apply -f https://raw.githubusercontent.com/chideat/valkey-operator/main/config/samples/v1alpha1_cluster.yaml
+
+For more information on using the Valkey Operator, visit:
+  https://github.com/chideat/valkey-operator

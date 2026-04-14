@@ -88,9 +88,9 @@ func (m *mockFailoverInstance) Nodes() []types.ValkeyNode {
 	return make([]types.ValkeyNode, m.nodeCount)
 }
 func (m *mockFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) { return nil, nil }
-func (m *mockFailoverInstance) Monitor() types.FailoverMonitor                    { return nil }
-func (m *mockFailoverInstance) IsBindedSentinel() bool                            { return false }
-func (m *mockFailoverInstance) IsStandalone() bool                                { return false }
+func (m *mockFailoverInstance) Monitor() types.FailoverMonitor                     { return nil }
+func (m *mockFailoverInstance) IsBindedSentinel() bool                             { return false }
+func (m *mockFailoverInstance) IsStandalone() bool                                 { return false }
 func (m *mockFailoverInstance) Selector() map[string]string {
 	return map[string]string{"app": "valkey"}
 }
@@ -226,4 +226,3 @@ func TestActorUpdateConfig_RestartRequiredChanged(t *testing.T) {
 	clientMock.AssertNumberOfCalls(t, "UpdateConfigMap", 2)
 	clientMock.AssertExpectations(t)
 }
-

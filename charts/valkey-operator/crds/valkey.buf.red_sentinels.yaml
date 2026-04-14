@@ -4,36 +4,32 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: clusters.valkey.buf.red
+  name: sentinels.valkey.buf.red
 spec:
   group: valkey.buf.red
   names:
-    kind: Cluster
-    listKind: ClusterList
-    plural: clusters
+    kind: Sentinel
+    listKind: SentinelList
+    plural: sentinels
     shortNames:
-    - vkc
-    singular: cluster
+    - vks
+    singular: sentinel
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Current Shards
-      jsonPath: .spec.replicas.shards
-      name: Shards
+    - description: Sentinel replicas
+      jsonPath: .spec.replicas
+      name: Replicas
       type: integer
-    - description: Cluster status
-      jsonPath: .status.clusterStatus
-      name: Service Status
-      type: string
     - description: Instance access type
       jsonPath: .spec.access.serviceType
       name: Access
       type: string
     - description: Instance phase
       jsonPath: .status.phase
-      name: Phase
+      name: Status
       type: string
-    - description: Status message
+    - description: Instance status message
       jsonPath: .status.message
       name: Message
       type: string
@@ -44,7 +40,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Cluster is the Schema for the clusters API
+        description: Sentinel is the Schema for the sentinels API
         properties:
           apiVersion:
             description: |-
@@ -64,9 +60,61 @@ spec:
           metadata:
             type: object
           spec:
-            description: ClusterSpec defines the desired state of Cluster
+            description: SentinelSpec defines the desired state of Sentinel
             properties:
-              CustomAffinity:
+              access:
+                description: Access the access for sentinel
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: The annnotations of the service which will be attached
+                      to services
+                    type: object
+                  certIssuer:
+                    description: Cert Issuer for external access TLS certificate
+                    type: string
+                  certIssuerType:
+                    default: ClusterIssuer
+                    description: Cert Issuer Type for external access TLS certificate
+                    enum:
+                    - ClusterIssuer
+                    - Issuer
+                    type: string
+                  defaultPasswordSecret:
+                    description: |-
+                      DefaultPasswordSecret referered to the secret which defined the password for default user
+                      The referered secret must have `password` key whose value matching regex: ^[a-zA-Z0-9_!@#$%^&*()-_=+?]{8,128}$
+                    type: string
+                  enableTLS:
+                    description: EnableTLS enable TLS for external access
+                    type: boolean
+                  externalTLSSecret:
+                    description: ExternalTLSSecret the external TLS secret to use,
+                      if not provided, the operator will issue one
+                    type: string
+                  ipFamilyPrefer:
+                    description: |-
+                      IPFamily represents the IP Family (IPv4 or IPv6).
+                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
+                    enum:
+                    - IPv4
+                    - IPv6
+                    type: string
+                  ports:
+                    description: Ports defines the nodeports of NodePort service
+                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                    type: string
+                  serviceType:
+                    default: ClusterIP
+                    description: ServiceType defines the type of the all related services
+                    enum:
+                    - NodePort
+                    - LoadBalancer
+                    - ClusterIP
+                    type: string
+                type: object
+              affinity:
                 description: Affinity
                 properties:
                   nodeAffinity:
@@ -978,72 +1026,13 @@ spec:
                         x-kubernetes-list-type: atomic
                     type: object
                 type: object
-              access:
-                description: Access defines the access for valkey
-                properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: The annnotations of the service which will be attached
-                      to services
-                    type: object
-                  certIssuer:
-                    description: Cert Issuer for external access TLS certificate
-                    type: string
-                  certIssuerType:
-                    default: ClusterIssuer
-                    description: Cert Issuer Type for external access TLS certificate
-                    enum:
-                    - ClusterIssuer
-                    - Issuer
-                    type: string
-                  enableTLS:
-                    description: EnableTLS enable TLS for external access
-                    type: boolean
-                  ipFamilyPrefer:
-                    description: |-
-                      IPFamily represents the IP Family (IPv4 or IPv6).
-                      This type is used to express the family of an IP expressed by a type (e.g. service.spec.ipFamilies).
-                    enum:
-                    - IPv4
-                    - IPv6
-                    type: string
-                  ports:
-                    description: Ports defines the nodeports of NodePort service
-                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
-                    type: string
-                  serviceType:
-                    default: ClusterIP
-                    description: ServiceType defines the type of the all related services
-                    enum:
-                    - NodePort
-                    - LoadBalancer
-                    - ClusterIP
-                    type: string
-                type: object
-              affinityPolicy:
-                description: AffinityPolicy
-                enum:
-                - SoftAntiAffinity
-                - AntiAffinityInShard
-                - AntiAffinity
-                - CustomAffinity
-                type: string
-              annotations:
-                additionalProperties:
-                  type: string
-                description: PodAnnotations
-                type: object
               customConfigs:
                 additionalProperties:
                   type: string
-                description: |-
-                  CustomConfigs is the custom configuration
-
-                  Most of the settings is key-value format.
+                description: CustomConfigs the config for sentinel
                 type: object
               exporter:
-                description: Exporter
+                description: Exporter defines the specification for the sentinel exporter
                 properties:
                   image:
                     description: Image the exporter image
@@ -1306,13 +1295,13 @@ spec:
                     type: object
                 type: object
               image:
-                description: Image valkey image
+                description: Image the valkey sentinel image
                 type: string
               imagePullPolicy:
-                description: ImagePullPolicy is the image pull policy
+                description: ImagePullPolicy the image pull policy
                 type: string
               imagePullSecrets:
-                description: ImagePullSecrets
+                description: ImagePullSecrets the image pull secrets
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -1330,70 +1319,23 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
-              modules:
-                description: Modules defines the module settings for Valkey
-                items:
-                  description: ValkeyModule defines the module for Valkey
-                  properties:
-                    args:
-                      description: |-
-                        Args args for module
-
-                        Supported for valkey 8.0+
-                      items:
-                        type: string
-                      type: array
-                    path:
-                      description: |-
-                        Path path of valkey module.
-
-                        .so suffix will be appended if path not suffixed provided
-                        if path is a full path, the full path will be used else the module will be loaded from /usr/local/valkey/modules
-                      type: string
-                  required:
-                  - path
-                  type: object
-                type: array
               nodeSelector:
                 additionalProperties:
                   type: string
                 description: NodeSelector
                 type: object
-              replicas:
-                description: Replicas is the number of cluster replicas
-                properties:
-                  replicasOfShard:
-                    description: ReplicasOfShard is the number of replicas for each
-                      master node
-                    format: int32
-                    maximum: 5
-                    minimum: 0
-                    type: integer
-                  shards:
-                    default: 3
-                    description: Shards is the number of cluster shards
-                    format: int32
-                    maximum: 128
-                    minimum: 3
-                    type: integer
-                  shardsConfig:
-                    description: ShardsConfig is the configuration of each shard
-                    items:
-                      properties:
-                        slots:
-                          description: 'Slots is the slot range for the shard, eg:
-                            0-1000,1002,1005-1100'
-                          pattern: ^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$
-                          type: string
-                      type: object
-                    minItems: 3
-                    type: array
-                required:
-                - replicasOfShard
-                - shards
+              podAnnotations:
+                additionalProperties:
+                  type: string
+                description: PodAnnotations
                 type: object
+              replicas:
+                description: Replicas the number of sentinel replicas
+                format: int32
+                minimum: 3
+                type: integer
               resources:
-                description: Resources
+                description: Resources the resources for sentinel
                 properties:
                   claims:
                     description: |-
@@ -1683,38 +1625,6 @@ spec:
                         type: string
                     type: object
                 type: object
-              storage:
-                description: Storage
-                properties:
-                  accessMode:
-                    default: ReadWriteOnce
-                    description: AccessMode is the access mode of the volume.
-                    type: string
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: The annnotations of the service which will be attached
-                      to services
-                    type: object
-                  capacity:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      Capacity is the cap of the volume to request.
-                      if not set and StorageClassName is set, the default StorageClass size will be the double size of memory limit.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  retainAfterDeleted:
-                    description: RetainAfterDeleted defines whether the storage should
-                      be retained after the ValkeyCluster is deleted
-                    type: boolean
-                  storageClassName:
-                    description: |-
-                      storageClassName is the name of the StorageClass required by the claim.
-                      if not set, the default StorageClass will be used
-                    type: string
-                type: object
               tolerations:
                 description: Tolerations
                 items:
@@ -1735,10 +1645,9 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                        Valid operators are Exists and Equal. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
-                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-
@@ -1755,20 +1664,15 @@ spec:
                       type: string
                   type: object
                 type: array
-            required:
-            - replicas
             type: object
           status:
-            description: ClusterStatus defines the observed state of Cluster
+            description: SentinelStatus defines the observed state of Sentinel
             properties:
-              clusterStatus:
-                description: ServiceStatus the cluster service status
-                type: string
               message:
-                description: Message the message of the status
+                description: Message the status message
                 type: string
               nodes:
-                description: Nodes the cluster nodes
+                description: Nodes the valkey node details
                 items:
                   description: ValkeyNode represent a ValkeyCluster Node
                   properties:
@@ -1815,47 +1719,11 @@ spec:
                   type: object
                 type: array
               phase:
-                description: Status the status of the cluster
+                description: Phase the status phase
                 type: string
-              shards:
-                description: Shards the cluster shards
-                items:
-                  description: ClusterShards
-                  properties:
-                    id:
-                      description: ID match the shard-id in cluster shard
-                      type: string
-                    index:
-                      description: Index the shard index
-                      format: int32
-                      type: integer
-                    slots:
-                      description: Slots records the slots status of this shard
-                      items:
-                        description: ClusterShardsSlotStatus
-                        properties:
-                          shardId:
-                            description: ShardIndex indicates the slots importing
-                              from or migrate to
-                            format: int32
-                            type: integer
-                          slots:
-                            description: Slots slots this shard holds or will holds
-                            type: string
-                          status:
-                            description: Status the status of this status
-                            type: string
-                        required:
-                        - shardId
-                        type: object
-                      type: array
-                  required:
-                  - index
-                  - slots
-                  type: object
-                type: array
-            required:
-            - phase
+              tlsSecret:
+                description: TLSSecret the tls secret
+                type: string
             type: object
         type: object
     served: true

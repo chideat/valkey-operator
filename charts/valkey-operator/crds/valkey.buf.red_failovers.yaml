@@ -4,38 +4,34 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: valkeys.rds.valkey.buf.red
+  name: failovers.valkey.buf.red
 spec:
-  group: rds.valkey.buf.red
+  group: valkey.buf.red
   names:
-    kind: Valkey
-    listKind: ValkeyList
-    plural: valkeys
+    kind: Failover
+    listKind: FailoverList
+    plural: failovers
     shortNames:
-    - vk
-    singular: valkey
+    - vkf
+    singular: failover
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Instance arch
-      jsonPath: .spec.arch
-      name: Arch
-      type: string
-    - description: Valkey version
-      jsonPath: .spec.version
-      name: Version
-      type: string
+    - description: Valkey replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
+    - description: Valkey failover replicas
+      jsonPath: .spec.sentinel.replicas
+      name: Sentinels
+      type: integer
     - description: Instance access type
       jsonPath: .spec.access.serviceType
       name: Access
       type: string
-    - description: Storage class name
-      jsonPath: .spec.storage.storageClassName
-      name: Storage Class
-      type: string
     - description: Instance phase
       jsonPath: .status.phase
-      name: Status
+      name: Phase
       type: string
     - description: Instance status message
       jsonPath: .status.message
@@ -48,7 +44,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Valkey is the Schema for the valkeys API
+        description: Failover is the Schema for the failovers API
         properties:
           apiVersion:
             description: |-
@@ -68,10 +64,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: ValkeySpec defines the desired state of Valkey
+            description: FailoverSpec defines the desired state of Failover
             properties:
               access:
-                description: Access defines information for Valkey nodePorts settings
+                description: Access
                 properties:
                   annotations:
                     additionalProperties:
@@ -113,26 +109,8 @@ spec:
                     - ClusterIP
                     type: string
                 type: object
-              affinityPolicy:
-                description: AffinityPolicy specifies the affinity policy for the
-                  Pod
-                enum:
-                - SoftAntiAffinity
-                - AntiAffinityInShard
-                - AntiAffinity
-                - CustomAffinity
-                type: string
-              arch:
-                description: Arch supports cluster, sentinel
-                enum:
-                - cluster
-                - failover
-                - replica
-                type: string
-              customAffinity:
-                description: |-
-                  CustomAffinity specifies the custom affinity settings for the Pod
-                  if AffinityPolicy is set to CustomAffinity, this field is required
+              affinity:
+                description: Affinity is a group of affinity scheduling rules.
                 properties:
                   nodeAffinity:
                     description: Describes node affinity scheduling rules for the
@@ -1046,16 +1024,11 @@ spec:
               customConfigs:
                 additionalProperties:
                   type: string
-                description: |-
-                  CustomConfigs defines the configuration settings for Valkey
-                  for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf
+                description: CustomConfig custom valkey configuration
                 type: object
               exporter:
-                description: Exporter defines Valkey exporter settings
+                description: Exporter
                 properties:
-                  disable:
-                    description: Disable disable exporter
-                    type: boolean
                   image:
                     description: Image the exporter image
                     type: string
@@ -1316,11 +1289,32 @@ spec:
                         type: object
                     type: object
                 type: object
+              image:
+                type: string
+              imagePullPolicy:
+                description: PullPolicy describes a policy for if/when to pull a container
+                  image
+                type: string
+              imagePullSecrets:
+                items:
+                  description: |-
+                    LocalObjectReference contains enough information to let you locate the
+                    referenced object inside the same namespace.
+                  properties:
+                    name:
+                      default: ""
+                      description: |-
+                        Name of the referent.
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
               modules:
-                description: |-
-                  Modules defines a list of modules to be loaded into the valkey instance.
-                  Each module is specified by its name and version.
-                  Modules are loaded at startup and can extend Redis functionality.
+                description: Modules defines the module settings for Valkey
                 items:
                   description: ValkeyModule defines the module for Valkey
                   properties:
@@ -1346,48 +1340,16 @@ spec:
               nodeSelector:
                 additionalProperties:
                   type: string
-                description: NodeSelector specifies the node selector for the Pod
                 type: object
               podAnnotations:
                 additionalProperties:
                   type: string
-                description: PodAnnotations holds Kubernetes Pod annotations PodAnnotations
                 type: object
               replicas:
-                description: Replicas defines desired number of replicas for Valkey
-                properties:
-                  replicasOfShard:
-                    description: ReplicasOfShard is the number of replicas for each
-                      master node
-                    format: int32
-                    maximum: 5
-                    minimum: 1
-                    type: integer
-                  shards:
-                    description: |-
-                      Shards defines the number of shards for Valkey
-                      for cluster arch, the default value is 3; for other arch, the value is always 1
-                    format: int32
-                    minimum: 0
-                    type: integer
-                  shardsConfig:
-                    description: ShardsConfig is the configuration of each shard
-                    items:
-                      properties:
-                        slots:
-                          description: 'Slots is the slot range for the shard, eg:
-                            0-1000,1002,1005-1100'
-                          pattern: ^(\d{1,5}|(\d{1,5}-\d{1,5}))(,(\d{1,5}|(\d{1,5}-\d{1,5})))*$
-                          type: string
-                      type: object
-                    minItems: 3
-                    type: array
-                required:
-                - replicasOfShard
-                type: object
+                format: int32
+                type: integer
               resources:
-                description: Resources for setting resource requirements for the Pod
-                  Resources *v1.ResourceRequirements
+                description: ResourceRequirements describes the compute resource requirements.
                 properties:
                   claims:
                     description: |-
@@ -1446,8 +1408,10 @@ spec:
                     type: object
                 type: object
               securityContext:
-                description: SecurityContext sets security attributes for the Pod
-                  SecurityContex
+                description: |-
+                  PodSecurityContext holds pod-level security attributes and common container settings.
+                  Some fields are also present in container.securityContext.  Field values of
+                  container.securityContext take precedence over field values of PodSecurityContext.
                 properties:
                   appArmorProfile:
                     description: |-
@@ -1679,7 +1643,7 @@ spec:
                     type: object
                 type: object
               sentinel:
-                description: Sentinel defines Sentinel configuration settings Sentinel
+                description: Sentinel
                 properties:
                   access:
                     description: Access the access for sentinel
@@ -3323,10 +3287,9 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                            Valid operators are Exists and Equal. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
-                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-
@@ -3345,7 +3308,7 @@ spec:
                     type: array
                 type: object
               storage:
-                description: Storage defines the storage settings for Valkey
+                description: Storage
                 properties:
                   accessMode:
                     default: ReadWriteOnce
@@ -3377,7 +3340,6 @@ spec:
                     type: string
                 type: object
               tolerations:
-                description: tolerations defines tolerations for the Pod
                 items:
                   description: |-
                     The pod this Toleration is attached to tolerates any taint that matches
@@ -3396,10 +3358,9 @@ spec:
                     operator:
                       description: |-
                         Operator represents a key's relationship to the value.
-                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                        Valid operators are Exists and Equal. Defaults to Equal.
                         Exists is equivalent to wildcard for value, so that a pod can
                         tolerate all taints of a particular category.
-                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                       type: string
                     tolerationSeconds:
                       description: |-
@@ -3416,42 +3377,53 @@ spec:
                       type: string
                   type: object
                 type: array
-              version:
-                description: Version supports 7.2, 8.0, 8.1
-                enum:
-                - "7.2"
-                - "8.0"
-                - "8.1"
-                type: string
-            required:
-            - arch
-            - replicas
-            - resources
-            - version
             type: object
           status:
-            description: ValkeyStatus defines the observed state of Valkey
+            description: FailoverStatus defines the observed state of Failover
             properties:
-              lastShardCount:
-                description: LastShardCount indicates the last number of shards in
-                  the Valkey Cluster.
-                format: int32
-                type: integer
-              lastVersion:
-                description: LastVersion indicates the last version of the Valkey
-                  instance.
-                type: string
-              matchLabels:
-                additionalProperties:
-                  type: string
-                description: Matching labels selector for Valkey
-                type: object
               message:
-                description: This field contains an additional message for the instance's
-                  status
+                description: Message the status message
                 type: string
+              monitor:
+                description: Monitor the monitor status
+                properties:
+                  name:
+                    description: Name monitor name
+                    type: string
+                  nodes:
+                    description: Nodes the sentinel monitor nodes
+                    items:
+                      properties:
+                        flags:
+                          description: Flags
+                          type: string
+                        ip:
+                          description: IP the sentinel node ip
+                          type: string
+                        port:
+                          description: Port the sentinel node port
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                  oldPasswordSecret:
+                    description: OldPasswordSecret
+                    type: string
+                  passwordSecret:
+                    description: PasswordSecret
+                    type: string
+                  policy:
+                    description: Policy the failover policy
+                    type: string
+                  tlsSecret:
+                    description: TLSSecret the tls secret
+                    type: string
+                  username:
+                    description: Username sentinel username
+                    type: string
+                type: object
               nodes:
-                description: ClusterNodes valkey nodes info
+                description: Nodes the valkey cluster nodes
                 items:
                   description: ValkeyNode represent a ValkeyCluster Node
                   properties:
@@ -3498,14 +3470,10 @@ spec:
                   type: object
                 type: array
               phase:
-                description: |-
-                  Phase indicates whether all the resource for the instance is ok.
-                  Values are as below:
-                    Initializing - Resource is in Initializing or Reconcile
-                    Ready        - All resources is ok. In most cases, Ready means the cluster is ok to use
-                    Rebalancing  - Cluster instance is rebalancing
-                    Failed       - Error found when do resource reconcile, which not recoverable
-                    Paused       - Instance paused which means workload replicas is set to 0
+                description: Phase
+                type: string
+              tlsSecret:
+                description: TLSSecret the tls secret
                 type: string
             type: object
         type: object

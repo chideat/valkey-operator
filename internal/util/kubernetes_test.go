@@ -1520,10 +1520,10 @@ func TestIsStatefulsetChanged2(t *testing.T) {
 	}
 
 	tests := []struct {
-		name              string
-		modify            func(sts *appsv1.StatefulSet)
-		wantChanged       bool
-		wantImmutable     bool
+		name          string
+		modify        func(sts *appsv1.StatefulSet)
+		wantChanged   bool
+		wantImmutable bool
 	}{
 		{
 			name:          "identical statefulsets",

@@ -44,6 +44,7 @@ jobs:
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        ref: ${{ github.head_ref }}
 
     - name: Read version from file
       id: get_version
@@ -130,3 +131,15 @@ jobs:
         push: true
         tags: ghcr.io/${{ github.repository }}:${{ env.VERSION }}-${{ env.BRANCH_NAME }}.g${{ env.COMMIT_SHA }}
         platforms: linux/amd64,linux/arm64
+
+    - name: Update Chart.yaml appVersion
+      run: |
+        sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/valkey-operator/Chart.yaml
+
+    - name: Commit and push Chart.yaml update
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add charts/valkey-operator/Chart.yaml
+        git diff --cached --quiet || git commit -m "chore: update Helm chart appVersion to ${VERSION} [skip ci]"
+        git push origin HEAD:${{ github.head_ref }}

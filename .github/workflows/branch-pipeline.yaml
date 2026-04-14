@@ -115,3 +115,15 @@ jobs:
           ${{ vars.DOCKER_USERNAME }}/valkey-operator:${{ env.TAG_NAME }}
           ghcr.io/${{ github.repository_owner }}/valkey-operator:${{ env.TAG_NAME }}
         platforms: linux/amd64,linux/arm64
+
+    - name: Update Chart.yaml appVersion
+      run: |
+        sed -i "s/^appVersion:.*/appVersion: \"${TAG_NAME}\"/" charts/valkey-operator/Chart.yaml
+
+    - name: Commit and push Chart.yaml update
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add charts/valkey-operator/Chart.yaml
+        git diff --cached --quiet || git commit -m "chore: update Helm chart appVersion to ${TAG_NAME} [skip ci]"
+        git push origin HEAD
