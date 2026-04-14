@@ -97,7 +97,8 @@ jobs:
         SKIP_FAILOVER_TESTS: ${{ inputs.skip_failover_tests == true && '1' || '' }}
         SKIP_REPLICATION_TESTS: ${{ inputs.skip_replication_tests == true && '1' || '' }}
         SKIP_VERSIONS: ${{ inputs.skip_versions || '8.0,8.1' }}
-      run: go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
+        KIND_CLUSTER: valkey-operator
+      run: go test -v -timeout 6h ./test/e2e/ -ginkgo.v
 
     - name: Collect diagnostics on failure
       if: failure()
