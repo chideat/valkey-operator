@@ -5,6 +5,9 @@ on:
     branches-ignore:
       - dependabot/*
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Test with Coverage
@@ -45,6 +48,7 @@ jobs:
       with:
         fetch-depth: 0
         ref: ${{ github.head_ref }}
+        token: ${{ secrets.GH_TOKEN }}
 
     - name: Read version from file
       id: get_version
