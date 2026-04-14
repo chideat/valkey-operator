@@ -128,7 +128,7 @@ KIND_CLUSTER ?= valkey-operator
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	SKIP_DEPLOY_OPERATOR=1 SKIP_DEPLOY_PROMETHEUS=1 SKIP_DEPLOY_CERT_MANAGER=1 go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
+	SKIP_DEPLOY_OPERATOR=1 SKIP_DEPLOY_PROMETHEUS=1 SKIP_DEPLOY_CERT_MANAGER=1 go test -v -timeout 6h ./test/e2e/ -ginkgo.v
 
 .PHONY: kind-setup
 kind-setup: ## Create a local Kind cluster if it does not already exist.
@@ -141,7 +141,7 @@ kind-load: docker-build kind-setup ## Build the operator image and load it into 
 
 .PHONY: test-e2e-local
 test-e2e-local: kind-load install deploy ## Run e2e tests against a local Kind cluster (installs dependencies automatically).
-	go test ./test/e2e/ --ginkgo.v --ginkgo.timeout 6h
+	go test -v -timeout 6h ./test/e2e/ -ginkgo.v
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
