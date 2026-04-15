@@ -6,7 +6,7 @@ on:
       - dependabot/*
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -39,6 +39,8 @@ jobs:
 
   build:
     name: Build and push Docker image
+    permissions:
+      contents: write
     if: "!startsWith(github.head_ref, 'dependabot/')"
     runs-on: ubuntu-latest
 
