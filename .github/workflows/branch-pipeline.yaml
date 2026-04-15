@@ -7,7 +7,7 @@ on:
       - release-*
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -40,6 +40,8 @@ jobs:
 
   build:
     name: Build and push Docker image
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
