@@ -6,6 +6,9 @@ on:
       - main
       - release-*
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test with Coverage
@@ -37,12 +40,15 @@ jobs:
 
   build:
     name: Build and push Docker image
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        token: ${{ secrets.GH_TOKEN }}
 
     - name: Check for [skip ci] in commit message
       id: check_skip_ci
