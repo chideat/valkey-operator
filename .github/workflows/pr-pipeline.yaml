@@ -5,6 +5,9 @@ on:
     branches-ignore:
       - dependabot/*
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test with Coverage
@@ -36,6 +39,8 @@ jobs:
 
   build:
     name: Build and push Docker image
+    permissions:
+      contents: write
     if: "!startsWith(github.head_ref, 'dependabot/')"
     runs-on: ubuntu-latest
 
@@ -45,6 +50,7 @@ jobs:
       with:
         fetch-depth: 0
         ref: ${{ github.head_ref }}
+        token: ${{ secrets.GH_TOKEN }}
 
     - name: Read version from file
       id: get_version
