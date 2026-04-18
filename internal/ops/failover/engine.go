@@ -310,8 +310,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		if rawErr != nil {
 			logger.Error(rawErr, "failed to get raw nodes; treating master as down")
 		} else if len(rawPods) > len(inst.Nodes()) {
-			// Master pod exists in k8s but is temporarily TCP-unreachable.
-			// Skip heal loop — allow isPatchLabelNeeded to run.
+			// Unreachable pod != dead pod — healing would fight Sentinel's failover.
 			logger.Info("master not in connected nodes but unreachable pods exist, allowing label update",
 				"master", monitorMaster.Address())
 			return nil
@@ -336,8 +335,7 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		return actor.RequeueWithError(rawErr)
 	}
 	if len(inst.Nodes()) < len(rawPods) {
-		// Some pods are TCP-unreachable — index skew is structural, not misconfiguration.
-		// Skip check — allow isPatchLabelNeeded to run.
+		// Index skew is structural (fewer connected than total), not misconfiguration.
 		logger.Info("skipping index-mismatch check: unreachable pods reduce node count",
 			"connected", len(inst.Nodes()), "total", len(rawPods))
 	} else {

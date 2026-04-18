@@ -293,14 +293,7 @@ func newFailoverInstance(nodes []types.ValkeyNode, rawPods []corev1.Pod, mon typ
 
 // --- tests ---
 
-// TestIsNodesHealthy_IndexMismatch_WhenMasterNodeUnreachable:
-// Only ha-1 is in inst.Nodes() (ha-0 was unreachable at LoadNodes time).
-// Sentinel reports ha-1 as master (10.0.0.2); masterNode search finds ha-1 in
-// inst.Nodes() and the match succeeds. The index-mismatch loop (engine.go
-// lines 324-329) then runs: with only ha-1 in the slice, i=0 but ha1.Index()=1
-// → currently returns CommandHealPod.
-// After the fix (skip check when len(inst.Nodes()) < len(rawPods)) it should
-// return nil, allowing isPatchLabelNeeded to run.
+// Network partition: master reachable but another pod isn't — should not trigger heal.
 func TestIsNodesHealthy_IndexMismatch_WhenMasterNodeUnreachable(t *testing.T) {
 	ctx := context.Background()
 
@@ -325,17 +318,10 @@ func TestIsNodesHealthy_IndexMismatch_WhenMasterNodeUnreachable(t *testing.T) {
 	engine := &RuleEngine{logger: logr.Discard()}
 	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
 
-	// Currently FAILS: returns CommandHealPod due to i=0 != node.Index()=1
 	assert.Nil(t, result, "expected nil (master is reachable, pod just missing from Nodes slice)")
 }
 
-// TestIsNodesHealthy_MasterNil_WhenMasterPodUnreachable:
-// Sentinel reports ha-0 as master (10.0.0.1). ha-0 is not in inst.Nodes()
-// because it was unreachable at LoadNodes time (AllNodeMonitored=true, so the
-// monitor check passes). masterNode search returns nil because ha-0 is absent
-// from the slice. Current code returns CommandHealMonitor.
-// After the fix (check if the unreachable pod exists in RawNodes and return nil
-// instead) isPatchLabelNeeded is allowed to run.
+// Sentinel-reported master is TCP-unreachable — should not heal, let Sentinel failover.
 func TestIsNodesHealthy_MasterNil_WhenMasterPodUnreachable(t *testing.T) {
 	ctx := context.Background()
 
@@ -360,14 +346,10 @@ func TestIsNodesHealthy_MasterNil_WhenMasterPodUnreachable(t *testing.T) {
 	engine := &RuleEngine{logger: logr.Discard()}
 	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
 
-	// Currently FAILS: masterNode is nil (ha-0 not in inst.Nodes()) → returns CommandHealMonitor
 	assert.Nil(t, result, "expected nil (master pod is just unreachable, not a split-brain)")
 }
 
-// TestIsNodesHealthy_IndexMismatch_AllReachable_StillHeals:
-// Both ha-0 and ha-1 are reachable but appear in wrong order in Nodes() slice.
-// i=0 → node.Index()=1, genuine mismatch → should return CommandHealPod.
-// This tests existing (correct) behavior and should PASS before and after the fix.
+// All pods reachable but index order wrong — genuine mismatch, should heal.
 func TestIsNodesHealthy_IndexMismatch_AllReachable_StillHeals(t *testing.T) {
 	ctx := context.Background()
 
@@ -392,7 +374,6 @@ func TestIsNodesHealthy_IndexMismatch_AllReachable_StillHeals(t *testing.T) {
 	engine := &RuleEngine{logger: logr.Discard()}
 	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
 
-	// Should PASS: genuine mismatch (all pods reachable), returns CommandHealPod
 	assert.NotNil(t, result, "expected non-nil result for genuine index mismatch")
 	assert.Equal(t, CommandHealPod, result.NextCommand())
 }
