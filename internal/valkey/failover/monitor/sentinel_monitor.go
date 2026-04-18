@@ -162,9 +162,9 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 				s.logger.Error(err, "master not registered", "addr", node.addr)
 				continue
 			}
-			// NOTE: here ignored any error, for the node may be offline forever
-			s.logger.Error(err, "check monitoring master status of sentinel failed", "addr", node.addr)
-			return nil, err
+			// sentinel unreachable, skip and let majority quorum decide
+			s.logger.Error(err, "sentinel unreachable, skipping", "addr", node.addr)
+			continue
 		} else if n.IsFailovering() {
 			s.logger.Error(ErrDoFailover, "valkey sentinel is doing failover", "node", n.Address())
 			return nil, ErrDoFailover

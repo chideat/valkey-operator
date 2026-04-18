@@ -305,8 +305,17 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			break
 		}
 	}
-	// TODO: here need more check of node connection
 	if masterNode == nil {
+		rawPods, rawErr := inst.RawNodes(ctx)
+		if rawErr != nil {
+			logger.Error(rawErr, "failed to get raw nodes; treating master as down")
+		} else if len(rawPods) > len(inst.Nodes()) {
+			// Master pod exists in k8s but is temporarily TCP-unreachable.
+			// Skip heal loop — allow isPatchLabelNeeded to run.
+			logger.Info("master not in connected nodes but unreachable pods exist, allowing label update",
+				"master", monitorMaster.Address())
+			return nil
+		}
 		logger.Info("master not found on any nodes, maybe master is down")
 		return actor.NewResult(CommandHealMonitor)
 	}
@@ -321,10 +330,22 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		}
 	}
 
-	for i, node := range inst.Nodes() {
-		if i != node.Index() {
-			logger.Info("node index not match", "node", node.GetName(), "index", node.Index())
-			return actor.NewResult(CommandHealPod)
+	rawPods, rawErr := inst.RawNodes(ctx)
+	if rawErr != nil {
+		logger.Error(rawErr, "failed to get raw nodes for index check")
+		return actor.RequeueWithError(rawErr)
+	}
+	if len(inst.Nodes()) < len(rawPods) {
+		// Some pods are TCP-unreachable — index skew is structural, not misconfiguration.
+		// Skip check — allow isPatchLabelNeeded to run.
+		logger.Info("skipping index-mismatch check: unreachable pods reduce node count",
+			"connected", len(inst.Nodes()), "total", len(rawPods))
+	} else {
+		for i, node := range inst.Nodes() {
+			if i != node.Index() {
+				logger.Info("node index not match", "node", node.GetName(), "index", node.Index())
+				return actor.NewResult(CommandHealPod)
+			}
 		}
 	}
 	return nil
