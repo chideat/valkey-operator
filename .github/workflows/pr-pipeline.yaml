@@ -33,6 +33,7 @@ jobs:
       run: go install github.com/mattn/goveralls@latest
 
     - name: Send coverage
+      if: github.event.pull_request.head.repo.full_name == github.repository
       env:
         COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
       run: goveralls -coverprofile=coverage.txt -service=github
@@ -41,7 +42,7 @@ jobs:
     name: Build and push Docker image
     permissions:
       contents: write
-    if: "!startsWith(github.head_ref, 'dependabot/')"
+    if: "!startsWith(github.head_ref, 'dependabot/') && github.event.pull_request.head.repo.full_name == github.repository"
     runs-on: ubuntu-latest
 
     steps:
