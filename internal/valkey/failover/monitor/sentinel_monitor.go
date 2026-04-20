@@ -19,6 +19,7 @@ package monitor
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -37,6 +38,12 @@ import (
 	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// isDNSError reports whether err is or wraps a DNS resolution failure.
+func isDNSError(err error) bool {
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr)
+}
 
 var (
 	ErrNoUseableNode   = fmt.Errorf("no usable sentinel node")
@@ -158,8 +165,11 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 	for _, node := range s.nodes {
 		n, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
-			if err == ErrNoMaster || strings.Contains(err.Error(), "no such host") {
-				s.logger.Error(err, "master not registered", "addr", node.addr)
+			if err == ErrNoMaster {
+				s.logger.Error(err, "master not registered with sentinel", "addr", node.addr)
+				continue
+			} else if isDNSError(err) {
+				s.logger.Error(err, "sentinel DNS resolution failed, skipping", "addr", node.addr)
 				continue
 			}
 			// sentinel unreachable, skip and let majority quorum decide
@@ -438,7 +448,7 @@ func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]st
 	for _, node := range s.nodes {
 		masterNode, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
-			if err == ErrNoMaster || strings.HasSuffix(err.Error(), "no such host") {
+			if err == ErrNoMaster || isDNSError(err) {
 				continue
 			}
 			logger.Error(err, "check monitoring master failed")

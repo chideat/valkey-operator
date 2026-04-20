@@ -305,15 +305,21 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			break
 		}
 	}
+	rawPods, rawErr := inst.RawNodes(ctx)
+	if rawErr != nil {
+		logger.Error(rawErr, "failed to get raw nodes")
+		return actor.RequeueWithError(rawErr)
+	}
+
 	if masterNode == nil {
-		rawPods, rawErr := inst.RawNodes(ctx)
-		if rawErr != nil {
-			logger.Error(rawErr, "failed to get raw nodes; treating master as down")
-		} else if len(rawPods) > len(inst.Nodes()) {
-			// Unreachable pod != dead pod — healing would fight Sentinel's failover.
-			logger.Info("master not in connected nodes but unreachable pods exist, allowing label update",
-				"master", monitorMaster.Address())
-			return nil
+		for _, pod := range rawPods {
+			if pod.Status.PodIP == monitorMaster.IP {
+				// Master pod exists but is temporarily unreachable — avoid healing to prevent
+				// fighting Sentinel's own failover.
+				logger.Info("master not in connected nodes but matching raw pod exists, allowing label update",
+					"master", monitorMaster.Address())
+				return nil
+			}
 		}
 		logger.Info("master not found on any nodes, maybe master is down")
 		return actor.NewResult(CommandHealMonitor)
@@ -329,11 +335,6 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		}
 	}
 
-	rawPods, rawErr := inst.RawNodes(ctx)
-	if rawErr != nil {
-		logger.Error(rawErr, "failed to get raw nodes for index check")
-		return actor.RequeueWithError(rawErr)
-	}
 	if len(inst.Nodes()) < len(rawPods) {
 		// Index skew is structural (fewer connected than total), not misconfiguration.
 		logger.Info("skipping index-mismatch check: unreachable pods reduce node count",

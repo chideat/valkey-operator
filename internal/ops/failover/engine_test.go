@@ -25,12 +25,14 @@ import (
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
 	vkcli "github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -293,89 +295,62 @@ func newFailoverInstance(nodes []types.ValkeyNode, rawPods []corev1.Pod, mon typ
 
 // --- tests ---
 
-// Network partition: master reachable but another pod isn't — should not trigger heal.
-func TestIsNodesHealthy_IndexMismatch_WhenMasterNodeUnreachable(t *testing.T) {
-	ctx := context.Background()
-
-	// Only ha-1 is connected (index=1)
-	ha1 := newNode("ha-1", 1, "10.0.0.2", 6379)
-
-	mon := &mockFailoverMonitor{
-		allMonitored: true,
-		// Sentinel reports ha-1 as master
-		master: &vkcli.SentinelMonitorNode{IP: "10.0.0.2", Port: "6379"},
+func TestIsNodesHealthy(t *testing.T) {
+	// Pods shared across scenarios: both ha-0 (10.0.0.1) and ha-1 (10.0.0.2) exist.
+	pods := []corev1.Pod{
+		makePod("ha-0", "10.0.0.1"),
+		makePod("ha-1", "10.0.0.2"),
 	}
 
-	inst := newFailoverInstance(
-		[]types.ValkeyNode{ha1},
-		[]corev1.Pod{
-			makePod("ha-0", "10.0.0.1"),
-			makePod("ha-1", "10.0.0.2"),
+	tests := []struct {
+		name    string
+		nodes   []types.ValkeyNode
+		master  *vkcli.SentinelMonitorNode
+		wantCmd actor.Command // nil means healthy (no heal result)
+	}{
+		{
+			// Network partition: ha-0 pod reachable but missing from Nodes, ha-1 is master and reachable.
+			// Should not trigger heal.
+			name:   "unreachable pod with reachable master does not heal",
+			nodes:  []types.ValkeyNode{newNode("ha-1", 1, "10.0.0.2", 6379)},
+			master: &vkcli.SentinelMonitorNode{IP: "10.0.0.2", Port: "6379"},
 		},
-		mon,
-	)
-
-	engine := &RuleEngine{logger: logr.Discard()}
-	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
-
-	assert.Nil(t, result, "expected nil (master is reachable, pod just missing from Nodes slice)")
-}
-
-// Sentinel-reported master is TCP-unreachable — should not heal, let Sentinel failover.
-func TestIsNodesHealthy_MasterNil_WhenMasterPodUnreachable(t *testing.T) {
-	ctx := context.Background()
-
-	// Only ha-1 is connected (index=1)
-	ha1 := newNode("ha-1", 1, "10.0.0.2", 6379)
-
-	mon := &mockFailoverMonitor{
-		allMonitored: true,
-		// Sentinel still reports ha-0 as master (old master, not yet failed over)
-		master: &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
+		{
+			// Sentinel still reports old master (ha-0) but that pod is not in Nodes.
+			// Raw pod exists though, so we let Sentinel fail over instead of healing.
+			name:   "sentinel master pod unreachable but raw pod exists does not heal",
+			nodes:  []types.ValkeyNode{newNode("ha-1", 1, "10.0.0.2", 6379)},
+			master: &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
+		},
+		{
+			// All pods reachable but slice order wrong (ha-1 at index 0).
+			// Genuine mismatch, should heal.
+			name: "all reachable with wrong index order heals",
+			nodes: []types.ValkeyNode{
+				newNode("ha-1", 1, "10.0.0.2", 6379),
+				newNode("ha-0", 0, "10.0.0.1", 6379),
+			},
+			master:  &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
+			wantCmd: CommandHealPod,
+		},
 	}
 
-	inst := newFailoverInstance(
-		[]types.ValkeyNode{ha1},
-		[]corev1.Pod{
-			makePod("ha-0", "10.0.0.1"),
-			makePod("ha-1", "10.0.0.2"),
-		},
-		mon,
-	)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mon := &mockFailoverMonitor{allMonitored: true, master: tc.master}
+			inst := newFailoverInstance(tc.nodes, pods, mon)
+			engine := &RuleEngine{logger: logr.Discard()}
 
-	engine := &RuleEngine{logger: logr.Discard()}
-	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
+			result := engine.isNodesHealthy(context.Background(), inst, logr.Discard())
 
-	assert.Nil(t, result, "expected nil (master pod is just unreachable, not a split-brain)")
-}
-
-// All pods reachable but index order wrong — genuine mismatch, should heal.
-func TestIsNodesHealthy_IndexMismatch_AllReachable_StillHeals(t *testing.T) {
-	ctx := context.Background()
-
-	// Both nodes connected, but slice order is wrong (ha-1 first, then ha-0)
-	ha1 := newNode("ha-1", 1, "10.0.0.2", 6379)
-	ha0 := newNode("ha-0", 0, "10.0.0.1", 6379)
-
-	mon := &mockFailoverMonitor{
-		allMonitored: true,
-		master:       &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
+			if tc.wantCmd == nil {
+				assert.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			assert.Equal(t, tc.wantCmd, result.NextCommand())
+		})
 	}
-
-	inst := newFailoverInstance(
-		[]types.ValkeyNode{ha1, ha0}, // wrong order: ha-1 at index 0 in slice
-		[]corev1.Pod{
-			makePod("ha-0", "10.0.0.1"),
-			makePod("ha-1", "10.0.0.2"),
-		},
-		mon,
-	)
-
-	engine := &RuleEngine{logger: logr.Discard()}
-	result := engine.isNodesHealthy(ctx, inst, logr.Discard())
-
-	assert.NotNil(t, result, "expected non-nil result for genuine index mismatch")
-	assert.Equal(t, CommandHealPod, result.NextCommand())
 }
 
 // Compile-time assertion: testFailoverInstance satisfies types.FailoverInstance
