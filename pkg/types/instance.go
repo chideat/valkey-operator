@@ -55,6 +55,15 @@ type Instance interface {
 	Object
 
 	Arch() core.Arch
+	// SafeVersion returns the lowest version among the desired (target) image
+	// version and every running pod's CurrentVersion. Use it when rendering
+	// version-conditional config (e.g. directives only valid in newer Valkey
+	// versions) to avoid crash-looping a pod that restarts on the old image
+	// before the StatefulSet rollout reaches it.
+	//
+	// Nodes reporting an unknown/empty version are ignored. When no known
+	// node version is available (initial bootstrap), returns Version().
+	SafeVersion() version.ValkeyVersion
 	// Issuer custom cert issuer
 	Issuer() *certmetav1.ObjectReference
 	Users() Users

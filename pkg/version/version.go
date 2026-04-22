@@ -93,6 +93,22 @@ func (v ValkeyVersion) Compare(other ValkeyVersion) int {
 	return 0
 }
 
+// MinKnown returns the lowest non-empty version among the inputs.
+// Empty (Unknown) versions are ignored. If all inputs are empty,
+// returns ValkeyVersionUnknown.
+func MinKnown(versions ...ValkeyVersion) ValkeyVersion {
+	var min ValkeyVersion
+	for _, v := range versions {
+		if v == ValkeyVersionUnknown {
+			continue
+		}
+		if min == ValkeyVersionUnknown || v.Compare(min) < 0 {
+			min = v
+		}
+	}
+	return min
+}
+
 // ParseVersion
 func ParseValkeyVersion(v string) (ValkeyVersion, error) {
 	ver, err := semver.NewVersion(v)

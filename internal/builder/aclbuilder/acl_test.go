@@ -77,6 +77,10 @@ func (m *mockInstance) Version() version.ValkeyVersion {
 	return version.DefaultValKeyVersion
 }
 
+func (m *mockInstance) SafeVersion() version.ValkeyVersion {
+	return m.Version()
+}
+
 func (m *mockInstance) IsReady() bool {
 	return true
 }

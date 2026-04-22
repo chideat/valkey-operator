@@ -250,3 +250,64 @@ func TestValkeyVersion_Compare(t *testing.T) {
 		})
 	}
 }
+
+func TestMinKnown(t *testing.T) {
+tests := []struct {
+name string
+args []ValkeyVersion
+want ValkeyVersion
+}{
+{
+name: "no inputs",
+args: nil,
+want: ValkeyVersionUnknown,
+},
+{
+name: "all unknown",
+args: []ValkeyVersion{ValkeyVersionUnknown, "", ""},
+want: ValkeyVersionUnknown,
+},
+{
+name: "single known",
+args: []ValkeyVersion{"7.2"},
+want: "7.2",
+},
+{
+name: "skips unknown, returns the only known",
+args: []ValkeyVersion{ValkeyVersionUnknown, "8.0", ""},
+want: "8.0",
+},
+{
+name: "lowest among multiple known",
+args: []ValkeyVersion{"8.0", "7.2", "8.1"},
+want: "7.2",
+},
+{
+name: "lowest with unknown mixed in",
+args: []ValkeyVersion{"8.0", "", "6.2", "7.2", ValkeyVersionUnknown},
+want: "6.2",
+},
+{
+name: "duplicates",
+args: []ValkeyVersion{"7.2", "7.2", "7.2"},
+want: "7.2",
+},
+{
+name: "target plus newer running pods (rolling forward)",
+args: []ValkeyVersion{"8.0", "8.0", "8.0"},
+want: "8.0",
+},
+{
+name: "target newer than some pods (in-progress upgrade)",
+args: []ValkeyVersion{"8.0", "7.2", "8.0"},
+want: "7.2",
+},
+}
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+if got := MinKnown(tt.args...); got != tt.want {
+t.Errorf("MinKnown() = %q, want %q", got, tt.want)
+}
+})
+}
+}
