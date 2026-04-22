@@ -56,7 +56,8 @@ func (m *mockFailoverInstance) DeepCopyObject() runtime.Object   { return m.Fail
 func (m *mockFailoverInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKeyFromObject(m.Failover)
 }
-func (m *mockFailoverInstance) Version() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
+func (m *mockFailoverInstance) Version() version.ValkeyVersion     { return version.ValkeyVersion("7.2") }
+func (m *mockFailoverInstance) SafeVersion() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
 func (m *mockFailoverInstance) IsReady() bool                  { return true }
 func (m *mockFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	return m.restartErr

@@ -65,7 +65,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	var (
 		buffer            bytes.Buffer
 		keys              = make([]string, 0, len(cr.Spec.CustomConfigs))
-		innerValkeyConfig = cluster.Version().CustomConfigs(core.ValkeyCluster)
+		innerValkeyConfig = cluster.SafeVersion().CustomConfigs(core.ValkeyCluster)
 		configMap         = lo.Assign(cr.Spec.CustomConfigs, innerValkeyConfig)
 	)
 
