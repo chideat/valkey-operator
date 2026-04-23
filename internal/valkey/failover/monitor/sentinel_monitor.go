@@ -19,7 +19,9 @@ package monitor
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"slices"
@@ -37,6 +39,23 @@ import (
 	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// isDNSError reports whether err is or wraps a DNS resolution failure.
+func isDNSError(err error) bool {
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr)
+}
+
+// isNetworkError reports whether err represents a transient network failure
+// (connection refused, timeout, EOF, context cancellation). Auth or protocol
+// errors do not qualify and should be surfaced to the caller.
+func isNetworkError(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
 
 var (
 	ErrNoUseableNode   = fmt.Errorf("no usable sentinel node")
@@ -158,11 +177,18 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 	for _, node := range s.nodes {
 		n, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
-			if err == ErrNoMaster || strings.Contains(err.Error(), "no such host") {
-				s.logger.Error(err, "master not registered", "addr", node.addr)
+			if err == ErrNoMaster {
+				s.logger.Error(err, "master not registered with sentinel", "addr", node.addr)
+				continue
+			} else if isDNSError(err) {
+				s.logger.Error(err, "sentinel DNS resolution failed, skipping", "addr", node.addr)
+				continue
+			} else if isNetworkError(err) {
+				// skip unreachable, so majority can still elect a master
+				s.logger.Error(err, "sentinel unreachable, skipping", "addr", node.addr)
 				continue
 			}
-			// NOTE: here ignored any error, for the node may be offline forever
+			// auth/protocol errors surface immediately
 			s.logger.Error(err, "check monitoring master status of sentinel failed", "addr", node.addr)
 			return nil, err
 		} else if n.IsFailovering() {
@@ -438,7 +464,7 @@ func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]st
 	for _, node := range s.nodes {
 		masterNode, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
-			if err == ErrNoMaster || strings.HasSuffix(err.Error(), "no such host") {
+			if err == ErrNoMaster || isDNSError(err) {
 				continue
 			}
 			logger.Error(err, "check monitoring master failed")
