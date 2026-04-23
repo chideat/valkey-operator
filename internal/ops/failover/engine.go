@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -313,7 +314,10 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 
 	if masterNode == nil {
 		for _, pod := range rawPods {
-			if pod.Status.PodIP == monitorMaster.IP {
+			// Sentinel may report an announce IP (NodePort/LB) rather than the pod's cluster IP.
+			// The announce IP is mirrored on the pod as label AnnounceIPLabelKey (dashes replace colons for IPv6).
+			announceIP := strings.ReplaceAll(pod.Labels[builder.AnnounceIPLabelKey], "-", ":")
+			if pod.Status.PodIP == monitorMaster.IP || (announceIP != "" && announceIP == monitorMaster.IP) {
 				// Master pod exists but is temporarily unreachable — avoid healing to prevent
 				// fighting Sentinel's own failover.
 				logger.Info("master not in connected nodes but matching raw pod exists, allowing label update",

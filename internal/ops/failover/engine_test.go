@@ -20,12 +20,14 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"strings"
 	"testing"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/actor"
+	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
 	vkcli "github.com/chideat/valkey-operator/pkg/valkey"
@@ -295,9 +297,17 @@ func newFailoverInstance(nodes []types.ValkeyNode, rawPods []corev1.Pod, mon typ
 
 // --- tests ---
 
+func makePodWithAnnounce(name, podIP, announceIP string) corev1.Pod {
+	pod := makePod(name, podIP)
+	pod.Labels = map[string]string{
+		builder.AnnounceIPLabelKey: strings.ReplaceAll(announceIP, ":", "-"),
+	}
+	return pod
+}
+
 func TestIsNodesHealthy(t *testing.T) {
 	// Pods shared across scenarios: both ha-0 (10.0.0.1) and ha-1 (10.0.0.2) exist.
-	pods := []corev1.Pod{
+	defaultPods := []corev1.Pod{
 		makePod("ha-0", "10.0.0.1"),
 		makePod("ha-1", "10.0.0.2"),
 	}
@@ -305,6 +315,7 @@ func TestIsNodesHealthy(t *testing.T) {
 	tests := []struct {
 		name    string
 		nodes   []types.ValkeyNode
+		rawPods []corev1.Pod // nil uses defaultPods
 		master  *vkcli.SentinelMonitorNode
 		wantCmd actor.Command // nil means healthy (no heal result)
 	}{
@@ -323,6 +334,29 @@ func TestIsNodesHealthy(t *testing.T) {
 			master: &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
 		},
 		{
+			// Sentinel reports the LB/NodePort announce IP, not the pod's cluster IP.
+			// Pod ha-0 has announce IP 192.168.1.10 (stored as label); pod IP is 10.0.0.1.
+			// Should not trigger heal.
+			name:  "sentinel master with announce IP matches pod label does not heal",
+			nodes: []types.ValkeyNode{newNode("ha-1", 1, "10.0.0.2", 6379)},
+			rawPods: []corev1.Pod{
+				makePodWithAnnounce("ha-0", "10.0.0.1", "192.168.1.10"),
+				makePod("ha-1", "10.0.0.2"),
+			},
+			master: &vkcli.SentinelMonitorNode{IP: "192.168.1.10", Port: "6379"},
+		},
+		{
+			// IPv6 announce IP: label encodes colons as dashes (e.g. "2001:db8::1" → "2001-db8--1").
+			// Verifies the dash-to-colon decode path in the announce IP comparison.
+			name:  "sentinel master with IPv6 announce IP matches pod label does not heal",
+			nodes: []types.ValkeyNode{newNode("ha-1", 1, "10.0.0.2", 6379)},
+			rawPods: []corev1.Pod{
+				makePodWithAnnounce("ha-0", "10.0.0.1", "2001:db8::1"),
+				makePod("ha-1", "10.0.0.2"),
+			},
+			master: &vkcli.SentinelMonitorNode{IP: "2001:db8::1", Port: "6379"},
+		},
+		{
 			// All pods reachable but slice order wrong (ha-1 at index 0).
 			// Genuine mismatch, should heal.
 			name: "all reachable with wrong index order heals",
@@ -337,8 +371,12 @@ func TestIsNodesHealthy(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			rawPods := tc.rawPods
+			if rawPods == nil {
+				rawPods = defaultPods
+			}
 			mon := &mockFailoverMonitor{allMonitored: true, master: tc.master}
-			inst := newFailoverInstance(tc.nodes, pods, mon)
+			inst := newFailoverInstance(tc.nodes, rawPods, mon)
 			engine := &RuleEngine{logger: logr.Discard()}
 
 			result := engine.isNodesHealthy(context.Background(), inst, logr.Discard())
