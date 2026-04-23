@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -306,21 +305,18 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 			break
 		}
 	}
-	rawPods, rawErr := inst.RawNodes(ctx)
-	if rawErr != nil {
-		logger.Error(rawErr, "failed to get raw nodes")
-		return actor.RequeueWithError(rawErr)
-	}
-
 	if masterNode == nil {
+		rawPods, rawErr := inst.RawNodes(ctx)
+		if rawErr != nil {
+			logger.Error(rawErr, "failed to get raw nodes")
+			return actor.RequeueWithError(fmt.Errorf("failed to list raw pods: %w", rawErr))
+		}
 		for _, pod := range rawPods {
-			// Sentinel may report an announce IP (NodePort/LB) rather than the pod's cluster IP.
-			// The announce IP is mirrored on the pod as label AnnounceIPLabelKey (dashes replace colons for IPv6).
-			announceIP := strings.ReplaceAll(pod.Labels[builder.AnnounceIPLabelKey], "-", ":")
+			// sentinel may report an announce IP (NodePort/LB) rather than the pod's cluster IP
+			announceIP := pod.Labels[builder.AnnounceIPLabelKey]
 			if pod.Status.PodIP == monitorMaster.IP || (announceIP != "" && announceIP == monitorMaster.IP) {
-				// Master pod exists but is temporarily unreachable — avoid healing to prevent
-				// fighting Sentinel's own failover.
-				logger.Info("master not in connected nodes but matching raw pod exists, allowing label update",
+				// master pod exists but is temporarily unreachable
+				logger.Info("partition suspected, deferring to sentinel",
 					"master", monitorMaster.Address())
 				return nil
 			}
@@ -339,16 +335,35 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		}
 	}
 
-	if len(inst.Nodes()) < len(rawPods) {
-		// Index skew is structural (fewer connected than total), not misconfiguration.
-		logger.Info("skipping index-mismatch check: unreachable pods reduce node count",
-			"connected", len(inst.Nodes()), "total", len(rawPods))
-	} else {
+	rawPods, rawErr := inst.RawNodes(ctx)
+	if rawErr != nil {
+		logger.Error(rawErr, "failed to get raw nodes")
+		return actor.RequeueWithError(fmt.Errorf("failed to list raw pods: %w", rawErr))
+	}
+
+	if len(inst.Nodes()) == len(rawPods) {
+		// All pods reachable: strict ordering check is safe.
 		for i, node := range inst.Nodes() {
 			if i != node.Index() {
 				logger.Info("node index not match", "node", node.GetName(), "index", node.Index())
 				return actor.NewResult(CommandHealPod)
 			}
+		}
+	} else {
+		// Some pods unreachable: strict ordering check would false-positive on gaps,
+		// so only catch out-of-range and duplicate indices.
+		seen := map[int]bool{}
+		for _, node := range inst.Nodes() {
+			idx := node.Index()
+			if idx < 0 || idx >= len(rawPods) {
+				logger.Info("node index out of range", "node", node.GetName(), "index", idx, "total", len(rawPods))
+				return actor.NewResult(CommandHealPod)
+			}
+			if seen[idx] {
+				logger.Info("duplicate node index detected", "node", node.GetName(), "index", idx)
+				return actor.NewResult(CommandHealPod)
+			}
+			seen[idx] = true
 		}
 	}
 	return nil

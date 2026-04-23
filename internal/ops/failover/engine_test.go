@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
-	"strings"
 	"testing"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
@@ -299,9 +298,7 @@ func newFailoverInstance(nodes []types.ValkeyNode, rawPods []corev1.Pod, mon typ
 
 func makePodWithAnnounce(name, podIP, announceIP string) corev1.Pod {
 	pod := makePod(name, podIP)
-	pod.Labels = map[string]string{
-		builder.AnnounceIPLabelKey: strings.ReplaceAll(announceIP, ":", "-"),
-	}
+	pod.Labels = map[string]string{builder.AnnounceIPLabelKey: announceIP}
 	return pod
 }
 
@@ -344,17 +341,6 @@ func TestIsNodesHealthy(t *testing.T) {
 				makePod("ha-1", "10.0.0.2"),
 			},
 			master: &vkcli.SentinelMonitorNode{IP: "192.168.1.10", Port: "6379"},
-		},
-		{
-			// IPv6 announce IP: label encodes colons as dashes (e.g. "2001:db8::1" → "2001-db8--1").
-			// Verifies the dash-to-colon decode path in the announce IP comparison.
-			name:  "sentinel master with IPv6 announce IP matches pod label does not heal",
-			nodes: []types.ValkeyNode{newNode("ha-1", 1, "10.0.0.2", 6379)},
-			rawPods: []corev1.Pod{
-				makePodWithAnnounce("ha-0", "10.0.0.1", "2001:db8::1"),
-				makePod("ha-1", "10.0.0.2"),
-			},
-			master: &vkcli.SentinelMonitorNode{IP: "2001:db8::1", Port: "6379"},
 		},
 		{
 			// All pods reachable but slice order wrong (ha-1 at index 0).

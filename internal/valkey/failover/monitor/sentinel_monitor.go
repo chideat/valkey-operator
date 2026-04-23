@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"slices"
@@ -43,6 +44,17 @@ import (
 func isDNSError(err error) bool {
 	var dnsErr *net.DNSError
 	return errors.As(err, &dnsErr)
+}
+
+// isNetworkError reports whether err represents a transient network failure
+// (connection refused, timeout, EOF, context cancellation). Auth or protocol
+// errors do not qualify and should be surfaced to the caller.
+func isNetworkError(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 var (
@@ -171,10 +183,14 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 			} else if isDNSError(err) {
 				s.logger.Error(err, "sentinel DNS resolution failed, skipping", "addr", node.addr)
 				continue
+			} else if isNetworkError(err) {
+				// skip unreachable, so majority can still elect a master
+				s.logger.Error(err, "sentinel unreachable, skipping", "addr", node.addr)
+				continue
 			}
-			// sentinel unreachable, skip and let majority quorum decide
-			s.logger.Error(err, "sentinel unreachable, skipping", "addr", node.addr)
-			continue
+			// auth/protocol errors surface immediately
+			s.logger.Error(err, "check monitoring master status of sentinel failed", "addr", node.addr)
+			return nil, err
 		} else if n.IsFailovering() {
 			s.logger.Error(ErrDoFailover, "valkey sentinel is doing failover", "node", n.Address())
 			return nil, ErrDoFailover
