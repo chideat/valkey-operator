@@ -53,11 +53,13 @@ For detailed installation and configuration instructions, see the [User Guide](.
 | 7.2.x          | 1.31, 1.32, 1.33    | Stable   |
 | 8.0.x          | 1.31, 1.32, 1.33    | Stable   |
 | 8.1.x          | 1.31, 1.32, 1.33    | Stable   |
-| 8.2.x          | 1.33                | Stable   |
 | 9.0.x          | 1.33                | Stable   |
+| 9.1.x          | 1.33                | Preview  |
 
-> Valkey 9.1 is currently a release candidate; the API enum accepts it for
-> early evaluation, but it is not part of the supported matrix yet.
+> Valkey 9.1 is still an upstream release candidate. It has been validated
+> on K8s 1.33 and is exposed for evaluation, but is not recommended for
+> production. Valkey 8.2 has not been validated and is therefore not part
+> of the supported matrix, even though the API enum still accepts it.
 
 ## Documentation
 
