@@ -211,7 +211,7 @@ var _ = Describe("controller", Ordered, func() {
 				updateErr = k8sClient.Update(ctx, inst)
 				// Retry only on optimistic-concurrency conflict; any other result is final.
 				return updateErr == nil || !apierrors.IsConflict(updateErr)
-			}).WithTimeout(time.Minute).WithPolling(time.Second * 2).Should(BeTrue(),
+			}).WithTimeout(time.Minute).WithPolling(time.Second*2).Should(BeTrue(),
 				"update did not get a definitive response (kept getting conflict errors)")
 			Expect(updateErr).To(HaveOccurred(), "version downgrade should have been rejected by webhook")
 			Expect(updateErr.Error()).To(ContainSubstring("downgrade"))

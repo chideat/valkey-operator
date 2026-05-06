@@ -18,7 +18,6 @@ package cluster
 
 import (
 	"context"
-	"time"
 
 	"github.com/chideat/valkey-operator/cmd/helper/commands"
 	"github.com/urfave/cli/v2"
@@ -173,82 +172,7 @@ func NewCommand(ctx context.Context) *cli.Command {
 					return nil
 				},
 			},
-			{
-				Name:  "healthcheck",
-				Usage: "Cluster health check",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "addr",
-						Usage: "Instance service address",
-						Value: "local.inject:6379",
-					},
-					&cli.IntFlag{
-						Name:    "timeout",
-						Aliases: []string{"t"},
-						Usage:   "Timeout time of ping",
-						Value:   3,
-					},
-				},
-				Subcommands: []*cli.Command{
-					{
-						Name:  "readiness",
-						Usage: "Node readiness check",
-						Action: func(c *cli.Context) error {
-							var (
-								serviceAddr = c.String("addr")
-								timeout     = c.Int64("timeout")
-							)
-							logger := commands.NewLogger(c).WithName("readiness")
 
-							if timeout <= 0 {
-								timeout = 4
-							}
-							if serviceAddr == "" {
-								serviceAddr = "local.inject:6379"
-							}
-
-							ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(timeout))
-							defer cancel()
-
-							info, err := commands.LoadAuthInfo(c, ctx)
-							if err != nil {
-								logger.Error(err, "load auth info failed")
-								return cli.Exit(err, 1)
-							}
-
-							if err := Readiness(ctx, serviceAddr, *info); err != nil {
-								logger.Error(err, "check readiness failed")
-								return cli.Exit(err, 1)
-							}
-							return nil
-						},
-					},
-					{
-						Name:  "liveness",
-						Usage: "Node liveness check, which just checked tcp socket",
-						Action: func(c *cli.Context) error {
-							var (
-								serviceAddr = c.String("addr")
-								timeout     = c.Int64("timeout")
-							)
-							logger := commands.NewLogger(c).WithName("liveness")
-
-							if timeout <= 0 {
-								timeout = 5
-							}
-							if serviceAddr == "" {
-								serviceAddr = "local.inject:6379"
-							}
-
-							if err := TcpSocket(ctx, serviceAddr, time.Second*time.Duration(timeout)); err != nil {
-								logger.Error(err, "ping failed")
-								return cli.Exit(err, 1)
-							}
-							return nil
-						},
-					},
-				},
-			},
 			{
 				Name:  "shutdown",
 				Usage: "Shutdown node",

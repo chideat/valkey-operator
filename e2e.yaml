@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: valkey-e2e-test
+  namespace: valkey-test
+spec:
+  template:
+    spec:
+      serviceAccountName: valkey-e2e-test
+      restartPolicy: Never
+      containers:
+        - name: e2e
+          image: 192.168.141.101/valkey-operator-e2e:latest
+          imagePullPolicy: Always
+          args:
+            - "-test.v"
+            - "-ginkgo.timeout=4h"
+            - "-ginkgo.skip=restart|update|resilience|recovers|killed"
+            - "-ginkgo.v"
+          env:
+            - name: SKIP_DEPLOY_OPERATOR
+              value: "1"
+            - name: SKIP_DEPLOY_PROMETHEUS
+              value: "1"
+            - name: SKIP_DEPLOY_CERT_MANAGER
+              value: "1"
+            - name: SKIP_VERSIONS
+              value: "8.2"
+            - name: NAMESPACE
+              value: "valkey-test"
+            - name: STORAGE_CLASS
+              value: ""

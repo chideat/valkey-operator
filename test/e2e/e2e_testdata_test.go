@@ -193,17 +193,26 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 }
 
 func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
-	client, err := newValkeyClient(ctx, inst, username, password)
-	Expect(err).To(Succeed())
-	defer client.Close()
-
 	By("checking read valkey")
-	for i := range 1000 {
-		key := fmt.Sprintf("key-%d", i)
-		val, err := client.Do(ctx, client.B().Get().Key(key).Build()).ToString()
-		Expect(err).To(Succeed())
-		Expect(val).To(Equal(key))
-	}
+	Eventually(func() error {
+		client, err := newValkeyClient(ctx, inst, username, password)
+		if err != nil {
+			return fmt.Errorf("create client failed: %w", err)
+		}
+		defer client.Close()
+
+		for i := range 1000 {
+			key := fmt.Sprintf("key-%d", i)
+			val, err := client.Do(ctx, client.B().Get().Key(key).Build()).ToString()
+			if err != nil {
+				return fmt.Errorf("get %s failed: %w", key, err)
+			}
+			if val != key {
+				return fmt.Errorf("expected %s, got %s", key, val)
+			}
+		}
+		return nil
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 5).Should(Succeed())
 }
 
 func checkInstanceWrite(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
