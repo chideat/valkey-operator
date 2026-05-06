@@ -196,8 +196,8 @@ func (c *ValkeyCluster) RewriteShards(ctx context.Context, shards []*v1alpha1.Cl
 		return err
 	}
 	cr := &c.Cluster
-	if len(cr.Status.Shards) == 0 || c.IsInService() {
-		// only update shards when cluster in service
+	if len(cr.Status.Shards) == 0 || c.IsInService() || len(cr.Status.Shards) != len(shards) {
+		// only update shards when cluster in service or shard count changed
 		cr.Status.Shards = shards
 	}
 	if err := c.client.UpdateClusterStatus(ctx, cr); err != nil {

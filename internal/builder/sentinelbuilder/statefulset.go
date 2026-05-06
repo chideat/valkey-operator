@@ -33,7 +33,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -218,8 +217,11 @@ func buildServerContainer(sen *v1alpha1.Sentinel, envs []corev1.EnvVar) (*corev1
 			TimeoutSeconds:      5,
 			FailureThreshold:    3,
 			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(builder.DefaultValkeySentinelPort),
+				Exec: &corev1.ExecAction{
+					Command: []string{
+						"/opt/valkey-helper", "helper", "healthcheck",
+						"--addr", "local.inject:26379", "ping",
+					},
 				},
 			},
 		},
@@ -228,8 +230,11 @@ func buildServerContainer(sen *v1alpha1.Sentinel, envs []corev1.EnvVar) (*corev1
 			TimeoutSeconds:      5,
 			FailureThreshold:    5,
 			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(builder.DefaultValkeySentinelPort),
+				Exec: &corev1.ExecAction{
+					Command: []string{
+						"/opt/valkey-helper", "helper", "healthcheck",
+						"--addr", "local.inject:26379", "ping",
+					},
 				},
 			},
 		},

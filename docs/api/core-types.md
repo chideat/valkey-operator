@@ -104,7 +104,7 @@ storage:
 ```yaml
 access:
   serviceType: NodePort
-  nodePortSequence: "30000-30002"
+  ports: "30000:30000,30001:30001,30002:30002"
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
 ```
@@ -124,9 +124,7 @@ exporter:
 ### Module Configuration
 ```yaml
 modules:
-  - name: RedisJSON
-    path: /opt/redis-stack/lib/rejson.so
-  - name: RedisSearch
-    path: /opt/redis-stack/lib/redisearch.so
+  - path: /opt/redis-stack/lib/rejson.so
+  - path: /opt/redis-stack/lib/redisearch.so
     args: ["MAXSEARCHRESULTS", "10000"]
 ```

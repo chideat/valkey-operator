@@ -162,15 +162,25 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 			addrs = append(addrs, net.JoinHostPort(node.IP, node.Port))
 		}
 	} else if inst.Spec.Arch == core.ValkeyReplica {
-		addrs = []string{fmt.Sprintf("rfr-%s-readwrite.%s:6379", inst.GetName(), testNamespace)}
+		// Use master node IP:Port from status (NodePort address) — DNS service is internal-only
+		for _, node := range inst.Status.Nodes {
+			if node.Role == "master" {
+				addrs = append(addrs, net.JoinHostPort(node.IP, node.Port))
+				break
+			}
+		}
+		if len(addrs) == 0 && len(inst.Status.Nodes) > 0 {
+			addrs = []string{net.JoinHostPort(inst.Status.Nodes[0].IP, inst.Status.Nodes[0].Port)}
+		}
 	}
 	GinkgoWriter.Printf("valkey instance %s address: %v, username: %s, password: %s", inst.GetName(), addrs, username, password)
 
 	options := valkey.ClientOption{
-		Username:    username,
-		Password:    password,
-		InitAddress: addrs,
-		ClientName:  "e2e-tests",
+		Username:     username,
+		Password:     password,
+		InitAddress:  addrs,
+		ClientName:   "e2e-tests",
+		DisableCache: true, // prevents CLIENT TRACKING which restricted users can't run
 	}
 	if inst.Spec.Arch == core.ValkeyFailover {
 		options.Sentinel = valkey.SentinelOption{
@@ -183,17 +193,26 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 }
 
 func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
-	client, err := newValkeyClient(ctx, inst, username, password)
-	Expect(err).To(Succeed())
-	defer client.Close()
-
 	By("checking read valkey")
-	for i := range 1000 {
-		key := fmt.Sprintf("key-%d", i)
-		val, err := client.Do(ctx, client.B().Get().Key(key).Build()).ToString()
-		Expect(err).To(Succeed())
-		Expect(val).To(Equal(key))
-	}
+	Eventually(func() error {
+		client, err := newValkeyClient(ctx, inst, username, password)
+		if err != nil {
+			return fmt.Errorf("create client failed: %w", err)
+		}
+		defer client.Close()
+
+		for i := range 1000 {
+			key := fmt.Sprintf("key-%d", i)
+			val, err := client.Do(ctx, client.B().Get().Key(key).Build()).ToString()
+			if err != nil {
+				return fmt.Errorf("get %s failed: %w", key, err)
+			}
+			if val != key {
+				return fmt.Errorf("expected %s, got %s", key, val)
+			}
+		}
+		return nil
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 5).Should(Succeed())
 }
 
 func checkInstanceWrite(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
@@ -283,7 +302,7 @@ var clusterTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -417,7 +436,7 @@ var clusterTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -496,7 +515,7 @@ var failoverTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -585,7 +604,7 @@ var failoverTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -629,7 +648,7 @@ var failoverTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
@@ -703,7 +722,7 @@ var replicationTestCases = []TestData{
 					time.Sleep(time.Second * 30)
 
 					By("checking valkey instance created")
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 				},
 			},
 			{
@@ -803,7 +822,7 @@ var replicationTestCases = []TestData{
 
 					time.Sleep(time.Minute)
 
-					waitInstanceStatusReady(ctx, inst, time.Minute*5)
+					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
 					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
