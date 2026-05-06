@@ -59,14 +59,17 @@ Valkey Operator is a production-grade Kubernetes operator that automates the dep
 
 ## Supported Valkey Versions
 
-| Valkey Version | Kubernetes Versions | Status |
-|----------------|-------------------|---------|
-| 7.2.x | 1.31, 1.32 | ✅ Stable |
-| 8.0.x | 1.31, 1.32 | ✅ Stable |
-| 8.1.x | 1.31, 1.32 | ✅ Stable |
-| 8.2.x | 1.32, 1.33 | ✅ Stable |
-| 9.0.x | 1.32, 1.33 | ✅ Stable |
-| 9.1.x | 1.32, 1.33 | Preview |
+| Valkey Version | Kubernetes Versions | Status     |
+|----------------|---------------------|------------|
+| 7.2.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 8.0.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 8.1.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 9.0.x          | 1.33                | ✅ Stable  |
+| 9.1.x          | 1.33                | 🧪 Preview |
+
+> Valkey 9.1 is still an upstream release candidate. It has been validated
+> on K8s 1.33 and is exposed for evaluation, but it is not recommended for
+> production workloads.
 
 ## Use Cases
 
