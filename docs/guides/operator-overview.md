@@ -69,9 +69,7 @@ Valkey Operator is a production-grade Kubernetes operator that automates the dep
 
 > Valkey 9.1 is still an upstream release candidate. It has been validated
 > on K8s 1.33 and is exposed for evaluation, but it is not recommended for
-> production workloads. Valkey 8.2 has not been validated and is therefore
-> not part of the supported matrix, even though the API enum still accepts
-> it.
+> production workloads.
 
 ## Use Cases
 

@@ -22,7 +22,7 @@ status:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | string | Valkey version to use. Supported (stable): `"7.2"`, `"8.0"`, `"8.1"`, `"9.0"`. Preview (validated on K8s 1.33, upstream release candidate): `"9.1"`. The API enum also accepts `"8.2"`, but that version has not been validated and is not part of the supported matrix. |
+| `version` | string | Valkey version to use. Supported (stable): `"7.2"`, `"8.0"`, `"8.1"`, `"9.0"`. Preview (validated on K8s 1.33, upstream release candidate): `"9.1"`. |
 | `arch` | core.Arch | Architecture (`cluster`, `failover`, `replica`) |
 | `replicas` | *ValkeyReplicas | Desired number of replicas for Valkey |
 | `resources` | corev1.ResourceRequirements | Resource requirements |
