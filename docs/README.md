@@ -52,11 +52,16 @@ spec:
 
 ## Supported Versions
 
-| Valkey Version | Kubernetes | Status |
-|---------------|------------|---------|
-| 7.2.x | 1.31, 1.32 | ✅ Supported |
-| 8.0.x | 1.31, 1.32 | ✅ Supported |
-| 8.1.x | 1.31, 1.32 | ✅ Supported |
+| Valkey Version | Kubernetes       | Status        |
+|----------------|------------------|---------------|
+| 7.2.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 8.0.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 8.1.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 8.2.x          | 1.33             | ✅ Supported  |
+| 9.0.x          | 1.33             | ✅ Supported  |
+
+> Valkey 9.1 is currently a release candidate; the API enum accepts it for
+> evaluation but it is not part of the supported matrix.
 
 ## Examples by Use Case
 

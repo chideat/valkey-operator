@@ -22,7 +22,7 @@ status:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | string | Valkey version to use (supported: "7.2", "8.0", "8.1", "8.2", "9.0"; preview: "9.1") |
+| `version` | string | Valkey version to use. Supported (stable): `"7.2"`, `"8.0"`, `"8.1"`, `"8.2"`, `"9.0"`. The API enum also accepts `"9.1"` for early evaluation, but it is currently an upstream release candidate and is not part of the supported matrix. |
 | `arch` | core.Arch | Architecture (`cluster`, `failover`, `replica`) |
 | `replicas` | *ValkeyReplicas | Desired number of replicas for Valkey |
 | `resources` | corev1.ResourceRequirements | Resource requirements |
