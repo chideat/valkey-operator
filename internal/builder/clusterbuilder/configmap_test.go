@@ -99,6 +99,10 @@ func (m *MockClusterInstance) Version() version.ValkeyVersion {
 	return m.valkeyVer
 }
 
+func (m *MockClusterInstance) SafeVersion() version.ValkeyVersion {
+	return m.valkeyVer
+}
+
 // Arch returns the architecture of the cluster
 func (m *MockClusterInstance) Arch() core.Arch {
 	return core.ValkeyCluster

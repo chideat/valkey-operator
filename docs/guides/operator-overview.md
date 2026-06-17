@@ -1,16 +1,16 @@
 # Operator Overview
 
-## What is ValkeyOperator?
+## What is Valkey Operator?
 
-ValkeyOperator is a production-ready Kubernetes operator that automates the deployment, management, and operation of [Valkey](https://valkey.io/) instances in Kubernetes clusters. Valkey is a high-performance data structure server that serves as a drop-in replacement for Redis.
+Valkey Operator is a production-grade Kubernetes operator that automates the deployment, management, and operation of [Valkey](https://valkey.io/) instances in Kubernetes clusters. Valkey is a high-performance data structure server that serves as a drop-in replacement for Redis.
 
 ## Key Features
 
 ### Multi-Architecture Support
 - **Cluster Mode**: Deploy and manage Valkey cluster instances with automatic sharding and replication
-- **Sentinel Mode**: High-availability failover using Valkey Sentinel
+- **Failover Mode**: High-availability failover using Valkey Sentinel
+- **Replica Mode**: Standalone or primary-replica architecture
 - **Standalone Sentinel**: Deploy standalone sentinel instances for monitoring external Valkey deployments
-- **RDS-Style Instances**: Simplified managed instances with reduced configuration complexity
 
 ### Production-Ready Features
 - **High Availability**: Automatic failover and recovery mechanisms
@@ -59,11 +59,17 @@ ValkeyOperator is a production-ready Kubernetes operator that automates the depl
 
 ## Supported Valkey Versions
 
-| Valkey Version | Kubernetes Versions | Status |
-|----------------|-------------------|---------|
-| 7.2.x | 1.31, 1.32 | ✅ Supported |
-| 8.0.x | 1.31, 1.32 | ✅ Supported |
-| 8.1.x | 1.31, 1.32 | ✅ Supported |
+| Valkey Version | Kubernetes Versions | Status     |
+|----------------|---------------------|------------|
+| 7.2.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 8.0.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 8.1.x          | 1.31, 1.32, 1.33    | ✅ Stable  |
+| 9.0.x          | 1.33                | ✅ Stable  |
+| 9.1.x          | 1.33                | 🧪 Preview |
+
+> Valkey 9.1 is still an upstream release candidate. It has been validated
+> on K8s 1.33 and is exposed for evaluation, but it is not recommended for
+> production workloads.
 
 ## Use Cases
 
@@ -102,7 +108,7 @@ ValkeyOperator is a production-ready Kubernetes operator that automates the depl
 ### Quick Installation
 
 ```bash
-# Install the operator
+# Install the operator (requires cert-manager for webhook TLS)
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 
 # Deploy a simple valkey
@@ -114,7 +120,7 @@ metadata:
   namespace: default
 spec:
   arch: cluster
-  version: 8.0
+  version: "8.0"
   replicas:
     shards: 3
     replicasOfShard: 1

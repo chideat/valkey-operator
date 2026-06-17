@@ -54,7 +54,8 @@ func (m *mockSentinelInstance) DeepCopyObject() runtime.Object   { return m.Sent
 func (m *mockSentinelInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKeyFromObject(m.Sentinel)
 }
-func (m *mockSentinelInstance) Version() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
+func (m *mockSentinelInstance) Version() version.ValkeyVersion     { return version.ValkeyVersion("7.2") }
+func (m *mockSentinelInstance) SafeVersion() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
 func (m *mockSentinelInstance) IsReady() bool                  { return true }
 func (m *mockSentinelInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	return nil

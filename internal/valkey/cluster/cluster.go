@@ -196,8 +196,8 @@ func (c *ValkeyCluster) RewriteShards(ctx context.Context, shards []*v1alpha1.Cl
 		return err
 	}
 	cr := &c.Cluster
-	if len(cr.Status.Shards) == 0 || c.IsInService() {
-		// only update shards when cluster in service
+	if len(cr.Status.Shards) == 0 || c.IsInService() || len(cr.Status.Shards) != len(shards) {
+		// only update shards when cluster in service or shard count changed
 		cr.Status.Shards = shards
 	}
 	if err := c.client.UpdateClusterStatus(ctx, cr); err != nil {
@@ -415,6 +415,20 @@ func (c *ValkeyCluster) Version() version.ValkeyVersion {
 	} else {
 		return ver
 	}
+}
+
+// SafeVersion returns min(target version, every running node's CurrentVersion).
+// Used by ConfigMap rendering to avoid emitting directives that the still-old
+// pods of an in-progress upgrade cannot parse.
+func (c *ValkeyCluster) SafeVersion() version.ValkeyVersion {
+	if c == nil {
+		return version.ValkeyVersionUnknown
+	}
+	versions := []version.ValkeyVersion{c.Version()}
+	for _, node := range c.Nodes() {
+		versions = append(versions, node.CurrentVersion())
+	}
+	return version.MinKnown(versions...)
 }
 
 func (c *ValkeyCluster) Shards() []types.ClusterShard {

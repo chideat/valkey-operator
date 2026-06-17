@@ -45,7 +45,7 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 	var (
 		customConfig      = rf.Spec.CustomConfigs
 		keys              = make([]string, 0, len(rf.Spec.CustomConfigs))
-		innerValkeyConfig = inst.Version().CustomConfigs(core.ValkeyFailover)
+		innerValkeyConfig = inst.SafeVersion().CustomConfigs(core.ValkeyFailover)
 		configMap         = lo.Assign(rf.Spec.CustomConfigs, innerValkeyConfig)
 	)
 

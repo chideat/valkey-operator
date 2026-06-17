@@ -291,6 +291,19 @@ func (s *Failover) Version() version.ValkeyVersion {
 	}
 }
 
+// SafeVersion returns min(target version, every running node's CurrentVersion).
+// See types.Instance.SafeVersion for rationale.
+func (s *Failover) SafeVersion() version.ValkeyVersion {
+	if s == nil {
+		return version.ValkeyVersionUnknown
+	}
+	versions := []version.ValkeyVersion{s.Version()}
+	for _, node := range s.Nodes() {
+		versions = append(versions, node.CurrentVersion())
+	}
+	return version.MinKnown(versions...)
+}
+
 func (s *Failover) Masters() []types.ValkeyNode {
 	if s == nil || s.replication == nil {
 		return nil

@@ -22,7 +22,7 @@ status:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | string | Valkey version to use (e.g., "8.0", "7.2") |
+| `version` | string | Valkey version to use. Supported (stable): `"7.2"`, `"8.0"`, `"8.1"`, `"9.0"`. Preview (validated on K8s 1.33, upstream release candidate): `"9.1"`. |
 | `arch` | core.Arch | Architecture (`cluster`, `failover`, `replica`) |
 | `replicas` | *ValkeyReplicas | Desired number of replicas for Valkey |
 | `resources` | corev1.ResourceRequirements | Resource requirements |
@@ -53,7 +53,10 @@ status:
 |-------|------|-------------|
 | `phase` | ValkeyPhase | Current phase of the Valkey instance |
 | `message` | string | Status message |
+| `matchLabels` | map[string]string | Matching labels selector for Valkey |
 | `nodes` | []core.ValkeyNode | Valkey node details |
+| `lastShardCount` | int32 | Last number of shards in the cluster |
+| `lastVersion` | string | Last version of the Valkey instance |
 
 ## Example: Cluster Mode
 

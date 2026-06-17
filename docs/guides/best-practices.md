@@ -1,6 +1,6 @@
-# ValkeyOperator Best Practices
+# Valkey Operator Best Practices
 
-This guide provides best practices for deploying and managing ValkeyOperator in production environments.
+This guide provides best practices for deploying and managing Valkey Operator in production environments.
 
 ## Table of Contents
 
@@ -120,12 +120,9 @@ Always enable TLS for production:
 
 ```yaml
 access:
-  tls:
-    enabled: true
-    secretName: valkey-tls-cert
-customConfigs:
-  tls-port: "6380"
-  port: "0"                    # Disable non-TLS port
+  enableTLS: true
+  certIssuer: my-cluster-issuer
+  certIssuerType: ClusterIssuer
 ```
 
 ### ACL Configuration

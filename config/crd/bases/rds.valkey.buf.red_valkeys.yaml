@@ -3417,11 +3417,16 @@ spec:
                   type: object
                 type: array
               version:
-                description: Version supports 7.2, 8.0, 8.1
+                description: |-
+                  Version specifies the Valkey version to deploy.
+                  Stable: 7.2, 8.0, 8.1, 9.0
+                  Preview/RC (not recommended for production): 9.1
                 enum:
                 - "7.2"
                 - "8.0"
                 - "8.1"
+                - "9.0"
+                - "9.1"
                 type: string
             required:
             - arch

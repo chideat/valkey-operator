@@ -181,6 +181,19 @@ func (s *ValkeySentinel) Version() version.ValkeyVersion {
 	return ver
 }
 
+// SafeVersion returns min(target version, every running node's CurrentVersion).
+// See types.Instance.SafeVersion for rationale.
+func (s *ValkeySentinel) SafeVersion() version.ValkeyVersion {
+	if s == nil {
+		return version.ValkeyVersionUnknown
+	}
+	versions := []version.ValkeyVersion{s.Version()}
+	for _, node := range s.Nodes() {
+		versions = append(versions, node.CurrentVersion())
+	}
+	return version.MinKnown(versions...)
+}
+
 func (s *ValkeySentinel) Definition() *v1alpha1.Sentinel {
 	if s == nil {
 		return nil

@@ -52,11 +52,17 @@ spec:
 
 ## Supported Versions
 
-| Valkey Version | Kubernetes | Status |
-|---------------|------------|---------|
-| 7.2.x | 1.31, 1.32 | ✅ Supported |
-| 8.0.x | 1.31, 1.32 | ✅ Supported |
-| 8.1.x | 1.31, 1.32 | ✅ Supported |
+| Valkey Version | Kubernetes       | Status        |
+|----------------|------------------|---------------|
+| 7.2.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 8.0.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 8.1.x          | 1.31, 1.32, 1.33 | ✅ Supported  |
+| 9.0.x          | 1.33             | ✅ Supported  |
+| 9.1.x          | 1.33             | 🧪 Preview    |
+
+> Valkey 9.1 is still an upstream release candidate. It has been validated
+> on K8s 1.33 and is exposed for evaluation, but it is not recommended for
+> production.
 
 ## Examples by Use Case
 

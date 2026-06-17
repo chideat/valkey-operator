@@ -29,6 +29,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/webhook/rds/v1alpha1/helper"
 	"github.com/chideat/valkey-operator/internal/webhook/rds/v1alpha1/validation"
 	"github.com/chideat/valkey-operator/pkg/slot"
+	"github.com/chideat/valkey-operator/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
@@ -275,6 +276,22 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 
 // ValidateUpdate implements admission.Validator so a webhook will be registered for the type inst.
 func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newInst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
+	var oldVersion string
+	if oldInst != nil {
+		oldVersion = oldInst.Spec.Version
+	}
+	logger.Info("Validation for inst upon update", "name", newInst.GetName(),
+		"oldVersion", oldVersion, "newVersion", newInst.Spec.Version)
+
+	oldVer, oldErr := version.ParseValkeyVersion(oldVersion)
+	newVer, newErr := version.ParseValkeyVersion(newInst.Spec.Version)
+	if oldErr == nil && newErr == nil && newVer.Compare(oldVer) < 0 {
+		return warns, fmt.Errorf(
+			"version downgrade from %s to %s is not allowed; "+
+				"delete and recreate the instance to downgrade",
+			oldVersion, newInst.Spec.Version)
+	}
+
 	ctx = context.WithValue(ctx, actionKey, "update")
 	return v.ValidateCreate(ctx, newInst)
 }

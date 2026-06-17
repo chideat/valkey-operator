@@ -109,7 +109,7 @@ func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
 	return svc
 }
 
-func GenerateNodePortSerivce(cluster *v1alpha1.Cluster, name string, labels map[string]string, port int32) *corev1.Service {
+func GenerateNodePortService(cluster *v1alpha1.Cluster, name string, labels map[string]string, port int32) *corev1.Service {
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379, NodePort: port}
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: name,

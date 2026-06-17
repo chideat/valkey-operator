@@ -26,7 +26,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,8 +51,7 @@ func GenerateSentinelConfigMap(inst types.SentinelInstance) (*corev1.ConfigMap, 
 	defaultConfig["tcp-keepalive"] = "300"
 	defaultConfig["tcp-backlog"] = "511"
 
-	version, _ := version.ParseValkeyVersionFromImage(sen.Spec.Image)
-	innerValkeyConfig := version.CustomConfigs(core.ValkeySentinel)
+	innerValkeyConfig := inst.SafeVersion().CustomConfigs(core.ValkeySentinel)
 	defaultConfig = lo.Assign(defaultConfig, innerValkeyConfig)
 
 	for k, v := range sen.Spec.CustomConfigs {
