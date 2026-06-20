@@ -254,8 +254,8 @@ func buildPersistentClaims(cluster *v1alpha1.Cluster, labels map[string]string) 
 		},
 	})
 	if cluster.Spec.Storage.RetainAfterDeleted {
-		for _, vc := range ret {
-			vc.OwnerReferences = util.BuildOwnerReferences(cluster)
+		for i := range ret {
+			ret[i].OwnerReferences = util.BuildOwnerReferences(cluster)
 		}
 	}
 	return

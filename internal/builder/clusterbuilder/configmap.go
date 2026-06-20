@@ -73,7 +73,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	if cluster != nil && cr.Spec.Resources.Limits != nil {
 		var osMem int64
 		for _, res := range []*resource.Quantity{cr.Spec.Resources.Limits.Memory(), cr.Spec.Resources.Requests.Memory()} {
-			if res == nil && res.IsZero() {
+			if res == nil || res.IsZero() {
 				continue
 			}
 			osMem, _ = res.AsInt64()
