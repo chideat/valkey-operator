@@ -36,10 +36,10 @@ import (
 // etcd, which limits configmap/secret object size to ~1Mi (with a 4Ki safety margin).
 const maxConfigMapDataSize = 1024*1024 - 4096
 
-// exceedsConfigMapSizeLimit reports whether replacing the oldData bytes with
-// newData bytes in an object of oldTotal bytes would exceed maxConfigMapDataSize.
-func exceedsConfigMapSizeLimit(oldTotal, oldData, newData int) bool {
-	return oldTotal-oldData+newData >= maxConfigMapDataSize
+// exceedsConfigMapSizeLimit reports whether dataSize bytes exceed the per-object
+// etcd size limit (~1Mi).
+func exceedsConfigMapSizeLimit(dataSize int) bool {
+	return dataSize >= maxConfigMapDataSize
 }
 
 type PersistentObject struct {
@@ -253,10 +253,9 @@ func (c *Controller) Run(ctx context.Context) error {
 			}
 
 			oldData := obj.Get(event.FilePath)
-			oldSize := len(oldData)
 
 			// etcd limits configmap/secret object size to ~1Mi
-			if exceedsConfigMapSizeLimit(oldSize, len(oldData), len(event.Data)) {
+			if exceedsConfigMapSizeLimit(len(event.Data)) {
 				logger.Error(fmt.Errorf("data size has exceed 1Mi"), "filepath", event.FilePath)
 				continue
 			}

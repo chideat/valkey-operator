@@ -28,65 +28,19 @@ func TestExceedsConfigMapSizeLimit(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		oldTotal int
-		oldData  int
-		newData  int
+		dataSize int
 		expected bool
 	}{
-		{
-			name:     "small payload is under the limit",
-			oldTotal: 0,
-			oldData:  0,
-			newData:  1024,
-			expected: false,
-		},
-		{
-			name:     "just below the 1Mi limit",
-			oldTotal: 0,
-			oldData:  0,
-			newData:  maxConfigMapDataSize - 1,
-			expected: false,
-		},
-		{
-			name:     "exactly at the limit triggers the guard",
-			oldTotal: 0,
-			oldData:  0,
-			newData:  maxConfigMapDataSize,
-			expected: true,
-		},
-		{
-			name:     "above the limit triggers the guard",
-			oldTotal: 0,
-			oldData:  0,
-			newData:  maxConfigMapDataSize + 1,
-			expected: true,
-		},
-		{
-			name:     "a 2Mi payload that used to slip past the broken 1Gi guard now triggers",
-			oldTotal: 0,
-			oldData:  0,
-			newData:  2 * 1024 * 1024,
-			expected: true,
-		},
-		{
-			name:     "replacing existing data nets out so only the delta counts",
-			oldTotal: maxConfigMapDataSize,
-			oldData:  maxConfigMapDataSize,
-			newData:  1024,
-			expected: false,
-		},
-		{
-			name:     "growing an existing object past the limit triggers the guard",
-			oldTotal: maxConfigMapDataSize - 1024,
-			oldData:  0,
-			newData:  2048,
-			expected: true,
-		},
+		{name: "small payload is under the limit", dataSize: 1024, expected: false},
+		{name: "just below the 1Mi limit", dataSize: maxConfigMapDataSize - 1, expected: false},
+		{name: "exactly at the limit triggers the guard", dataSize: maxConfigMapDataSize, expected: true},
+		{name: "above the limit triggers the guard", dataSize: maxConfigMapDataSize + 1, expected: true},
+		{name: "a 2Mi payload that used to slip past the broken 1Gi guard now triggers", dataSize: 2 * 1024 * 1024, expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, exceedsConfigMapSizeLimit(tt.oldTotal, tt.oldData, tt.newData))
+			assert.Equal(t, tt.expected, exceedsConfigMapSizeLimit(tt.dataSize))
 		})
 	}
 }

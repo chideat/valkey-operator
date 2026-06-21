@@ -17,76 +17,18 @@ limitations under the License.
 package failoverbuilder
 
 import (
-	"context"
-	"crypto/tls"
 	"strings"
 	"testing"
 
-	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	"github.com/chideat/valkey-operator/api/core"
 	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
-	"github.com/chideat/valkey-operator/pkg/types"
-	"github.com/chideat/valkey-operator/pkg/version"
-	"github.com/go-logr/logr"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-// MockFailoverInstance is a minimal mock of types.FailoverInstance. Only
-// Definition() and SafeVersion() carry real behaviour; the rest are stubs since
-// GenerateConfigMap only consumes those two.
-type MockFailoverInstance struct {
-	*v1alpha1.Failover
-	valkeyVer version.ValkeyVersion
-}
-
-func newMockFailoverInstance(rf *v1alpha1.Failover, ver version.ValkeyVersion) *MockFailoverInstance {
-	return &MockFailoverInstance{Failover: rf, valkeyVer: ver}
-}
-
-func (m *MockFailoverInstance) Definition() *v1alpha1.Failover     { return m.Failover }
-func (m *MockFailoverInstance) Version() version.ValkeyVersion     { return m.valkeyVer }
-func (m *MockFailoverInstance) SafeVersion() version.ValkeyVersion { return m.valkeyVer }
-func (m *MockFailoverInstance) Arch() core.Arch                    { return core.ValkeyFailover }
-func (m *MockFailoverInstance) NamespacedName() client.ObjectKey {
-	return client.ObjectKey{Name: m.GetName(), Namespace: m.GetNamespace()}
-}
-func (m *MockFailoverInstance) IsReady() bool { return true }
-func (m *MockFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
-	return nil
-}
-func (m *MockFailoverInstance) Refresh(ctx context.Context) error   { return nil }
-func (m *MockFailoverInstance) Issuer() *certmetav1.ObjectReference { return nil }
-func (m *MockFailoverInstance) Users() types.Users                  { return nil }
-func (m *MockFailoverInstance) TLSConfig() *tls.Config              { return nil }
-func (m *MockFailoverInstance) IsInService() bool                   { return true }
-func (m *MockFailoverInstance) IsACLUserExists() bool               { return false }
-func (m *MockFailoverInstance) IsACLAppliedToAll() bool             { return false }
-func (m *MockFailoverInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
-	return true, nil
-}
-func (m *MockFailoverInstance) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
-	return nil
-}
-func (m *MockFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {}
-func (m *MockFailoverInstance) Logger() logr.Logger                                          { return logr.Discard() }
-func (m *MockFailoverInstance) Replication() types.Replication                               { return nil }
-func (m *MockFailoverInstance) Masters() []types.ValkeyNode                                  { return nil }
-func (m *MockFailoverInstance) Nodes() []types.ValkeyNode                                    { return nil }
-func (m *MockFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
-	return nil, nil
-}
-func (m *MockFailoverInstance) Monitor() types.FailoverMonitor { return nil }
-func (m *MockFailoverInstance) IsBindedSentinel() bool         { return false }
-func (m *MockFailoverInstance) IsStandalone() bool             { return false }
-func (m *MockFailoverInstance) Selector() map[string]string    { return nil }
-
-var _ types.FailoverInstance = (*MockFailoverInstance)(nil)
 
 func newFailoverWithResources(resources corev1.ResourceRequirements) *v1alpha1.Failover {
 	return &v1alpha1.Failover{
@@ -145,7 +87,7 @@ func TestGenerateConfigMapMemorySizing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inst := newMockFailoverInstance(newFailoverWithResources(tt.resources), version.ValkeyVersion("8.0"))
+			inst := testutil.NewFakeFailoverInstance(newFailoverWithResources(tt.resources))
 			cm, err := GenerateConfigMap(inst)
 			require.NoError(t, err)
 			data := cm.Data[builder.ValkeyConfigKey]

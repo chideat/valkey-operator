@@ -60,7 +60,7 @@ func TestActorPatchLabels_MasterError(t *testing.T) {
 	ctx := context.Background()
 	clientMock := &mocks.ClientSet{}
 	inst := newTestFailoverInstance("test-failover", "default", nil)
-	inst.monitor = &mockFailoverMonitor{masterErr: fmt.Errorf("sentinel down")}
+	inst.WithMonitor(&mockFailoverMonitor{masterErr: fmt.Errorf("sentinel down")})
 
 	a := NewPatchLabelsActor(clientMock, logr.Discard())
 
@@ -80,9 +80,9 @@ func TestActorPatchLabels_NoPods(t *testing.T) {
 	ctx := context.Background()
 	clientMock := &mocks.ClientSet{}
 	inst := newTestFailoverInstance("test-failover", "default", nil)
-	inst.monitor = &mockFailoverMonitor{
+	inst.WithMonitor(&mockFailoverMonitor{
 		masterNode: &valkey.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
-	}
+	})
 
 	a := NewPatchLabelsActor(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
