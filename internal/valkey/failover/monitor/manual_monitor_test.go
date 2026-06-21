@@ -51,25 +51,25 @@ type mockNode struct {
 	replicaOfErr error
 }
 
-func (m *mockNode) GetObjectKind() schema.ObjectKind { return nil }
-func (m *mockNode) Definition() *corev1.Pod          { return nil }
-func (m *mockNode) ID() string                       { return m.GetName() }
-func (m *mockNode) Index() int                       { return 0 }
-func (m *mockNode) IsConnected() bool                { return true }
-func (m *mockNode) IsTerminating() bool              { return false }
-func (m *mockNode) IsMasterLinkUp() bool             { return true }
-func (m *mockNode) IsReady() bool                    { return true }
-func (m *mockNode) IsJoined() bool                   { return true }
-func (m *mockNode) MasterID() string                 { return "" }
-func (m *mockNode) IsMasterFailed() bool             { return false }
-func (m *mockNode) CurrentVersion() version.ValkeyVersion { return version.ValkeyVersion("8.0") }
-func (m *mockNode) IsACLApplied() bool               { return true }
-func (m *mockNode) Role() core.NodeRole              { return m.role }
-func (m *mockNode) Slots() *slot.Slots               { return nil }
-func (m *mockNode) Config() map[string]string        { return nil }
-func (m *mockNode) ConfigedMasterIP() string         { return "" }
-func (m *mockNode) ConfigedMasterPort() string       { return "" }
-func (m *mockNode) Setup(ctx context.Context, margs ...[]any) error { return nil }
+func (m *mockNode) GetObjectKind() schema.ObjectKind                     { return nil }
+func (m *mockNode) Definition() *corev1.Pod                              { return nil }
+func (m *mockNode) ID() string                                           { return m.GetName() }
+func (m *mockNode) Index() int                                           { return 0 }
+func (m *mockNode) IsConnected() bool                                    { return true }
+func (m *mockNode) IsTerminating() bool                                  { return false }
+func (m *mockNode) IsMasterLinkUp() bool                                 { return true }
+func (m *mockNode) IsReady() bool                                        { return true }
+func (m *mockNode) IsJoined() bool                                       { return true }
+func (m *mockNode) MasterID() string                                     { return "" }
+func (m *mockNode) IsMasterFailed() bool                                 { return false }
+func (m *mockNode) CurrentVersion() version.ValkeyVersion                { return version.ValkeyVersion("8.0") }
+func (m *mockNode) IsACLApplied() bool                                   { return true }
+func (m *mockNode) Role() core.NodeRole                                  { return m.role }
+func (m *mockNode) Slots() *slot.Slots                                   { return nil }
+func (m *mockNode) Config() map[string]string                            { return nil }
+func (m *mockNode) ConfigedMasterIP() string                             { return "" }
+func (m *mockNode) ConfigedMasterPort() string                           { return "" }
+func (m *mockNode) Setup(ctx context.Context, margs ...[]any) error      { return nil }
 func (m *mockNode) ReplicaOf(ctx context.Context, ip, port string) error { return m.replicaOfErr }
 func (m *mockNode) SetACLUser(ctx context.Context, username string, passwords []string, rules string) (any, error) {
 	return nil, nil
@@ -77,19 +77,19 @@ func (m *mockNode) SetACLUser(ctx context.Context, username string, passwords []
 func (m *mockNode) Query(ctx context.Context, cmd string, args ...any) (any, error) {
 	return nil, nil
 }
-func (m *mockNode) Info() vkcli.NodeInfo                  { return vkcli.NodeInfo{} }
-func (m *mockNode) ClusterInfo() vkcli.ClusterNodeInfo    { return vkcli.ClusterNodeInfo{} }
-func (m *mockNode) IPort() int                            { return m.port }
-func (m *mockNode) InternalIPort() int                    { return m.port }
-func (m *mockNode) Port() int                             { return m.port }
-func (m *mockNode) InternalPort() int                     { return m.port }
-func (m *mockNode) DefaultIP() net.IP                     { return net.ParseIP(m.ip) }
-func (m *mockNode) DefaultInternalIP() net.IP             { return net.ParseIP(m.ip) }
-func (m *mockNode) IPs() []net.IP                         { return []net.IP{net.ParseIP(m.ip)} }
-func (m *mockNode) NodeIP() net.IP                        { return net.ParseIP(m.ip) }
-func (m *mockNode) Status() corev1.PodPhase               { return corev1.PodRunning }
+func (m *mockNode) Info() vkcli.NodeInfo                     { return vkcli.NodeInfo{} }
+func (m *mockNode) ClusterInfo() vkcli.ClusterNodeInfo       { return vkcli.ClusterNodeInfo{} }
+func (m *mockNode) IPort() int                               { return m.port }
+func (m *mockNode) InternalIPort() int                       { return m.port }
+func (m *mockNode) Port() int                                { return m.port }
+func (m *mockNode) InternalPort() int                        { return m.port }
+func (m *mockNode) DefaultIP() net.IP                        { return net.ParseIP(m.ip) }
+func (m *mockNode) DefaultInternalIP() net.IP                { return net.ParseIP(m.ip) }
+func (m *mockNode) IPs() []net.IP                            { return []net.IP{net.ParseIP(m.ip)} }
+func (m *mockNode) NodeIP() net.IP                           { return net.ParseIP(m.ip) }
+func (m *mockNode) Status() corev1.PodPhase                  { return corev1.PodRunning }
 func (m *mockNode) ContainerStatus() *corev1.ContainerStatus { return nil }
-func (m *mockNode) Refresh(ctx context.Context) error     { return nil }
+func (m *mockNode) Refresh(ctx context.Context) error        { return nil }
 
 var _ types.ValkeyNode = (*mockNode)(nil)
 
@@ -104,20 +104,22 @@ func (m *mockFailoverInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKey{Name: m.GetName(), Namespace: m.GetNamespace()}
 }
 
-func (m *mockFailoverInstance) Version() version.ValkeyVersion     { return version.ValkeyVersion("8.0") }
-func (m *mockFailoverInstance) SafeVersion() version.ValkeyVersion { return version.ValkeyVersion("8.0") }
-func (m *mockFailoverInstance) IsReady() bool                  { return true }
+func (m *mockFailoverInstance) Version() version.ValkeyVersion { return version.ValkeyVersion("8.0") }
+func (m *mockFailoverInstance) SafeVersion() version.ValkeyVersion {
+	return version.ValkeyVersion("8.0")
+}
+func (m *mockFailoverInstance) IsReady() bool { return true }
 func (m *mockFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	return nil
 }
-func (m *mockFailoverInstance) Refresh(ctx context.Context) error             { return nil }
-func (m *mockFailoverInstance) Arch() core.Arch                               { return core.ValkeyFailover }
-func (m *mockFailoverInstance) Issuer() *certmetav1.ObjectReference           { return nil }
-func (m *mockFailoverInstance) Users() types.Users                           { return nil }
-func (m *mockFailoverInstance) TLSConfig() *tls.Config                        { return nil }
-func (m *mockFailoverInstance) IsInService() bool                            { return true }
-func (m *mockFailoverInstance) IsACLUserExists() bool                        { return false }
-func (m *mockFailoverInstance) IsACLAppliedToAll() bool                      { return false }
+func (m *mockFailoverInstance) Refresh(ctx context.Context) error   { return nil }
+func (m *mockFailoverInstance) Arch() core.Arch                     { return core.ValkeyFailover }
+func (m *mockFailoverInstance) Issuer() *certmetav1.ObjectReference { return nil }
+func (m *mockFailoverInstance) Users() types.Users                  { return nil }
+func (m *mockFailoverInstance) TLSConfig() *tls.Config              { return nil }
+func (m *mockFailoverInstance) IsInService() bool                   { return true }
+func (m *mockFailoverInstance) IsACLUserExists() bool               { return false }
+func (m *mockFailoverInstance) IsACLAppliedToAll() bool             { return false }
 func (m *mockFailoverInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	return true, nil
 }
@@ -125,11 +127,11 @@ func (m *mockFailoverInstance) UpdateStatus(ctx context.Context, st types.Instan
 	return nil
 }
 func (m *mockFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {}
-func (m *mockFailoverInstance) Logger() logr.Logger                          { return logr.Discard() }
-func (m *mockFailoverInstance) Definition() *v1alpha1.Failover               { return m.Failover }
-func (m *mockFailoverInstance) Replication() types.Replication               { return nil }
-func (m *mockFailoverInstance) Masters() []types.ValkeyNode                  { return m.masters }
-func (m *mockFailoverInstance) Nodes() []types.ValkeyNode                    { return m.nodes }
+func (m *mockFailoverInstance) Logger() logr.Logger                                          { return logr.Discard() }
+func (m *mockFailoverInstance) Definition() *v1alpha1.Failover                               { return m.Failover }
+func (m *mockFailoverInstance) Replication() types.Replication                               { return nil }
+func (m *mockFailoverInstance) Masters() []types.ValkeyNode                                  { return m.masters }
+func (m *mockFailoverInstance) Nodes() []types.ValkeyNode                                    { return m.nodes }
 func (m *mockFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return nil, nil
 }

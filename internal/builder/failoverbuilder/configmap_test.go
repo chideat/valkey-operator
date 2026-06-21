@@ -49,10 +49,10 @@ func newMockFailoverInstance(rf *v1alpha1.Failover, ver version.ValkeyVersion) *
 	return &MockFailoverInstance{Failover: rf, valkeyVer: ver}
 }
 
-func (m *MockFailoverInstance) Definition() *v1alpha1.Failover  { return m.Failover }
-func (m *MockFailoverInstance) Version() version.ValkeyVersion  { return m.valkeyVer }
+func (m *MockFailoverInstance) Definition() *v1alpha1.Failover     { return m.Failover }
+func (m *MockFailoverInstance) Version() version.ValkeyVersion     { return m.valkeyVer }
 func (m *MockFailoverInstance) SafeVersion() version.ValkeyVersion { return m.valkeyVer }
-func (m *MockFailoverInstance) Arch() core.Arch                 { return core.ValkeyFailover }
+func (m *MockFailoverInstance) Arch() core.Arch                    { return core.ValkeyFailover }
 func (m *MockFailoverInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKey{Name: m.GetName(), Namespace: m.GetNamespace()}
 }
@@ -60,13 +60,13 @@ func (m *MockFailoverInstance) IsReady() bool { return true }
 func (m *MockFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	return nil
 }
-func (m *MockFailoverInstance) Refresh(ctx context.Context) error             { return nil }
-func (m *MockFailoverInstance) Issuer() *certmetav1.ObjectReference           { return nil }
-func (m *MockFailoverInstance) Users() types.Users                           { return nil }
-func (m *MockFailoverInstance) TLSConfig() *tls.Config                        { return nil }
-func (m *MockFailoverInstance) IsInService() bool                            { return true }
-func (m *MockFailoverInstance) IsACLUserExists() bool                        { return false }
-func (m *MockFailoverInstance) IsACLAppliedToAll() bool                      { return false }
+func (m *MockFailoverInstance) Refresh(ctx context.Context) error   { return nil }
+func (m *MockFailoverInstance) Issuer() *certmetav1.ObjectReference { return nil }
+func (m *MockFailoverInstance) Users() types.Users                  { return nil }
+func (m *MockFailoverInstance) TLSConfig() *tls.Config              { return nil }
+func (m *MockFailoverInstance) IsInService() bool                   { return true }
+func (m *MockFailoverInstance) IsACLUserExists() bool               { return false }
+func (m *MockFailoverInstance) IsACLAppliedToAll() bool             { return false }
 func (m *MockFailoverInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
 	return true, nil
 }
@@ -74,10 +74,10 @@ func (m *MockFailoverInstance) UpdateStatus(ctx context.Context, st types.Instan
 	return nil
 }
 func (m *MockFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {}
-func (m *MockFailoverInstance) Logger() logr.Logger                          { return logr.Discard() }
-func (m *MockFailoverInstance) Replication() types.Replication               { return nil }
-func (m *MockFailoverInstance) Masters() []types.ValkeyNode                  { return nil }
-func (m *MockFailoverInstance) Nodes() []types.ValkeyNode                    { return nil }
+func (m *MockFailoverInstance) Logger() logr.Logger                                          { return logr.Discard() }
+func (m *MockFailoverInstance) Replication() types.Replication                               { return nil }
+func (m *MockFailoverInstance) Masters() []types.ValkeyNode                                  { return nil }
+func (m *MockFailoverInstance) Nodes() []types.ValkeyNode                                    { return nil }
 func (m *MockFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return nil, nil
 }
