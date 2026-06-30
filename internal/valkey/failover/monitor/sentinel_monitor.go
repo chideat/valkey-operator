@@ -46,11 +46,12 @@ func isDNSError(err error) bool {
 	return errors.As(err, &dnsErr)
 }
 
-// isNetworkError reports whether err represents a transient network failure
-// (connection refused, timeout, EOF, context cancellation). Auth or protocol
-// errors do not qualify and should be surfaced to the caller.
+// isNetworkError reports whether err represents a transient per-connection
+// network failure (connection refused/reset, timeout, EOF). Context cancellation
+// and deadline are deliberately excluded: those signal the reconcile itself is
+// done and must propagate as a requeue, not be skipped as one flaky sentinel.
 func isNetworkError(err error) bool {
-	if errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if errors.Is(err, io.EOF) {
 		return true
 	}
 	var netErr net.Error
@@ -64,6 +65,9 @@ var (
 	ErrMultipleMaster  = fmt.Errorf("multiple master without majority agreement")
 	ErrAddressConflict = fmt.Errorf("master address conflict")
 	ErrNotEnoughNodes  = fmt.Errorf("not enough sentinel nodes")
+	// ErrNoSentinelReachable means every sentinel was unreachable (DNS/network),
+	// so no quorum could be observed. Callers must requeue, not heal.
+	ErrNoSentinelReachable = fmt.Errorf("no sentinel reachable")
 )
 
 var _ types.FailoverMonitor = (*SentinelMonitor)(nil)
@@ -169,15 +173,22 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 		Count int
 	}
 	var (
-		masterStat      []*Stat
-		masterIds       = map[string]int{}
-		idAddrMap       = map[string][]string{}
-		registeredNodes int
+		masterStat         []*Stat
+		masterIds          = map[string]int{}
+		idAddrMap          = map[string][]string{}
+		registeredNodes    int
+		reachableSentinels int
 	)
 	for _, node := range s.nodes {
 		n, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
+			// reconcile context done: abort and requeue, never a per-sentinel skip
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
 			if err == ErrNoMaster {
+				// sentinel answered, it just has no master registered
+				reachableSentinels++
 				s.logger.Error(err, "master not registered with sentinel", "addr", node.addr)
 				continue
 			} else if isDNSError(err) {
@@ -195,10 +206,12 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 			s.logger.Error(ErrDoFailover, "valkey sentinel is doing failover", "node", n.Address())
 			return nil, ErrDoFailover
 		} else if !IsMonitoringNodeOnline(n) {
+			reachableSentinels++
 			s.logger.Error(fmt.Errorf("master node offline"), "master node offline", "node", n.Address(), "flags", n.Flags)
 			continue
 		}
 
+		reachableSentinels++
 		registeredNodes += 1
 		if i := slices.IndexFunc(masterStat, func(s *Stat) bool {
 			// NOTE: here cannot use runid to identify the node,
@@ -219,6 +232,11 @@ func (s *SentinelMonitor) Master(ctx context.Context, flags ...bool) (*vkcli.Sen
 		}
 	}
 	if len(masterStat) == 0 {
+		if reachableSentinels == 0 {
+			// full partition: no sentinel responded, so we can't tell master state — requeue
+			return nil, ErrNoSentinelReachable
+		}
+		// sentinels are reachable and agree there's no usable master — heal
 		return nil, ErrNoMaster
 	}
 	slices.SortStableFunc(masterStat, func(i, j *Stat) int {
@@ -464,7 +482,8 @@ func (s *SentinelMonitor) UpdateConfig(ctx context.Context, params map[string]st
 	for _, node := range s.nodes {
 		masterNode, err := node.MonitoringMaster(ctx, s.groupName)
 		if err != nil {
-			if err == ErrNoMaster || isDNSError(err) {
+			// skip unreachable sentinels (symmetric with Master); context errors fall through to requeue
+			if err == ErrNoMaster || isDNSError(err) || isNetworkError(err) {
 				continue
 			}
 			logger.Error(err, "check monitoring master failed")

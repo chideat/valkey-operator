@@ -340,6 +340,12 @@ func (g *RuleEngine) isNodesHealthy(ctx context.Context, inst types.FailoverInst
 		logger.Error(rawErr, "failed to get raw nodes")
 		return actor.RequeueWithError(fmt.Errorf("failed to list raw pods: %w", rawErr))
 	}
+	if len(rawPods) == 0 {
+		// RawNodes returns empty when the statefulset is missing (transient); inst.Nodes()
+		// may still hold a stale snapshot. Don't treat that as an index mismatch — wait it out.
+		logger.Info("no raw pods listed, skipping index check")
+		return nil
+	}
 
 	if len(inst.Nodes()) == len(rawPods) {
 		// All pods reachable: strict ordering check is safe.

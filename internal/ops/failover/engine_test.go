@@ -353,6 +353,14 @@ func TestIsNodesHealthy(t *testing.T) {
 			master:  &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
 			wantCmd: CommandHealPod,
 		},
+		{
+			// RawNodes empty (statefulset transiently missing) while a stale Node snapshot
+			// remains. Must not be read as an index mismatch and heal.
+			name:    "empty raw pods skips index check and does not heal",
+			nodes:   []types.ValkeyNode{newNode("ha-0", 0, "10.0.0.1", 6379)},
+			rawPods: []corev1.Pod{},
+			master:  &vkcli.SentinelMonitorNode{IP: "10.0.0.1", Port: "6379"},
+		},
 	}
 
 	for _, tc := range tests {
