@@ -211,7 +211,10 @@ func (m *testFailoverInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKeyFromObject(m.failover)
 }
 func (m *testFailoverInstance) Version() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
-func (m *testFailoverInstance) IsReady() bool                  { return true }
+func (m *testFailoverInstance) SafeVersion() version.ValkeyVersion {
+	return version.ValkeyVersion("7.2")
+}
+func (m *testFailoverInstance) IsReady() bool { return true }
 func (m *testFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
 	return nil
 }
