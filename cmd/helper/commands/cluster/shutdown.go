@@ -169,6 +169,12 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				}
 
 				randInt := rand.Intn(50) + 1 // #nosec: ignore
+				if i > 0 {
+					// only the first attempt needs the large anti-collision
+					// jitter; keep retries short so the termination grace
+					// period is spent failing over, not sleeping
+					randInt = rand.Intn(10) + 1 // #nosec: ignore
+				}
 				duration := time.Duration(randInt) * time.Second
 				logger.Info(fmt.Sprintf("Wait for %s to escape failover conflict", duration))
 				time.Sleep(duration)
@@ -185,6 +191,14 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				mastrNode := nodes.Get(self.Id)
 				action := NoFailoverAction
 				if mastrNode.IsFailed() {
+					action = ForceFailoverAction
+				} else if i >= 3 {
+					// this node is terminating: if plain manual failovers keep
+					// failing (e.g. the replication link is still recovering
+					// from an ACL/password rollout), escalate to FORCE before
+					// the grace period expires — a forced promotion with the
+					// replica's current dataset beats dying unpromoted and
+					// losing the shard
 					action = ForceFailoverAction
 				}
 				if err := doValkeyFailover(ctx, valkeyClient, action, logger); err != nil {
