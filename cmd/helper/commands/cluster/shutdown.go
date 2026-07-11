@@ -168,12 +168,12 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 					return nil
 				}
 
-				randInt := rand.Intn(50) + 1 // #nosec: ignore
+				randInt := rand.Intn(15) + 1 // #nosec: ignore
 				if i > 0 {
-					// only the first attempt needs the large anti-collision
-					// jitter; keep retries short so the termination grace
-					// period is spent failing over, not sleeping
-					randInt = rand.Intn(10) + 1 // #nosec: ignore
+					// only the first attempt needs the anti-collision jitter;
+					// keep retries short so the termination grace period is
+					// spent failing over, not sleeping
+					randInt = rand.Intn(5) + 1 // #nosec: ignore
 				}
 				duration := time.Duration(randInt) * time.Second
 				logger.Info(fmt.Sprintf("Wait for %s to escape failover conflict", duration))
@@ -192,9 +192,9 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				action := NoFailoverAction
 				if mastrNode.IsFailed() {
 					action = ForceFailoverAction
-				} else if i >= 3 {
-					// this node is terminating: if plain manual failovers keep
-					// failing (e.g. the replication link is still recovering
+				} else if i >= 1 {
+					// this node is terminating: if the plain manual failover
+					// failed (e.g. the replication link is still recovering
 					// from an ACL/password rollout), escalate to FORCE before
 					// the grace period expires — a forced promotion with the
 					// replica's current dataset beats dying unpromoted and
@@ -208,6 +208,8 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 				return nil
 			}(); err == nil {
 				break
+			} else if i == 19 {
+				logger.Error(err, "CRITICAL: all failover attempts failed, shutting down an unpromoted master; the shard may lose data")
 			}
 			time.Sleep(time.Second * 5)
 		}

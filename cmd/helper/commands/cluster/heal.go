@@ -406,12 +406,17 @@ func doValkeyFailover(ctx context.Context, cli valkey.ValkeyClient, action Failo
 		return err
 	}
 
-	// A failover election needs up to 2x cluster-node-timeout (default 15s)
-	// to collect votes, and masters refuse to vote again within the same
-	// window. Observe long enough for a full election round (plus one
-	// cooldown-blocked round) to finish — re-issuing CLUSTER FAILOVER too
-	// early resets the in-flight election and starves it of votes forever.
-	for range 14 {
+	// A plain manual failover coordinates with the master within
+	// 2x cluster-node-timeout (30s at the default 15s); a forced failover
+	// runs a vote election that can additionally be blocked by the masters'
+	// re-vote cooldown of the same length. Observe accordingly — re-issuing
+	// CLUSTER FAILOVER too early resets the in-flight election and starves
+	// it of votes forever.
+	waitRounds := 7 // 35s: plain manual failover window
+	if action == ForceFailoverAction {
+		waitRounds = 14 // 70s: election round + one cooldown-blocked round
+	}
+	for range waitRounds {
 		logger.Info("check failover in 5s")
 		time.Sleep(time.Second * 5)
 
