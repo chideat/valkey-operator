@@ -112,14 +112,17 @@ func killPod(ctx context.Context, namespace, podName string) {
 	}
 	Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
 
-	// Wait for the pod to be replaced (StatefulSet recreates it with a new UID)
+	// Wait for the pod to be replaced (StatefulSet recreates it with a new UID).
+	// A graceful master shutdown runs the pre-stop failover first (bounded by
+	// the 300s termination grace period), and the StatefulSet cannot recreate
+	// the pod until termination completes — so allow well beyond that.
 	Eventually(func() bool {
 		var p corev1.Pod
 		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &p); err != nil {
 			return true // pod is gone momentarily — counts as replaced
 		}
 		return p.UID != oldUID // new pod created
-	}).WithTimeout(time.Minute * 2).WithPolling(time.Second * 5).Should(BeTrue())
+	}).WithTimeout(time.Minute * 8).WithPolling(time.Second * 5).Should(BeTrue())
 }
 
 // skipIfVersionLessThan skips the current Ginkgo spec if inst.Spec.Version < minVersion.
