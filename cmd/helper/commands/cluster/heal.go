@@ -44,7 +44,6 @@ type HealOptions struct {
 	Workspace  string
 	TargetName string
 	Prefix     string
-	ShardID    string
 	NodeFile   string
 }
 
@@ -56,7 +55,6 @@ func Heal(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, log
 		Workspace:  c.String("workspace"),
 		TargetName: c.String("config-name"),
 		Prefix:     c.String("prefix"),
-		ShardID:    c.String("shard-id"),
 		NodeFile:   path.Join(c.String("workspace"), c.String("config-name")),
 	}
 
@@ -70,10 +68,7 @@ func Heal(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, log
 		logger.Error(err, "nit nodes.conf failed")
 		return err
 	}
-	if data, err = fixClusterNodesConf(data, logger, opts); err != nil {
-		logger.Error(err, "fix nodes.conf failed")
-		return err
-	}
+	data = fixClusterNodesConf(data)
 
 	// persistent
 	nodeFileBak := opts.NodeFile + ".bak"
@@ -110,8 +105,10 @@ func initClusterNodesConf(ctx context.Context, client *kubernetes.Clientset, log
 		isUpdated = true
 	}
 	if len(data) == 0 {
-		// if nodes.conf is empty, custom node-id and shard-id
-		data = generateValkeyCluterNodeRecord(opts.Namespace, opts.PodName, opts.ShardID)
+		// if nodes.conf is empty, seed only a deterministic node-id so this pod
+		// keeps a stable identity across restarts. Do NOT seed a shard-id: it is
+		// valkey's to assign once this node replicates its primary.
+		data = generateValkeyCluterNodeRecord(opts.Namespace, opts.PodName)
 		isUpdated = true
 	}
 	if isUpdated && len(data) > 0 {
@@ -120,9 +117,12 @@ func initClusterNodesConf(ctx context.Context, client *kubernetes.Clientset, log
 	return data, nil
 }
 
-func fixClusterNodesConf(data []byte, logger logr.Logger, opts *HealOptions) ([]byte, error) {
+// fixClusterNodesConf sanitizes a recovered nodes.conf: it drops lines
+// corrupted by a valkey crash and normalizes the trailing epoch line. It
+// deliberately preserves every node's shard-id as valkey wrote it — shard-id
+// is a valkey-owned property and must not be rewritten by the operator.
+func fixClusterNodesConf(data []byte) []byte {
 	var (
-		shardId   = opts.ShardID
 		lines     []string
 		epochLine string
 	)
@@ -160,66 +160,7 @@ func fixClusterNodesConf(data []byte, logger logr.Logger, opts *HealOptions) ([]
 		// ignore epoch line
 	}
 
-	data = []byte(strings.Join(lines, "\n"))
-	if shardId == "" {
-		return data, nil
-	}
-
-	// verify shard id
-	lines = lines[0:0]
-	nodes, err := valkey.ParseNodes(string(data))
-	if err != nil {
-		logger.Error(err, "parse nodes failed")
-		return nil, err
-	}
-	selfNode := nodes.Self()
-	masterNodes := map[string]*valkey.ClusterNode{}
-	for _, node := range nodes.Masters() {
-		if node.Id == selfNode.Id ||
-			(selfNode.Role == valkey.MasterRole && node.MasterId == selfNode.Id) ||
-			(selfNode.Role == valkey.SlaveRole && node.Id == selfNode.MasterId) {
-			continue
-		}
-		masterNodes[node.Id] = node
-	}
-
-	for _, node := range nodes {
-		line := node.Raw()
-		if node.Id == selfNode.Id ||
-			(selfNode.Role == valkey.MasterRole && node.MasterId == selfNode.Id) ||
-			(selfNode.Role == valkey.SlaveRole && node.Id == selfNode.MasterId) {
-
-			if oldShardId := node.AuxFields.ShardID; oldShardId != shardId {
-				if oldShardId != "" {
-					line = strings.ReplaceAll(line, fmt.Sprintf("shard-id=%s", oldShardId), fmt.Sprintf("shard-id=%s", shardId))
-				} else {
-					line = strings.ReplaceAll(line, node.AuxFields.Raw(), fmt.Sprintf("%s,,tls-port=0,shard-id=%s", node.AuxFields.Raw(), shardId))
-				}
-			}
-			line = strings.ReplaceAll(line, ",nofailover", "")
-			lines = append(lines, line)
-		}
-	}
-	for _, master := range masterNodes {
-		isAllReplicasInSameShard := true
-		replicas := nodes.Replicas(master.Id)
-		for _, replica := range replicas {
-			if master.AuxFields.ShardID != replica.AuxFields.ShardID {
-				isAllReplicasInSameShard = false
-			}
-		}
-		if isAllReplicasInSameShard {
-			lines = append(lines, master.Raw())
-			for _, replica := range replicas {
-				lines = append(lines, replica.Raw())
-			}
-		}
-	}
-
-	if len(lines) > 0 && epochLine != "" {
-		lines = append(lines, epochLine)
-	}
-	return []byte(strings.Join(lines, "\n")), nil
+	return []byte(strings.Join(lines, "\n"))
 }
 
 func healCluster(c *cli.Context, ctx context.Context, client *kubernetes.Clientset, data []byte, logger logr.Logger) error {
@@ -341,15 +282,16 @@ func healCluster(c *cli.Context, ctx context.Context, client *kubernetes.Clients
 	return nil
 }
 
-func generateValkeyCluterNodeRecord(namespace, podName, shardId string) []byte {
-	tpl := `%s :0@0%s myself,master - 0 0 0 connected
+func generateValkeyCluterNodeRecord(namespace, podName string) []byte {
+	// Seed a deterministic node-id only. shard-id is intentionally omitted so
+	// valkey assigns it when this node replicates its primary (a pre-written
+	// shard-id makes an empty replica look like an empty primary to peers,
+	// which valkey 9.1 stale-packet detection permanently rejects).
+	tpl := `%s :0@0 myself,master - 0 0 0 connected
 vars currentEpoch 0 lastVoteEpoch 0`
-	if shardId != "" {
-		shardId = fmt.Sprintf(",,tls-port=0,shard-id=%s", shardId)
-	}
 
 	nodeId := fmt.Sprintf("%x", sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", namespace, podName))) // #nosec G401
-	return fmt.Appendf([]byte{}, tpl, nodeId, shardId)
+	return fmt.Appendf([]byte{}, tpl, nodeId)
 }
 
 func getPodsOfShard(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) (pods []corev1.Pod, err error) {
