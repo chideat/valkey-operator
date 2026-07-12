@@ -247,15 +247,26 @@ func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, 
 }
 
 func checkInstanceWrite(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
-	client, err := newValkeyClient(ctx, inst, username, password)
-	Expect(err).To(Succeed())
-	defer client.Close()
-
 	By("checking write valkey")
-	for i := range 1000 {
-		key := fmt.Sprintf("key-%d", i)
-		Expect(client.Do(ctx, client.B().Set().Key(key).Value(key).Build()).Error()).To(Succeed())
-	}
+	// Mirror checkInstanceRead: rebuild the client and retry the whole loop so a
+	// transient cluster-routing gap (e.g. "the slot has no valkey node" while an
+	// ACL change churns connections) does not fail the spec — the cluster is
+	// healthy and the write succeeds once the client's slot map settles.
+	Eventually(func() error {
+		client, err := newValkeyClient(ctx, inst, username, password)
+		if err != nil {
+			return fmt.Errorf("create client failed: %w", err)
+		}
+		defer client.Close()
+
+		for i := range 1000 {
+			key := fmt.Sprintf("key-%d", i)
+			if err := client.Do(ctx, client.B().Set().Key(key).Value(key).Build()).Error(); err != nil {
+				return fmt.Errorf("set %s failed: %w", key, err)
+			}
+		}
+		return nil
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 5).Should(Succeed())
 }
 
 type Spec struct {
