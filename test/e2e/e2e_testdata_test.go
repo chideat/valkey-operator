@@ -189,7 +189,38 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 	} else if inst.Spec.Arch == core.ValkeyCluster {
 		options.ShuffleInit = true
 	}
-	return valkey.NewClient(options)
+	c, err := valkey.NewClient(options)
+	if err != nil {
+		return nil, err
+	}
+	// The cluster client fetches its slot map lazily; right after a topology
+	// change (e.g. ACL-triggered reconnects during user create/delete) a slot
+	// can momentarily map to no node ("the slot has no valkey node"). Probe a
+	// spread of keys until routing works so callers don't observe that
+	// transient gap; a failed probe forces the client to refresh its slot map.
+	if inst.Spec.Arch == core.ValkeyCluster {
+		deadline := time.Now().Add(time.Minute)
+		for {
+			probeErr := func() error {
+				for i := range 16 {
+					key := fmt.Sprintf("e2e-routable-probe-%d", i)
+					if e := c.Do(ctx, c.B().Get().Key(key).Build()).Error(); e != nil && !valkey.IsValkeyNil(e) {
+						return e
+					}
+				}
+				return nil
+			}()
+			if probeErr == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				c.Close()
+				return nil, probeErr
+			}
+			time.Sleep(time.Second)
+		}
+	}
+	return c, nil
 }
 
 func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
