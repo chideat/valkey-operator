@@ -17,7 +17,6 @@ limitations under the License.
 package clusterbuilder
 
 import (
-	"crypto/sha1" // #nosec
 	"fmt"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -168,13 +167,13 @@ func GenerateStatefulSet(inst types.ClusterInstance, index int) (*appsv1.Statefu
 
 	envs := buildEnvs(inst, headlessSvcName)
 
-	// persistent shard id
-	data := sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", cluster.Namespace, stsName)) // #nosec
-	shardId := fmt.Sprintf("%x", data)
-	envs = append(envs, corev1.EnvVar{
-		Name:  "SHARD_ID",
-		Value: shardId,
-	})
+	// NOTE: the operator does not assign a shard-id. shard-id is a valkey-owned
+	// property that proves shared replication history; it is established by
+	// valkey itself when a node replicates its primary and is preserved across
+	// restarts via the ConfigMap-synced nodes.conf. Pre-writing a synthetic
+	// shard-id makes an empty replica appear to peers as an empty primary in
+	// the same shard, which valkey 9.1 (cluster stale-packet detection, see
+	// valkey-io/valkey#2811) then permanently rejects, breaking failover.
 	if container := buildValkeyDataInitContainer(cluster, opUser, envs); container != nil {
 		initContainers = append(initContainers, *container)
 	}
