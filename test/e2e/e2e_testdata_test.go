@@ -193,15 +193,29 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 	if err != nil {
 		return nil, err
 	}
-	// The cluster client fetches its slot map lazily; right after a topology
-	// change (e.g. ACL-triggered reconnects during user create/delete) a slot
-	// can momentarily map to no node ("the slot has no valkey node"). Probe a
-	// spread of keys until routing works so callers don't observe that
-	// transient gap; a failed probe forces the client to refresh its slot map.
+	// A cluster client fetches its slot map when it is constructed. If the
+	// cluster is still settling — right after a config-propagation pod restart,
+	// or ACL-triggered reconnects during user create/delete — that snapshot can
+	// be missing slots. Every later command on an uncovered slot then fails with
+	// "the slot has no valkey node", and the client does not recover on its own:
+	// it treats the slot as legitimately empty and never re-fetches. So wait
+	// until the cluster reports full slot coverage (cluster_state:ok) and routing
+	// works across a spread of slots, rebuilding the client between attempts so
+	// it captures a complete topology before any caller uses it.
 	if inst.Spec.Arch == core.ValkeyCluster {
-		deadline := time.Now().Add(time.Minute)
+		deadline := time.Now().Add(time.Minute * 3)
 		for {
 			probeErr := func() error {
+				// cluster_state flips to ok only once all 16384 slots are
+				// assigned, so it is a reliable "fully settled" signal. CLUSTER
+				// INFO is unkeyed and works even while the slot map is partial.
+				info, e := c.Do(ctx, c.B().ClusterInfo().Build()).ToString()
+				if e != nil {
+					return e
+				}
+				if !strings.Contains(info, "cluster_state:ok") {
+					return fmt.Errorf("cluster not fully settled: %s", strings.SplitN(info, "\r\n", 2)[0])
+				}
 				for i := range 16 {
 					key := fmt.Sprintf("e2e-routable-probe-%d", i)
 					if e := c.Do(ctx, c.B().Get().Key(key).Build()).Error(); e != nil && !valkey.IsValkeyNil(e) {
@@ -217,7 +231,13 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 				c.Close()
 				return nil, probeErr
 			}
+			// Rebuild so the next attempt re-fetches the (now more complete) slot
+			// map; a stale client will not re-fetch a slot it believes is empty.
+			c.Close()
 			time.Sleep(time.Second)
+			if c, err = valkey.NewClient(options); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return c, nil
