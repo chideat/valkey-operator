@@ -107,7 +107,7 @@ func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int3
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: ptr.To(corev1.IPFamilyPolicyPreferDualStack),
+			IPFamilyPolicy: ptr.To(corev1.IPFamilyPolicySingleStack),
 			Type:           sen.Spec.Access.ServiceType,
 			Ports: []corev1.ServicePort{
 				{
