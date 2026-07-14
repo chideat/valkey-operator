@@ -38,6 +38,20 @@ var (
 	valkeyDefaultSenPassword, _ = security.GeneratePassword(12)
 )
 
+// accessSuffix distinguishes instance names per access mode. Each version is
+// deployed once per mode, so without it the two runs would collide on the same
+// name in the same namespace.
+func accessSuffix(serviceType corev1.ServiceType) string {
+	switch serviceType {
+	case corev1.ServiceTypeNodePort:
+		return "np"
+	case corev1.ServiceTypeLoadBalancer:
+		return "lb"
+	default:
+		return "cip"
+	}
+}
+
 func generateValkeyUserInstanceName(inst *rdsv1alpha1.Valkey, username string) string {
 	switch inst.Spec.Arch {
 	case core.ValkeyCluster:
@@ -309,7 +323,7 @@ var clusterTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("cluster-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("cluster-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{
@@ -520,7 +534,7 @@ var failoverTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("failover-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("failover-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{
@@ -732,7 +746,7 @@ var replicationTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("replica-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("replica-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{
