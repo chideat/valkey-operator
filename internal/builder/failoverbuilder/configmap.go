@@ -61,7 +61,7 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 	if rf.Spec.Resources.Limits != nil {
 		var osMem int64
 		for _, res := range []*resource.Quantity{rf.Spec.Resources.Limits.Memory(), rf.Spec.Resources.Requests.Memory()} {
-			if res == nil && res.IsZero() {
+			if res == nil || res.IsZero() {
 				continue
 			}
 			osMem, _ = res.AsInt64()

@@ -176,7 +176,7 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 	}
 
 	if inst.Spec.Resources.Limits == nil && inst.Spec.Resources.Requests == nil {
-		return warns, fmt.Errorf("spec.resources is specified")
+		return warns, fmt.Errorf("spec.resources is required")
 	}
 	if inst.Spec.Resources.Limits.Memory().IsZero() && inst.Spec.Resources.Requests.Memory().IsZero() {
 		return warns, fmt.Errorf("spec.resources.limits.memory is required")
