@@ -113,7 +113,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
 			if instance.Status.Message != err.Error() {
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				instance.Status.Message = fmt.Sprintf("clean user failed with error %s", err.Error())
 				if err := r.Client.Status().Update(ctx, &instance); err != nil {
 					logger.Error(err, "update user status failed", "instance", req.NamespacedName)
@@ -188,7 +188,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
 			logger.Error(err, "get secret failed", "secret name", name)
 			instance.Status.Message = err.Error()
-			instance.Status.Phase = v1alpha1.UserFail
+			instance.Status.SetPhase(v1alpha1.UserFail)
 			if e := r.Client.Status().Update(ctx, &instance); e != nil {
 				logger.Error(e, "update User status to Fail failed")
 			}
@@ -196,7 +196,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
 			if instance.Spec.AccountType != v1alpha1.SystemAccount {
 				instance.Status.Message = err.Error()
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				if e := r.Client.Status().Update(ctx, &instance); e != nil {
 					logger.Error(e, "update User status to Fail failed")
 				}
@@ -220,7 +220,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}); err != nil {
 				logger.Error(err, "update secret owner failed", "secret", secret.Name)
 				instance.Status.Message = err.Error()
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				return ctrl.Result{RequeueAfter: time.Second * 5}, r.Client.Status().Update(ctx, &instance)
 			}
 		}
@@ -233,7 +233,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			strings.Contains(err.Error(), "ERR unknown command `ACL`") {
 			logger.V(3).Info("instance is not ready", "instance", vkName)
 			instance.Status.Message = err.Error()
-			instance.Status.Phase = v1alpha1.UserPending
+			instance.Status.SetPhase(v1alpha1.UserPending)
 			if err := r.updateUserStatus(ctx, &instance); err != nil {
 				logger.Error(err, "update User status to Pending failed")
 			}
@@ -241,14 +241,14 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 
 		instance.Status.Message = err.Error()
-		instance.Status.Phase = v1alpha1.UserFail
+		instance.Status.SetPhase(v1alpha1.UserFail)
 		logger.Error(err, "user reconcile failed")
 		if err := r.updateUserStatus(ctx, &instance); err != nil {
 			logger.Error(err, "update User status to Fail failed")
 		}
 		return reconcile.Result{RequeueAfter: time.Second * 10}, nil
 	}
-	instance.Status.Phase = v1alpha1.UserReady
+	instance.Status.SetPhase(v1alpha1.UserReady)
 	instance.Status.Message = ""
 	logger.V(3).Info("user reconcile success")
 	if err := r.updateUserStatus(ctx, &instance); err != nil {

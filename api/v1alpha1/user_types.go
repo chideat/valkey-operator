@@ -58,8 +58,16 @@ const (
 
 // UserStatus defines the observed state of User
 type UserStatus struct {
-	// Phase
-	Phase UserPhase `json:"Phase,omitempty"`
+	// Phase indicates the current state of the User resource, exposed under the
+	// conventional `.status.phase` key.
+	Phase UserPhase `json:"phase,omitempty"`
+
+	// OldPhase mirrors Phase under the legacy capital-"Phase" JSON key. Earlier operator
+	// versions stored the phase as `.status.Phase` (non-conventional capitalization), which is
+	// invisible to clients/tooling reading the conventional `.status.phase`. The canonical field
+	// is now `phase`; OldPhase is kept and written in lockstep so resources and readers built
+	// against the old key keep working. New clients should read `phase`.
+	OldPhase UserPhase `json:"Phase,omitempty"`
 
 	// Message
 	Message string `json:"message,omitempty"`
@@ -68,12 +76,19 @@ type UserStatus struct {
 	AclRules string `json:"aclRules,omitempty"`
 }
 
+// SetPhase sets the canonical Phase and mirrors it onto the deprecated OldPhase field, so readers
+// of either `.status.phase` or the legacy `.status.Phase` key observe the same value.
+func (s *UserStatus) SetPhase(phase UserPhase) {
+	s.Phase = phase
+	s.OldPhase = phase
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=users,scope=Namespaced,shortName=vku
 // +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=`.spec.instanceName`
 // +kubebuilder:printcolumn:name="username",type=string,JSONPath=`.spec.username`
-// +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.Phase`
+// +kubebuilder:printcolumn:name="phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time since creation"
 
 // User is the Schema for the users API
