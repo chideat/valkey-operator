@@ -80,6 +80,14 @@ func (a *actorEnsureSlots) Do(ctx context.Context, val types.Instance) *actor.Ac
 		logger.Error(err, "refresh cluster info failed")
 		return actor.NewResultWithError(cops.CommandRequeue, err)
 	}
+	// If the cluster is merely disconnected (peers unreachable after a restart) but every
+	// slot is still owned locally, do NOT reassign slots / force failover — that would
+	// create epoch/slot conflicts that prevent reconvergence. Wait for the cluster to
+	// re-MEET instead.
+	if cops.IsDisconnectedButIntact(cluster) {
+		logger.Info("cluster disconnected but slots intact; waiting for reconnection instead of ensuring slots")
+		return actor.NewResult(cops.CommandRequeue)
+	}
 	if len(cluster.Shards()) == 0 {
 		return actor.NewResult(cops.CommandEnsureResource)
 	}
