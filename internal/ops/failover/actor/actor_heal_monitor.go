@@ -206,9 +206,15 @@ func (a *actorHealMaster) Do(ctx context.Context, val types.Instance) *actor.Act
 			logger.Info("setup master node", "addr", addr)
 			inst.SendEventf(corev1.EventTypeWarning, config.EventSetupMaster, "setup sentinels with master %s", addr)
 		} else {
-			err := fmt.Errorf("cannot find any usable master node")
-			logger.Error(err, "failed to setup master node")
-			return actor.RequeueWithError(err)
+			// No usable master candidate — every valkey node is not-ready (e.g. all Pending
+			// after an oversized-resource create). The engine keeps routing here (HealMonitor)
+			// and never reaches EnsureResource, so a pending spec change (e.g. a resource
+			// downscale) never reaches the StatefulSet template and the pods stay Pending
+			// forever. Ensure resources instead of idle-waiting: the failover StatefulSet uses
+			// ParallelPodManagement, so updating the template recreates the Pending pods on the
+			// new spec and lets them schedule. Idempotent when the template is already current.
+			logger.Info("no usable master node yet, ensure resources and retry")
+			return actor.NewResult(ops.CommandEnsureResource)
 		}
 	} else {
 		if masterCandidate != nil && masterCandidate.Role() != core.NodeRoleMaster && masterCandidate.Config()["replica-priority"] != "0" {

@@ -220,6 +220,13 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 		logger.V(3).Info("check_4")
 		for _, shard := range cluster.Shards() {
 			if shard.Master() == nil {
+				if ShardHasMaster(shard) {
+					// 4.1a the master owns its slots but its peers are unreachable
+					// (e.g. post-restart stale IPs). Wait for the cluster to re-MEET
+					// rather than forcing a failover, which would split-brain a
+					// disconnected-but-intact cluster.
+					return actor.NewResult(CommandJoinNode)
+				}
 				// 4.1 master node not found, pod may failed, do failover
 				return actor.NewResult(CommandEnsureSlots)
 			}
@@ -234,7 +241,11 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 
 		shardsWithoutSlot := 0
 		for _, shard := range cluster.Shards() {
-			if shard.Slots().Count(slot.SlotAssigned) == 0 {
+			// Use the slots the shard actually owns (ShardAssignedSlots, ungated) rather
+			// than shard.Slots() (gated on IsJoined). A disconnected-but-intact shard still
+			// owns its slots, and must not be counted as slotless — otherwise the engine
+			// reassigns slots the shard already has, which prevents reconvergence.
+			if ShardAssignedSlots(shard).Count(slot.SlotAssigned) == 0 {
 				shardsWithoutSlot += 1
 			}
 		}
