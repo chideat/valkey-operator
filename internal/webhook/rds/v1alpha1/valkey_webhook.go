@@ -164,9 +164,11 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.V
 type ValkeyCustomValidator struct {
 	mgrClient client.Client
 
-	// apiReader is an uncached, cluster-wide reader. NodePorts are cluster-scoped, so the
-	// NodePort-conflict check must see Services in every namespace regardless of the manager's
-	// cache scope — the cached client may be restricted to the watched namespaces.
+	// apiReader is an uncached, cluster-wide reader. The NodePort-conflict check needs it
+	// because NodePorts are cluster-scoped — it must see Services in every namespace
+	// regardless of the manager's cache scope. Password-secret validation needs it for
+	// freshness: clients create the secret and the Valkey CR back to back, and a cached
+	// read races the informer sync into a false NotFound.
 	apiReader client.Reader
 }
 
@@ -194,7 +196,7 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 		warns = append(warns, "spec.resources.limits.memory and spec.resources.requests.memory should be the same")
 	}
 
-	// if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
+	// if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Access.DefaultPasswordSecret, v.apiReader, &warns); err != nil {
 	// 	return warns, err
 	// }
 
@@ -253,7 +255,7 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 			return warns, fmt.Errorf("sentinel replicas must be odd and greater >= 3")
 		}
 		if inst.Spec.Sentinel.Access.DefaultPasswordSecret != "" {
-			if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Sentinel.Access.DefaultPasswordSecret, v.mgrClient, &warns); err != nil {
+			if err := validation.ValidatePasswordSecret(inst.Namespace, inst.Spec.Sentinel.Access.DefaultPasswordSecret, v.apiReader, &warns); err != nil {
 				return warns, fmt.Errorf("sentinel password secret: %v", err)
 			}
 		}

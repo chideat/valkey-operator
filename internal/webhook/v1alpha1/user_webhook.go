@@ -47,7 +47,7 @@ var logger = logf.Log.WithName("user-webhook")
 // SetupUserWebhookWithManager registers the webhook for User in the manager.
 func SetupUserWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &valkeybufredv1alpha1.User{}).
-		WithValidator(&UserCustomValidator{mgrClient: mgr.GetClient()}).
+		WithValidator(&UserCustomValidator{mgrClient: mgr.GetClient(), apiReader: mgr.GetAPIReader()}).
 		WithDefaulter(&UserCustomDefaulter{mgrClient: mgr.GetClient()}).
 		Complete()
 }
@@ -150,6 +150,12 @@ func (d *UserCustomDefaulter) Default(ctx context.Context, inst *valkeybufredv1a
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type UserCustomValidator struct {
 	mgrClient client.Client
+
+	// apiReader is an uncached reader used for password-secret validation. Clients
+	// routinely create the password secret and the User CR back to back; a read
+	// through the manager's cached client races the informer sync and rejects a
+	// perfectly valid create with a false "Secret not found".
+	apiReader client.Reader
 }
 
 var _ admission.Validator[*valkeybufredv1alpha1.User] = &UserCustomValidator{}
@@ -187,7 +193,7 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 			return nil, fmt.Errorf("password secret can not be empty")
 		}
 		secret := &v1.Secret{}
-		if err := v.mgrClient.Get(context.Background(), types.NamespacedName{
+		if err := v.apiReader.Get(context.Background(), types.NamespacedName{
 			Namespace: inst.Namespace,
 			Name:      passwordSecret,
 		}, secret); err != nil {

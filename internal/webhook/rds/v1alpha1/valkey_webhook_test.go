@@ -66,6 +66,7 @@ var _ = Describe("Valkey Webhook", func() {
 
 		validator = ValkeyCustomValidator{
 			mgrClient: k8sClient,
+			apiReader: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		defaulter = ValkeyCustomDefaulter{}
