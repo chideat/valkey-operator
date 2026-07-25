@@ -118,6 +118,40 @@ func (w *FileWatcher) watch(ctx context.Context, watcher *fsnotify.Watcher, fs *
 	return nil
 }
 
+// fileEventKind is what a filesystem event means for a watched file.
+type fileEventKind int
+
+const (
+	// fileIgnored covers events that say nothing about the file's contents or
+	// its continued existence, such as a bare permission change.
+	fileIgnored fileEventKind = iota
+	// fileUpdated means the contents may have changed and the handler is due.
+	fileUpdated
+	// fileRemoved means the path we registered is gone and has to be watched
+	// again if it comes back.
+	fileRemoved
+)
+
+// classifyEvent decides what an fsnotify operation means for a watched file.
+//
+// Op is a bitmask and the kernel may report several operations in a single
+// event: rewriting a file commonly surfaces as WRITE|CHMOD rather than as a
+// bare WRITE. Comparing the mask for equality, as this used to, silently drops
+// every such combined event -- the handler never runs and the change is lost.
+// The periodic re-check cannot recover it either, because that returns early
+// while the path is still being watched, so the update stays missed until
+// something removes the file. Each bit therefore has to be tested on its own.
+func classifyEvent(op fsnotify.Op) fileEventKind {
+	switch {
+	case op.Has(fsnotify.Create), op.Has(fsnotify.Write), op.Has(fsnotify.Rename):
+		return fileUpdated
+	case op.Has(fsnotify.Remove):
+		return fileRemoved
+	default:
+		return fileIgnored
+	}
+}
+
 func (w *FileWatcher) Run(ctx context.Context) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -155,11 +189,17 @@ func (w *FileWatcher) Run(ctx context.Context) error {
 				val, _ := w.watchingFiles.Load(event.Name)
 
 				fs, _ := val.(*FileStat)
+				if fs == nil {
+					// Nothing registered under this path. Dereferencing here
+					// would take the whole helper process down with it.
+					w.logger.V(1).Info("ignoring event for an unwatched path", "file", event.Name)
+					return
+				}
 				fs.lock.Lock()
 				defer fs.lock.Unlock()
 
-				switch event.Op {
-				case fsnotify.Create, fsnotify.Write, fsnotify.Rename:
+				switch classifyEvent(event.Op) {
+				case fileUpdated:
 					fs.lastUpdateTimestamp = time.Now().Unix()
 
 					if w.handler != nil {
@@ -167,7 +207,7 @@ func (w *FileWatcher) Run(ctx context.Context) error {
 							w.logger.Error(err, "handle file failed")
 						}
 					}
-				case fsnotify.Remove:
+				case fileRemoved:
 					fs.isWatching = false
 				}
 			}()
