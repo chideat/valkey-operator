@@ -105,9 +105,11 @@ func initClusterNodesConf(ctx context.Context, client *kubernetes.Clientset, log
 		isUpdated = true
 	}
 	if len(data) == 0 {
-		// if nodes.conf is empty, seed only a deterministic node-id so this pod
-		// keeps a stable identity across restarts. Do NOT seed a shard-id: it is
-		// valkey's to assign once this node replicates its primary.
+		// if nodes.conf is empty, seed a deterministic node-id so this pod keeps
+		// a stable identity across restarts, plus a shard-id unique to this pod
+		// so valkey registers it in server.cluster->shards (see
+		// generateValkeyCluterNodeRecord). valkey re-homes the shard-id onto the
+		// primary's once this node replicates.
 		data = generateValkeyCluterNodeRecord(opts.Namespace, opts.PodName)
 		isUpdated = true
 	}
@@ -283,15 +285,38 @@ func healCluster(c *cli.Context, ctx context.Context, client *kubernetes.Clients
 }
 
 func generateValkeyCluterNodeRecord(namespace, podName string) []byte {
-	// Seed a deterministic node-id only. shard-id is intentionally omitted so
-	// valkey assigns it when this node replicates its primary (a pre-written
-	// shard-id makes an empty replica look like an empty primary to peers,
-	// which valkey 9.1 stale-packet detection permanently rejects).
-	tpl := `%s :0@0 myself,master - 0 0 0 connected
+	// Seed a deterministic node-id, plus a shard-id that is unique to this pod.
+	//
+	// The shard-id has to be written out. valkey only inserts a node into
+	// server.cluster->shards from auxShardIdSetter (the "shard-id=" aux field
+	// handler) or from the "primary without a persisted shard_id" fallback in
+	// clusterLoadConfig — and that fallback is unreachable, because
+	// auxShardIdPresent() tests strlen(n->shard_id) against the random value
+	// createClusterNode already wrote into every node. So a seeded primary line
+	// carrying no shard-id loads into server.cluster->nodes but never into
+	// server.cluster->shards: the node is then missing from its own
+	// CLUSTER SHARDS reply, taking the slot range it owns with it, while
+	// CLUSTER NODES and CLUSTER SLOTS still look perfectly healthy. Clients that
+	// build their slot map from CLUSTER SHARDS — valkey-go does, for servers
+	// >= 8 — leave that third of the keyspace unrouted and fail every command on
+	// it with "the slot has no valkey node". It repairs itself only on restart,
+	// once valkey has rewritten nodes.conf with a real shard-id.
+	//
+	// It must be unique per pod, and never shared across the pods of a shard.
+	// Deriving it from the StatefulSet put a primary and its replica in the same
+	// shard from first boot, which is what broke valkey 9.1 failover — the
+	// replica's first post-REPLICATE announcement took the same-shard
+	// stale-packet branch and was dropped forever. Per-pod uniqueness reproduces
+	// what valkey does natively (createClusterNode assigns a random shard-id per
+	// node), so that announcement still takes the safe cross-shard-move branch
+	// and valkey re-homes the replica onto its primary's shard-id via
+	// updateShardId.
+	tpl := `%s :0@0,,shard-id=%s myself,master - 0 0 0 connected
 vars currentEpoch 0 lastVoteEpoch 0`
 
-	nodeId := fmt.Sprintf("%x", sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", namespace, podName))) // #nosec G401
-	return fmt.Appendf([]byte{}, tpl, nodeId)
+	nodeId := fmt.Sprintf("%x", sha1.Sum(fmt.Appendf([]byte{}, "%s/%s", namespace, podName)))           // #nosec G401
+	shardId := fmt.Sprintf("%x", sha1.Sum(fmt.Appendf([]byte{}, "shard-id/%s/%s", namespace, podName))) // #nosec G401
+	return fmt.Appendf([]byte{}, tpl, nodeId, shardId)
 }
 
 func getPodsOfShard(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, logger logr.Logger) (pods []corev1.Pod, err error) {
