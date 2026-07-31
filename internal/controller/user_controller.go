@@ -207,14 +207,14 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if secret.GetLabels() == nil {
 			secret.SetLabels(map[string]string{})
 		}
+		// NOTE: the finalizer is deliberately not added here. It is added only
+		// once the user exists on the instance, see below.
 		if secret.Labels[builder.InstanceNameLabelKey] != vkName ||
-			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() ||
-			controllerutil.ContainsFinalizer(secret, UserFinalizer) {
+			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() {
 
 			secret.Labels[builder.ManagedByLabelKey] = config.AppName
 			secret.Labels[builder.InstanceNameLabelKey] = vkName
 			secret.OwnerReferences = util.BuildOwnerReferences(&instance)
-			controllerutil.AddFinalizer(secret, UserFinalizer)
 			if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				return r.Update(ctx, secret)
 			}); err != nil {
@@ -260,6 +260,34 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err := r.updateUser(ctx, &instance); err != nil {
 			logger.Error(err, "update finalizer user failed")
 			return ctrl.Result{}, err
+		}
+	}
+
+	// The secret finalizer holds the password until the user has been dropped from
+	// the instance, so it is only required once that user exists, and only after the
+	// User above carries its own finalizer. A secret finalizer that is set while the
+	// User has none is never reclaimed: the User is deleted without ever running the
+	// cleanup path above, stranding the secret and blocking namespace deletion.
+	for _, name := range instance.Spec.PasswordSecrets {
+		if name == "" {
+			continue
+		}
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
+				return err
+			}
+			if !controllerutil.AddFinalizer(secret, UserFinalizer) {
+				return nil
+			}
+			return r.Update(ctx, secret)
+		}); err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("secret not found, skip add finalizer", "name", name)
+				continue
+			}
+			logger.Error(err, "add finalizer to secret failed", "secret name", name)
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 	}
 

@@ -17,7 +17,7 @@ jobs:
 
     steps:
     - name: Check out code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v4
@@ -66,7 +66,7 @@ jobs:
           echo "RELEASE_BRANCH=release-${MAJOR}.${MINOR}" >> $GITHUB_ENV
 
       - name: Check out release branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_BRANCH }}
           token: ${{ secrets.GH_TOKEN }}

@@ -228,6 +228,13 @@ func (v *UserCustomValidator) ValidateCreate(ctx context.Context, inst *valkeybu
 
 // ValidateUpdate implements admission.Validator so a webhook will be registered for the type User.
 func (v *UserCustomValidator) ValidateUpdate(ctx context.Context, oldInst, newInst *valkeybufredv1alpha1.User) (warns admission.Warnings, err error) {
+	// Objects being deleted only receive metadata updates (finalizer
+	// removal). Re-validating the spec here can deadlock deletion: once the
+	// referenced password secret is gone, the finalizer-removing update is
+	// rejected and the User (and its namespace) can never terminate.
+	if newInst != nil && newInst.GetDeletionTimestamp() != nil {
+		return nil, nil
+	}
 	ctx = context.WithValue(ctx, actionKey, "update")
 	return v.validate(ctx, oldInst, newInst)
 }

@@ -370,7 +370,9 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 		if err := a.ensureValkeyNodePortService(ctx, cluster, logger); err != nil {
 			return err
 		}
-	case corev1.ServiceTypeLoadBalancer:
+	case corev1.ServiceTypeLoadBalancer, corev1.ServiceTypeClusterIP:
+		// every node needs a pod binded service: the init container resolves its
+		// announce address from it before valkey starts.
 		if ret := a.ensureValkeyPodService(ctx, cluster, logger); ret != nil {
 			return ret
 		}
@@ -613,10 +615,6 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, cluste
 
 func (a *actorEnsureResource) cleanUselessService(ctx context.Context, cluster types.ClusterInstance, logger logr.Logger) *actor.ActorResult {
 	cr := cluster.Definition()
-	if cr.Spec.Access.ServiceType != corev1.ServiceTypeLoadBalancer && cr.Spec.Access.ServiceType != corev1.ServiceTypeNodePort {
-		return nil
-	}
-
 	labels := clusterbuilder.GenerateClusterLabels(cr.Name, nil)
 	services, ret := a.fetchAllPodBindedServices(ctx, cr.Namespace, labels)
 	if ret != nil {
