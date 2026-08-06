@@ -49,7 +49,7 @@ const actionKey = "action"
 // SetupValkeyWebhookWithManager registers the webhook for inst in the manager.
 func SetupValkeyWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &rdsv1alpha1.Valkey{}).
-		WithValidator(&ValkeyCustomValidator{mgrClient: mgr.GetClient()}).
+		WithValidator(&ValkeyCustomValidator{mgrClient: mgr.GetClient(), apiReader: mgr.GetAPIReader()}).
 		WithDefaulter(&ValkeyCustomDefaulter{}).
 		Complete()
 }
@@ -163,6 +163,11 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.V
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ValkeyCustomValidator struct {
 	mgrClient client.Client
+
+	// apiReader is an uncached, cluster-wide reader. NodePorts are cluster-scoped, so the
+	// NodePort-conflict check must see Services in every namespace regardless of the manager's
+	// cache scope — the cached client may be restricted to the watched namespaces.
+	apiReader client.Reader
 }
 
 var _ admission.Validator[*rdsv1alpha1.Valkey] = &ValkeyCustomValidator{}
@@ -196,6 +201,10 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 	if err := coreVal.ValidateInstanceAccess(&inst.Spec.Access,
 		helper.CalculateNodeCount(inst.Spec.Arch, inst.Spec.Replicas.Shards, inst.Spec.Replicas.ReplicasOfShard),
 		&warns); err != nil {
+		return warns, err
+	}
+
+	if err := v.validateNodePortConflicts(ctx, inst); err != nil {
 		return warns, err
 	}
 
@@ -272,6 +281,71 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 		}
 	}
 	return
+}
+
+// collectRequestedNodePorts returns the explicit NodePorts a Valkey instance asks for across its
+// data-plane and (for sentinel/failover) sentinel Services. Only meaningful when the corresponding
+// ServiceType is NodePort.
+func collectRequestedNodePorts(inst *rdsv1alpha1.Valkey) map[int32]struct{} {
+	ports := map[int32]struct{}{}
+	add := func(ps []int32) {
+		for _, p := range ps {
+			if p != 0 {
+				ports[p] = struct{}{}
+			}
+		}
+	}
+	if inst.Spec.Access.ServiceType == corev1.ServiceTypeNodePort {
+		seq, _ := corehelper.ParsePorts(inst.Spec.Access.Ports)
+		add(seq)
+	}
+	if inst.Spec.Sentinel != nil && inst.Spec.Sentinel.Access.ServiceType == corev1.ServiceTypeNodePort {
+		seq, _ := corehelper.ParsePorts(inst.Spec.Sentinel.Access.Ports)
+		add(seq)
+	}
+	return ports
+}
+
+// validateNodePortConflicts rejects a Valkey whose requested NodePort(s) are already allocated by a
+// different instance's Service. NodePorts are cluster-scoped, so without this the conflicting
+// instance silently fails to reconcile (the API server rejects the duplicate NodePort Service)
+// instead of surfacing a clear admission error. Services belonging to this same instance (same
+// namespace + instance-name label) are excluded so updating an existing NodePort instance is not
+// rejected by its own Services.
+func (v *ValkeyCustomValidator) validateNodePortConflicts(ctx context.Context, inst *rdsv1alpha1.Valkey) error {
+	// apiReader is wired in SetupValkeyWebhookWithManager and is always non-nil in a running
+	// manager; it is only nil in unit tests exercising unrelated validations, where the
+	// cross-instance NodePort check is not under test.
+	if v.apiReader == nil {
+		return nil
+	}
+	requested := collectRequestedNodePorts(inst)
+	if len(requested) == 0 {
+		return nil
+	}
+	var svcs corev1.ServiceList
+	if err := v.apiReader.List(ctx, &svcs); err != nil {
+		return fmt.Errorf("failed to list services for nodeport conflict check: %w", err)
+	}
+	for i := range svcs.Items {
+		svc := &svcs.Items[i]
+		if svc.Spec.Type != corev1.ServiceTypeNodePort {
+			continue
+		}
+		if svc.Namespace == inst.Namespace && svc.Labels[builder.InstanceNameLabelKey] == inst.Name {
+			continue
+		}
+		for _, p := range svc.Spec.Ports {
+			if p.NodePort == 0 {
+				continue
+			}
+			if _, ok := requested[p.NodePort]; ok {
+				return fmt.Errorf("nodePort %d is already allocated by service %s/%s; choose a different spec.access.ports value",
+					p.NodePort, svc.Namespace, svc.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // ValidateUpdate implements admission.Validator so a webhook will be registered for the type inst.

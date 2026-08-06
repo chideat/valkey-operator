@@ -23,7 +23,7 @@ spec:
     - jsonPath: .spec.username
       name: username
       type: string
-    - jsonPath: .status.Phase
+    - jsonPath: .status.phase
       name: phase
       type: string
     - description: Time since creation
@@ -92,13 +92,23 @@ spec:
             description: UserStatus defines the observed state of User
             properties:
               Phase:
-                description: Phase
+                description: |-
+                  OldPhase mirrors Phase under the legacy capital-"Phase" JSON key. Earlier operator
+                  versions stored the phase as `.status.Phase` (non-conventional capitalization), which is
+                  invisible to clients/tooling reading the conventional `.status.phase`. The canonical field
+                  is now `phase`; OldPhase is kept and written in lockstep so resources and readers built
+                  against the old key keep working. New clients should read `phase`.
                 type: string
               aclRules:
                 description: AclRules acl rules of valkey
                 type: string
               message:
                 description: Message
+                type: string
+              phase:
+                description: |-
+                  Phase indicates the current state of the User resource, exposed under the
+                  conventional `.status.phase` key.
                 type: string
             type: object
         type: object

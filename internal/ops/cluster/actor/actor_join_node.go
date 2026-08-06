@@ -155,6 +155,13 @@ func (a *actorJoinNode) Do(ctx context.Context, val types.Instance) *actor.Actor
 				needRefresh = true
 			}
 		} else if len(shard.Nodes()) > 0 {
+			if cops.ShardHasMaster(shard) {
+				// the master owns its slots but its peers are unreachable (e.g.
+				// post-restart stale IPs). Keep waiting for the cluster to re-MEET
+				// instead of forcing a failover, which would split-brain a
+				// disconnected-but-intact cluster.
+				return actor.NewResult(cops.CommandRequeue)
+			}
 			// no node is master, no node can be used as new master
 			// all the node is slaves, do force failover to elect a new master
 			return actor.NewResult(cops.CommandEnsureSlots)
