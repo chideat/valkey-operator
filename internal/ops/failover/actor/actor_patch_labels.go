@@ -65,7 +65,7 @@ func (a *actorPatchLabels) Do(ctx context.Context, val types.Instance) *actor.Ac
 	masterNode, err := inst.Monitor().Master(ctx)
 	if err != nil {
 		logger.Error(err, "get master failed")
-		actor.RequeueWithError(err)
+		return actor.RequeueWithError(err)
 	}
 
 	pods, err := inst.RawNodes(ctx)

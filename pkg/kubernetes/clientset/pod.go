@@ -125,7 +125,7 @@ func (p *PodOption) UpdatePod(ctx context.Context, namespace string, pod *corev1
 		oldPod.Labels = lo.Assign(oldPod.Labels, pod.Labels)
 		oldPod.Annotations = lo.Assign(oldPod.Annotations, pod.Annotations)
 
-		return p.client.Update(ctx, pod)
+		return p.client.Update(ctx, oldPod)
 	})
 }
 

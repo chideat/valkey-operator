@@ -463,7 +463,7 @@ var _ = Describe("Valkey Webhook", func() {
 
 			By("Verifying validation error")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("spec.resources is specified"))
+			Expect(err.Error()).To(ContainSubstring("spec.resources is required"))
 		})
 
 		It("Should validate resources", func() {

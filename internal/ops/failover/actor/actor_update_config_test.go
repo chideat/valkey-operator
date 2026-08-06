@@ -18,17 +18,14 @@ package actor
 
 import (
 	"context"
-	"crypto/tls"
 	"testing"
 
-	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	ops "github.com/chideat/valkey-operator/internal/ops/failover"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset/mocks"
-	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
@@ -37,77 +34,22 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// mockFailoverInstance implements types.FailoverInstance for testing.
-// It embeds *v1alpha1.Failover for metav1.Object methods.
-type mockFailoverInstance struct {
-	*v1alpha1.Failover
-	nodeCount  int
-	restartErr error
-}
-
-// types.Object
-func (m *mockFailoverInstance) GetObjectKind() schema.ObjectKind { return m.Failover.GetObjectKind() }
-func (m *mockFailoverInstance) DeepCopyObject() runtime.Object   { return m.Failover.DeepCopy() }
-func (m *mockFailoverInstance) NamespacedName() client.ObjectKey {
-	return client.ObjectKeyFromObject(m.Failover)
-}
-func (m *mockFailoverInstance) Version() version.ValkeyVersion     { return version.ValkeyVersion("7.2") }
-func (m *mockFailoverInstance) SafeVersion() version.ValkeyVersion { return version.ValkeyVersion("7.2") }
-func (m *mockFailoverInstance) IsReady() bool                  { return true }
-func (m *mockFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
-	return m.restartErr
-}
-func (m *mockFailoverInstance) Refresh(ctx context.Context) error { return nil }
-
-// types.Instance
-func (m *mockFailoverInstance) Arch() core.Arch                     { return core.ValkeyFailover }
-func (m *mockFailoverInstance) Issuer() *certmetav1.ObjectReference { return nil }
-func (m *mockFailoverInstance) Users() types.Users                  { return nil }
-func (m *mockFailoverInstance) TLSConfig() *tls.Config              { return nil }
-func (m *mockFailoverInstance) IsInService() bool                   { return true }
-func (m *mockFailoverInstance) IsACLUserExists() bool               { return false }
-func (m *mockFailoverInstance) IsACLAppliedToAll() bool             { return false }
-func (m *mockFailoverInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
-	return true, nil
-}
-func (m *mockFailoverInstance) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
-	return nil
-}
-func (m *mockFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {}
-func (m *mockFailoverInstance) Logger() logr.Logger                                          { return logr.Discard() }
-
-// types.FailoverInstance
-func (m *mockFailoverInstance) Definition() *v1alpha1.Failover { return m.Failover }
-func (m *mockFailoverInstance) Replication() types.Replication { return nil }
-func (m *mockFailoverInstance) Masters() []types.ValkeyNode    { return nil }
-func (m *mockFailoverInstance) Nodes() []types.ValkeyNode {
-	return make([]types.ValkeyNode, m.nodeCount)
-}
-func (m *mockFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) { return nil, nil }
-func (m *mockFailoverInstance) Monitor() types.FailoverMonitor                     { return nil }
-func (m *mockFailoverInstance) IsBindedSentinel() bool                             { return false }
-func (m *mockFailoverInstance) IsStandalone() bool                                 { return false }
-func (m *mockFailoverInstance) Selector() map[string]string {
-	return map[string]string{"app": "valkey"}
-}
-
-func newTestFailoverInstance(name, ns string, customConfigs map[string]string) *mockFailoverInstance {
-	return &mockFailoverInstance{
-		Failover: &v1alpha1.Failover{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-			Spec: v1alpha1.FailoverSpec{
-				CustomConfigs: customConfigs,
-			},
+func newTestFailoverInstance(name, ns string, customConfigs map[string]string) *testutil.FakeFailoverInstance {
+	rf := &v1alpha1.Failover{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: v1alpha1.FailoverSpec{
+			CustomConfigs: customConfigs,
 		},
 	}
+	return testutil.NewFakeFailoverInstance(rf).
+		WithVersion(version.ValkeyVersion("7.2")).
+		WithSelector(map[string]string{"app": "valkey"})
 }
 
 func TestActorUpdateConfig_ConfigMapNotFound(t *testing.T) {
@@ -164,7 +106,7 @@ func TestActorUpdateConfig_HotConfigChanged(t *testing.T) {
 	inst := newTestFailoverInstance("test-failover", "default", map[string]string{
 		"maxmemory": "200mb",
 	})
-	// nodeCount=0 → no node.Setup calls needed
+	// no nodes → no node.Setup calls needed
 
 	newCm, err := failoverbuilder.GenerateConfigMap(inst)
 	require.NoError(t, err)

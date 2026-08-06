@@ -32,6 +32,16 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
+// maxConfigMapDataSize is the max object data size allowed before persisting to
+// etcd, which limits configmap/secret object size to ~1Mi (with a 4Ki safety margin).
+const maxConfigMapDataSize = 1024*1024 - 4096
+
+// exceedsConfigMapSizeLimit reports whether dataSize bytes exceed the per-object
+// etcd size limit (~1Mi).
+func exceedsConfigMapSizeLimit(dataSize int) bool {
+	return dataSize >= maxConfigMapDataSize
+}
+
 type PersistentObject struct {
 	data map[string][]byte
 }
@@ -243,10 +253,9 @@ func (c *Controller) Run(ctx context.Context) error {
 			}
 
 			oldData := obj.Get(event.FilePath)
-			oldSize := len(oldData)
 
-			// etcd limiteds configmap/secret size limit to 1Mi
-			if oldSize-len(oldData)+len(event.Data) >= 1024*1024*1024-4096 {
+			// etcd limits configmap/secret object size to ~1Mi
+			if exceedsConfigMapSizeLimit(len(event.Data)) {
 				logger.Error(fmt.Errorf("data size has exceed 1Mi"), "filepath", event.FilePath)
 				continue
 			}

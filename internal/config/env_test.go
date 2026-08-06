@@ -125,6 +125,18 @@ func TestGetenv(t *testing.T) {
 			expected: "default1",
 		},
 		{
+			name:     "environment variable doesn't exist, first default empty falls back to second",
+			envVar:   "TEST_NONEXISTENT_VAR",
+			defaults: []string{"", "fallback"},
+			expected: "fallback",
+		},
+		{
+			name:     "environment variable doesn't exist, first two defaults empty falls back to third",
+			envVar:   "TEST_NONEXISTENT_VAR",
+			defaults: []string{"", "", "third"},
+			expected: "third",
+		},
+		{
 			name:     "environment variable doesn't exist, with empty default",
 			envVar:   "TEST_NONEXISTENT_VAR",
 			defaults: []string{""},

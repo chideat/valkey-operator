@@ -306,6 +306,29 @@ func TestBuildValkeyConfigs(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			// R5 regression: when Limits has no memory, the sizing must fall back to
+			// Requests.Memory(). The old `res == nil && res.IsZero()` guard never
+			// skipped the zero Limits.Memory(), so maxmemory was silently dropped.
+			name:          "Requests-only memory triggers maxmemory sizing",
+			clusterName:   "test-cluster",
+			namespace:     "default",
+			customConfigs: map[string]string{},
+			resources: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("500m"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
+				},
+			},
+			valkeyVer: version.ValkeyVersion("8.0"),
+			expectedConfig: []string{
+				"maxmemory ",
+				"repl-backlog-size ",
+			},
+			wantErr: false,
+		},
+		{
 			name:        "With appendonly enabled",
 			clusterName: "test-cluster",
 			namespace:   "default",
