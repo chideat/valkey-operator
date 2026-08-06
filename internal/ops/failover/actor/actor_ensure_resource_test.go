@@ -20,8 +20,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset/mocks"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
@@ -51,8 +53,6 @@ func TestActorEnsureResource_Pause_AllPodsDeleted(t *testing.T) {
 
 	// No sentinel configured → pauseSentinel returns nil immediately
 	// Nodes() returns 0 → actor returns Pause
-	inst.nodeCount = 0
-
 	a := NewEnsureResourceActor(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
 
@@ -88,7 +88,7 @@ func TestActorEnsureResource_Pause_PodsExist(t *testing.T) {
 
 	// No sentinel configured → pauseSentinel returns nil immediately
 	// Nodes() returns 1 → actor returns Requeue
-	inst.nodeCount = 1
+	inst.WithNodes(testutil.NewFakeValkeyNode("node-0", "10.0.0.1", 6379, core.NodeRoleReplica))
 
 	a := NewEnsureResourceActor(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
@@ -122,8 +122,6 @@ func TestActorEnsureResource_Pause_STSScaleDown(t *testing.T) {
 	clientMock.On("GetStatefulSet", ctx, "default", mock.AnythingOfType("string")).
 		Return(sts, nil)
 	clientMock.On("UpdateStatefulSet", ctx, "default", mock.Anything).Return(nil)
-
-	inst.nodeCount = 0
 
 	a := NewEnsureResourceActor(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)

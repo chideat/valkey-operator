@@ -62,7 +62,7 @@ func Getenv(name string, defaults ...string) string {
 
 	for _, v := range defaults {
 		if v != "" {
-			return defaults[0]
+			return v
 		}
 	}
 	return ""

@@ -250,6 +250,7 @@ func (s *ManualMonitor) Failover(ctx context.Context) error {
 				s.logger.Error(err, "replicaof failed", "node", node.GetName(), "master", masterCandidate.GetName())
 			}
 		}
+		return nil
 	}
 	return fmt.Errorf("No available node to failover")
 }

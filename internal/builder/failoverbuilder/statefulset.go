@@ -332,8 +332,8 @@ func buildPersistentClaims(rf *v1alpha1.Failover, labels map[string]string) (ret
 		},
 	})
 	if rf.Spec.Storage.RetainAfterDeleted {
-		for _, vc := range ret {
-			vc.OwnerReferences = util.BuildOwnerReferences(rf)
+		for i := range ret {
+			ret[i].OwnerReferences = util.BuildOwnerReferences(rf)
 		}
 	}
 	return
