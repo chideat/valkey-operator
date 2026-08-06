@@ -48,7 +48,16 @@ var (
 )
 
 var (
-	supportedVersions = []string{"7.2", "8.0", "8.1", "8.2", "9.0", "9.1"}
+	supportedVersions = []string{"7.2", "8.0", "8.1", "9.0", "9.1"}
+
+	// Access modes every version is exercised against. ClusterIP is the default
+	// an instance gets when access.serviceType is unset, NodePort the exposed
+	// path; the two reach the instance through different service wiring, so a
+	// regression in one is invisible from the other.
+	testedServiceTypes = []corev1.ServiceType{
+		corev1.ServiceTypeClusterIP,
+		corev1.ServiceTypeNodePort,
+	}
 )
 
 func init() {
@@ -233,50 +242,55 @@ var _ = Describe("controller", Ordered, func() {
 			inst *rdsv1alpha1.Valkey
 		)
 
-		// Generate test parameters for all supported versions with ClusterIP service type
+		// Generate test parameters for all supported versions against each access mode
 		testParameters := []TestParameter{}
 		for _, version := range supportedVersions {
-			testParameters = append(testParameters, TestParameter{
-				Version:     version,
-				ServiceType: corev1.ServiceTypeNodePort,
-			})
+			for _, serviceType := range testedServiceTypes {
+				testParameters = append(testParameters, TestParameter{
+					Version:     version,
+					ServiceType: serviceType,
+				})
+			}
 		}
 
 		for _, param := range testParameters {
-			for _, cases := range clusterTestCases {
-				Context(cases.When, func() {
-					if cases.BeforeEach != nil {
-						BeforeEach(func() {
-							inst = cases.BeforeEach(param.Version, param.ServiceType)
-						})
-					}
-					for _, spec := range cases.Specs {
-						if spec.Skip {
-							continue
+			Context(fmt.Sprintf("version %s access %s", param.Version, param.ServiceType),
+				Label("v"+param.Version, string(param.ServiceType)), func() {
+				for _, cases := range clusterTestCases {
+					Context(cases.When, func() {
+						if cases.BeforeEach != nil {
+							BeforeEach(func() {
+								inst = cases.BeforeEach(param.Version, param.ServiceType)
+							})
 						}
-						opts := []any{
-							func(ctx context.Context) {
-								spec.Func(ctx, inst)
-							},
+						for _, spec := range cases.Specs {
+							if spec.Skip {
+								continue
+							}
+							opts := []any{
+								func(ctx context.Context) {
+									spec.Func(ctx, inst)
+								},
+							}
+							if len(spec.Labels) > 0 {
+								opts = append(opts, Label(spec.Labels...))
+							}
+							if spec.Timeout > 0 {
+								opts = append(opts, SpecTimeout(spec.Timeout))
+							} else {
+								opts = append(opts, SpecTimeout(time.Minute*30))
+							}
+							It(spec.Name, opts...)
 						}
-						if len(spec.Labels) > 0 {
-							opts = append(opts, Label(spec.Labels...))
-						}
-						if spec.Timeout > 0 {
-							opts = append(opts, SpecTimeout(spec.Timeout))
-						} else {
-							opts = append(opts, SpecTimeout(time.Minute*30))
-						}
-						It(spec.Name, opts...)
-					}
 
-					if cases.AfterEach != nil {
-						AfterEach(func() {
-							cases.AfterEach(inst)
-						})
-					}
-				})
-			}
+						if cases.AfterEach != nil {
+							AfterEach(func() {
+								cases.AfterEach(inst)
+							})
+						}
+					})
+				}
+			})
 		}
 	})
 
@@ -291,50 +305,55 @@ var _ = Describe("controller", Ordered, func() {
 			inst *rdsv1alpha1.Valkey
 		)
 
-		// Generate test parameters for all supported versions with ClusterIP service type
+		// Generate test parameters for all supported versions against each access mode
 		testParameters := []TestParameter{}
 		for _, version := range supportedVersions {
-			testParameters = append(testParameters, TestParameter{
-				Version:     version,
-				ServiceType: corev1.ServiceTypeNodePort,
-			})
+			for _, serviceType := range testedServiceTypes {
+				testParameters = append(testParameters, TestParameter{
+					Version:     version,
+					ServiceType: serviceType,
+				})
+			}
 		}
 
 		for _, param := range testParameters {
-			for _, cases := range failoverTestCases {
-				Context(cases.When, func() {
-					if cases.BeforeEach != nil {
-						BeforeEach(func() {
-							inst = cases.BeforeEach(param.Version, param.ServiceType)
-						})
-					}
-					for _, spec := range cases.Specs {
-						if spec.Skip {
-							continue
+			Context(fmt.Sprintf("version %s access %s", param.Version, param.ServiceType),
+				Label("v"+param.Version, string(param.ServiceType)), func() {
+				for _, cases := range failoverTestCases {
+					Context(cases.When, func() {
+						if cases.BeforeEach != nil {
+							BeforeEach(func() {
+								inst = cases.BeforeEach(param.Version, param.ServiceType)
+							})
 						}
-						opts := []any{
-							func(ctx context.Context) {
-								spec.Func(ctx, inst)
-							},
+						for _, spec := range cases.Specs {
+							if spec.Skip {
+								continue
+							}
+							opts := []any{
+								func(ctx context.Context) {
+									spec.Func(ctx, inst)
+								},
+							}
+							if len(spec.Labels) > 0 {
+								opts = append(opts, Label(spec.Labels...))
+							}
+							if spec.Timeout > 0 {
+								opts = append(opts, SpecTimeout(spec.Timeout))
+							} else {
+								opts = append(opts, SpecTimeout(time.Minute*30))
+							}
+							It(spec.Name, opts...)
 						}
-						if len(spec.Labels) > 0 {
-							opts = append(opts, Label(spec.Labels...))
-						}
-						if spec.Timeout > 0 {
-							opts = append(opts, SpecTimeout(spec.Timeout))
-						} else {
-							opts = append(opts, SpecTimeout(time.Minute*30))
-						}
-						It(spec.Name, opts...)
-					}
 
-					if cases.AfterEach != nil {
-						AfterEach(func() {
-							cases.AfterEach(inst)
-						})
-					}
-				})
-			}
+						if cases.AfterEach != nil {
+							AfterEach(func() {
+								cases.AfterEach(inst)
+							})
+						}
+					})
+				}
+			})
 		}
 	})
 
@@ -349,50 +368,55 @@ var _ = Describe("controller", Ordered, func() {
 			inst *rdsv1alpha1.Valkey
 		)
 
-		// Generate test parameters for all supported versions with ClusterIP service type
+		// Generate test parameters for all supported versions against each access mode
 		testParameters := []TestParameter{}
 		for _, version := range supportedVersions {
-			testParameters = append(testParameters, TestParameter{
-				Version:     version,
-				ServiceType: corev1.ServiceTypeNodePort,
-			})
+			for _, serviceType := range testedServiceTypes {
+				testParameters = append(testParameters, TestParameter{
+					Version:     version,
+					ServiceType: serviceType,
+				})
+			}
 		}
 
 		for _, param := range testParameters {
-			for _, cases := range replicationTestCases {
-				Context(cases.When, func() {
-					if cases.BeforeEach != nil {
-						BeforeEach(func() {
-							inst = cases.BeforeEach(param.Version, param.ServiceType)
-						})
-					}
-					for _, spec := range cases.Specs {
-						if spec.Skip {
-							continue
+			Context(fmt.Sprintf("version %s access %s", param.Version, param.ServiceType),
+				Label("v"+param.Version, string(param.ServiceType)), func() {
+				for _, cases := range replicationTestCases {
+					Context(cases.When, func() {
+						if cases.BeforeEach != nil {
+							BeforeEach(func() {
+								inst = cases.BeforeEach(param.Version, param.ServiceType)
+							})
 						}
-						opts := []any{
-							func(ctx context.Context) {
-								spec.Func(ctx, inst)
-							},
+						for _, spec := range cases.Specs {
+							if spec.Skip {
+								continue
+							}
+							opts := []any{
+								func(ctx context.Context) {
+									spec.Func(ctx, inst)
+								},
+							}
+							if len(spec.Labels) > 0 {
+								opts = append(opts, Label(spec.Labels...))
+							}
+							if spec.Timeout > 0 {
+								opts = append(opts, SpecTimeout(spec.Timeout))
+							} else {
+								opts = append(opts, SpecTimeout(time.Minute*30))
+							}
+							It(spec.Name, opts...)
 						}
-						if len(spec.Labels) > 0 {
-							opts = append(opts, Label(spec.Labels...))
-						}
-						if spec.Timeout > 0 {
-							opts = append(opts, SpecTimeout(spec.Timeout))
-						} else {
-							opts = append(opts, SpecTimeout(time.Minute*30))
-						}
-						It(spec.Name, opts...)
-					}
 
-					if cases.AfterEach != nil {
-						AfterEach(func() {
-							cases.AfterEach(inst)
-						})
-					}
-				})
-			}
+						if cases.AfterEach != nil {
+							AfterEach(func() {
+								cases.AfterEach(inst)
+							})
+						}
+					})
+				}
+			})
 		}
 	})
 })

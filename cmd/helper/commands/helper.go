@@ -157,7 +157,16 @@ func NewOwnerReference(ctx context.Context, client *kubernetes.Clientset, namesp
 	if sts, err := client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{}); err != nil {
 		return nil, err
 	} else {
-		return sts.OwnerReferences, nil
+		refs := make([]metav1.OwnerReference, 0, len(sts.OwnerReferences))
+		for _, ref := range sts.OwnerReferences {
+			// blockOwnerDeletion requires update permission on the owner's
+			// finalizers subresource when the OwnerReferencesPermissionEnforcement
+			// admission plugin is enabled, which the instance ServiceAccount does
+			// not have; background GC works without it.
+			ref.BlockOwnerDeletion = nil
+			refs = append(refs, ref)
+		}
+		return refs, nil
 	}
 }
 

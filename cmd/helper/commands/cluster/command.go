@@ -151,11 +151,6 @@ func NewCommand(ctx context.Context) *cli.Command {
 						Usage: "Configmap name prefix",
 						Value: "sync-",
 					},
-					&cli.StringFlag{
-						Name:    "shard-id",
-						Usage:   "Shard ID for cluster shard",
-						EnvVars: []string{"SHARD_ID"},
-					},
 				},
 				Action: func(c *cli.Context) error {
 					logger := commands.NewLogger(c).WithName("Heal")

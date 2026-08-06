@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -31,6 +32,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	"github.com/chideat/valkey-operator/pkg/types"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -158,8 +160,40 @@ func (a *actorHealPod) Do(ctx context.Context, val types.Instance) *actor.ActorR
 		}
 	}
 
-	if fullfilled, _ := cluster.IsResourceFullfilled(ctx); !fullfilled {
-		return actor.NewResult(cops.CommandEnsureResource)
+	// A Pending pod on a stale StatefulSet revision may never be rolled: the RollingUpdate
+	// strategy advances in reverse-ordinal order and waits for each pod to be Running+Ready
+	// before rolling the next, so a wedged upper-ordinal Pending pod can stall the roll of the
+	// rest. After a spec change (e.g. a resource downscale of an unschedulable instance) the
+	// desired resources reach the StatefulSet template but never reach such a pod. Delete
+	// Pending pods that are on a stale StatefulSet revision so the StatefulSet recreates them
+	// from the updated template; it may recreate on the current (old) revision once, so this
+	// converges over reconciles.
+	for i := range pods {
+		pod := &pods[i]
+		if pod.Status.Phase != corev1.PodPending || pod.GetDeletionTimestamp() != nil {
+			continue
+		}
+		idx := strings.LastIndex(pod.Name, "-")
+		if idx <= 0 {
+			continue
+		}
+		sts, err := a.client.GetStatefulSet(ctx, cluster.GetNamespace(), pod.Name[:idx])
+		if err != nil {
+			continue
+		}
+		if rev := sts.Status.UpdateRevision; rev != "" && pod.Labels[appsv1.StatefulSetRevisionLabel] != rev {
+			if err := a.client.DeletePod(ctx, cluster.GetNamespace(), pod.Name); err != nil {
+				logger.Error(err, "delete stale pending pod failed", "pod", pod.Name)
+				return actor.RequeueWithError(err)
+			}
+			cluster.SendEventf(corev1.EventTypeWarning, config.EventCleanResource,
+				"recreate stale Pending pod %s to apply updated spec", pod.Name)
+			return actor.Requeue()
+		}
 	}
-	return nil
+
+	// Always ensure resources so a pending spec change (resources/image) reaches the
+	// StatefulSet template even while pods are Pending — IsResourceFullfilled is existence-only,
+	// so the heal loop would otherwise never run EnsureResource. EnsureResource is idempotent.
+	return actor.NewResult(cops.CommandEnsureResource)
 }

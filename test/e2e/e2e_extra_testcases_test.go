@@ -346,16 +346,16 @@ func init() {
 			BeforeEach: newClusterExtraInstance,
 			Specs:      clusterExtraSpecs,
 		},
-		// Version upgrade: 8.1 → 8.2
+		// Version upgrade: 8.1 → 9.0
 		TestData{
-			When: "version upgrade 8.1 to 8.2",
+			When: "version upgrade 8.1 to 9.0",
 			BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 				if version != "8.1" {
 					return nil
 				}
 				inst := &rdsv1alpha1.Valkey{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "cluster-upgrade-81-82",
+						Name:      "cluster-upgrade-81-90",
 						Namespace: testNamespace,
 					},
 					Spec: rdsv1alpha1.ValkeySpec{
@@ -394,8 +394,8 @@ func init() {
 					Name:   "deploy at 8.1 for upgrade test",
 					Labels: []string{"cluster", "upgrade"},
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.1 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.0") {
+							Skip("upgrade test only runs for version 8.1 when 9.0 is available")
 						}
 						Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 						time.Sleep(time.Second * 30)
@@ -404,46 +404,47 @@ func init() {
 					},
 				},
 				{
-					Name:    "upgrade from 8.1 to 8.2 completes rolling update",
+					Name:    "upgrade from 8.1 to 9.0 completes rolling update",
 					Labels:  []string{"cluster", "upgrade"},
 					Timeout: 45 * time.Minute,
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.1 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.0") {
+							Skip("upgrade test only runs for version 8.1 when 9.0 is available")
 						}
-						patchInstanceVersion(ctx, inst, "8.2", 45*time.Minute)
+						patchInstanceVersion(ctx, inst, "9.0", 45*time.Minute)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, "", "latency-tracking", "yes")
 						checkInstanceRead(ctx, inst, valkeyDefaultUsername, "")
 						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, "")
 					},
 				},
 				{
-					Name:   "delete upgrade 8.1→8.2 instance",
+					Name:   "delete upgrade 8.1→9.0 instance",
 					Labels: []string{"cluster", "upgrade", "delete"},
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.1 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.0") {
+							Skip("upgrade test only runs for version 8.1 when 9.0 is available")
 						}
 						deleteInstance(ctx, inst)
 					},
 				},
 			},
 		},
-		// Version upgrade: 8.2 → 9.0
+		// Version upgrade: 9.0 → 9.1
 		TestData{
-			When: "version upgrade 8.2 to 9.0",
+			When: "version upgrade 9.0 to 9.1",
 			BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
-				if version != "8.2" {
+				if version != "9.0" {
 					return nil
 				}
 				inst := &rdsv1alpha1.Valkey{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "cluster-upgrade-82-90",
+						Name:      "cluster-upgrade-90-91",
 						Namespace: testNamespace,
 					},
 					Spec: rdsv1alpha1.ValkeySpec{
 						Arch:    core.ValkeyCluster,
-						Version: "8.2",
+						Version: "9.0",
 						Replicas: &rdsv1alpha1.ValkeyReplicas{
 							Shards:          3,
 							ReplicasOfShard: 2,
@@ -474,11 +475,11 @@ func init() {
 			},
 			Specs: []Spec{
 				{
-					Name:   "deploy at 8.2 for upgrade test",
+					Name:   "deploy at 9.0 for upgrade test",
 					Labels: []string{"cluster", "upgrade"},
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.2 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.1") {
+							Skip("upgrade test only runs for version 9.0 when 9.1 is available")
 						}
 						Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 						time.Sleep(time.Second * 30)
@@ -487,14 +488,14 @@ func init() {
 					},
 				},
 				{
-					Name:    "upgrade from 8.2 to 9.0 completes rolling update",
+					Name:    "upgrade from 9.0 to 9.1 completes rolling update",
 					Labels:  []string{"cluster", "upgrade"},
 					Timeout: 45 * time.Minute,
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.2 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.1") {
+							Skip("upgrade test only runs for version 9.0 when 9.1 is available")
 						}
-						patchInstanceVersion(ctx, inst, "9.0", 45*time.Minute)
+						patchInstanceVersion(ctx, inst, "9.1", 45*time.Minute)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, "", "latency-tracking", "yes")
 						checkInstanceRead(ctx, inst, valkeyDefaultUsername, "")
@@ -502,11 +503,11 @@ func init() {
 					},
 				},
 				{
-					Name:   "delete upgrade 8.2→9.0 instance",
+					Name:   "delete upgrade 9.0→9.1 instance",
 					Labels: []string{"cluster", "upgrade", "delete"},
 					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-						if inst == nil || isVersionSkipped("8.2") {
-							Skip("upgrade test only runs for version 8.2 when 8.2 is available")
+						if inst == nil || isVersionSkipped("9.1") {
+							Skip("upgrade test only runs for version 9.0 when 9.1 is available")
 						}
 						deleteInstance(ctx, inst)
 					},

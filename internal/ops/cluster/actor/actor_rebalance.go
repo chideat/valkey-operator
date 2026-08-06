@@ -142,6 +142,15 @@ func (a *actorRebalance) Do(ctx context.Context, val types.Instance) *actor.Acto
 		return actor.NewResultWithError(cops.CommandRequeue, err)
 	}
 
+	// If the cluster is merely disconnected (peers unreachable after a restart) but every
+	// slot is still owned locally, do NOT rebalance — migrating/reassigning slots on
+	// mutually-unreachable nodes creates conflicts that prevent reconvergence. Wait for
+	// the cluster to re-MEET instead.
+	if cops.IsDisconnectedButIntact(cluster) {
+		logger.Info("cluster disconnected but slots intact; waiting for reconnection instead of rebalancing")
+		return actor.NewResult(cops.CommandRequeue)
+	}
+
 	if !cluster.IsReady() {
 		logger.Info("cluster is not ready")
 		return actor.NewResult(cops.CommandEnsureResource)

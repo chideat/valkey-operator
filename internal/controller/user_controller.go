@@ -113,7 +113,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 		if err := r.Handler.Delete(ctx, instance, logger); err != nil {
 			if instance.Status.Message != err.Error() {
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				instance.Status.Message = fmt.Sprintf("clean user failed with error %s", err.Error())
 				if err := r.Client.Status().Update(ctx, &instance); err != nil {
 					logger.Error(err, "update user status failed", "instance", req.NamespacedName)
@@ -188,7 +188,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
 			logger.Error(err, "get secret failed", "secret name", name)
 			instance.Status.Message = err.Error()
-			instance.Status.Phase = v1alpha1.UserFail
+			instance.Status.SetPhase(v1alpha1.UserFail)
 			if e := r.Client.Status().Update(ctx, &instance); e != nil {
 				logger.Error(e, "update User status to Fail failed")
 			}
@@ -196,7 +196,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
 			if instance.Spec.AccountType != v1alpha1.SystemAccount {
 				instance.Status.Message = err.Error()
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				if e := r.Client.Status().Update(ctx, &instance); e != nil {
 					logger.Error(e, "update User status to Fail failed")
 				}
@@ -207,20 +207,20 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if secret.GetLabels() == nil {
 			secret.SetLabels(map[string]string{})
 		}
+		// NOTE: the finalizer is deliberately not added here. It is added only
+		// once the user exists on the instance, see below.
 		if secret.Labels[builder.InstanceNameLabelKey] != vkName ||
-			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() ||
-			controllerutil.ContainsFinalizer(secret, UserFinalizer) {
+			len(secret.GetOwnerReferences()) == 0 || secret.OwnerReferences[0].UID != instance.GetUID() {
 
 			secret.Labels[builder.ManagedByLabelKey] = config.AppName
 			secret.Labels[builder.InstanceNameLabelKey] = vkName
 			secret.OwnerReferences = util.BuildOwnerReferences(&instance)
-			controllerutil.AddFinalizer(secret, UserFinalizer)
 			if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				return r.Update(ctx, secret)
 			}); err != nil {
 				logger.Error(err, "update secret owner failed", "secret", secret.Name)
 				instance.Status.Message = err.Error()
-				instance.Status.Phase = v1alpha1.UserFail
+				instance.Status.SetPhase(v1alpha1.UserFail)
 				return ctrl.Result{RequeueAfter: time.Second * 5}, r.Client.Status().Update(ctx, &instance)
 			}
 		}
@@ -233,7 +233,7 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			strings.Contains(err.Error(), "ERR unknown command `ACL`") {
 			logger.V(3).Info("instance is not ready", "instance", vkName)
 			instance.Status.Message = err.Error()
-			instance.Status.Phase = v1alpha1.UserPending
+			instance.Status.SetPhase(v1alpha1.UserPending)
 			if err := r.updateUserStatus(ctx, &instance); err != nil {
 				logger.Error(err, "update User status to Pending failed")
 			}
@@ -241,14 +241,14 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 
 		instance.Status.Message = err.Error()
-		instance.Status.Phase = v1alpha1.UserFail
+		instance.Status.SetPhase(v1alpha1.UserFail)
 		logger.Error(err, "user reconcile failed")
 		if err := r.updateUserStatus(ctx, &instance); err != nil {
 			logger.Error(err, "update User status to Fail failed")
 		}
 		return reconcile.Result{RequeueAfter: time.Second * 10}, nil
 	}
-	instance.Status.Phase = v1alpha1.UserReady
+	instance.Status.SetPhase(v1alpha1.UserReady)
 	instance.Status.Message = ""
 	logger.V(3).Info("user reconcile success")
 	if err := r.updateUserStatus(ctx, &instance); err != nil {
@@ -260,6 +260,34 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err := r.updateUser(ctx, &instance); err != nil {
 			logger.Error(err, "update finalizer user failed")
 			return ctrl.Result{}, err
+		}
+	}
+
+	// The secret finalizer holds the password until the user has been dropped from
+	// the instance, so it is only required once that user exists, and only after the
+	// User above carries its own finalizer. A secret finalizer that is set while the
+	// User has none is never reclaimed: the User is deleted without ever running the
+	// cleanup path above, stranding the secret and blocking namespace deletion.
+	for _, name := range instance.Spec.PasswordSecrets {
+		if name == "" {
+			continue
+		}
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: name}, secret); err != nil {
+				return err
+			}
+			if !controllerutil.AddFinalizer(secret, UserFinalizer) {
+				return nil
+			}
+			return r.Update(ctx, secret)
+		}); err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("secret not found, skip add finalizer", "name", name)
+				continue
+			}
+			logger.Error(err, "add finalizer to secret failed", "secret name", name)
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 	}
 

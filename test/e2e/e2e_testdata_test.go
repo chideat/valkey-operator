@@ -38,6 +38,20 @@ var (
 	valkeyDefaultSenPassword, _ = security.GeneratePassword(12)
 )
 
+// accessSuffix distinguishes instance names per access mode. Each version is
+// deployed once per mode, so without it the two runs would collide on the same
+// name in the same namespace.
+func accessSuffix(serviceType corev1.ServiceType) string {
+	switch serviceType {
+	case corev1.ServiceTypeNodePort:
+		return "np"
+	case corev1.ServiceTypeLoadBalancer:
+		return "lb"
+	default:
+		return "cip"
+	}
+}
+
 func generateValkeyUserInstanceName(inst *rdsv1alpha1.Valkey, username string) string {
 	switch inst.Spec.Arch {
 	case core.ValkeyCluster:
@@ -189,7 +203,58 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 	} else if inst.Spec.Arch == core.ValkeyCluster {
 		options.ShuffleInit = true
 	}
-	return valkey.NewClient(options)
+	c, err := valkey.NewClient(options)
+	if err != nil {
+		return nil, err
+	}
+	// A cluster client fetches its slot map when it is constructed. If the
+	// cluster is still settling — right after a config-propagation pod restart,
+	// or ACL-triggered reconnects during user create/delete — that snapshot can
+	// be missing slots. Every later command on an uncovered slot then fails with
+	// "the slot has no valkey node", and the client does not recover on its own:
+	// it treats the slot as legitimately empty and never re-fetches. So wait
+	// until the cluster reports full slot coverage (cluster_state:ok) and routing
+	// works across a spread of slots, rebuilding the client between attempts so
+	// it captures a complete topology before any caller uses it.
+	if inst.Spec.Arch == core.ValkeyCluster {
+		deadline := time.Now().Add(time.Minute * 3)
+		for {
+			probeErr := func() error {
+				// cluster_state flips to ok only once all 16384 slots are
+				// assigned, so it is a reliable "fully settled" signal. CLUSTER
+				// INFO is unkeyed and works even while the slot map is partial.
+				info, e := c.Do(ctx, c.B().ClusterInfo().Build()).ToString()
+				if e != nil {
+					return e
+				}
+				if !strings.Contains(info, "cluster_state:ok") {
+					return fmt.Errorf("cluster not fully settled: %s", strings.SplitN(info, "\r\n", 2)[0])
+				}
+				for i := range 16 {
+					key := fmt.Sprintf("e2e-routable-probe-%d", i)
+					if e := c.Do(ctx, c.B().Get().Key(key).Build()).Error(); e != nil && !valkey.IsValkeyNil(e) {
+						return e
+					}
+				}
+				return nil
+			}()
+			if probeErr == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				c.Close()
+				return nil, probeErr
+			}
+			// Rebuild so the next attempt re-fetches the (now more complete) slot
+			// map; a stale client will not re-fetch a slot it believes is empty.
+			c.Close()
+			time.Sleep(time.Second)
+			if c, err = valkey.NewClient(options); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return c, nil
 }
 
 func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
@@ -216,15 +281,26 @@ func checkInstanceRead(ctx context.Context, inst *rdsv1alpha1.Valkey, username, 
 }
 
 func checkInstanceWrite(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password string) {
-	client, err := newValkeyClient(ctx, inst, username, password)
-	Expect(err).To(Succeed())
-	defer client.Close()
-
 	By("checking write valkey")
-	for i := range 1000 {
-		key := fmt.Sprintf("key-%d", i)
-		Expect(client.Do(ctx, client.B().Set().Key(key).Value(key).Build()).Error()).To(Succeed())
-	}
+	// Mirror checkInstanceRead: rebuild the client and retry the whole loop so a
+	// transient cluster-routing gap (e.g. "the slot has no valkey node" while an
+	// ACL change churns connections) does not fail the spec — the cluster is
+	// healthy and the write succeeds once the client's slot map settles.
+	Eventually(func() error {
+		client, err := newValkeyClient(ctx, inst, username, password)
+		if err != nil {
+			return fmt.Errorf("create client failed: %w", err)
+		}
+		defer client.Close()
+
+		for i := range 1000 {
+			key := fmt.Sprintf("key-%d", i)
+			if err := client.Do(ctx, client.B().Set().Key(key).Value(key).Build()).Error(); err != nil {
+				return fmt.Errorf("set %s failed: %w", key, err)
+			}
+		}
+		return nil
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 5).Should(Succeed())
 }
 
 type Spec struct {
@@ -247,7 +323,7 @@ var clusterTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("cluster-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("cluster-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{
@@ -458,7 +534,7 @@ var failoverTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("failover-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("failover-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{
@@ -670,7 +746,7 @@ var replicationTestCases = []TestData{
 		BeforeEach: func(version string, accessType corev1.ServiceType) *rdsv1alpha1.Valkey {
 			inst := &rdsv1alpha1.Valkey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("replica-valkey-%s", strings.ReplaceAll(version, ".", "-")),
+					Name:      fmt.Sprintf("replica-valkey-%s-%s", strings.ReplaceAll(version, ".", "-"), accessSuffix(accessType)),
 					Namespace: testNamespace,
 				},
 				Spec: rdsv1alpha1.ValkeySpec{

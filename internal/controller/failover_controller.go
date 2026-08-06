@@ -103,6 +103,7 @@ func (r *FailoverReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				return ctrl.Result{}, err
 			}
 		}
+		return ctrl.Result{}, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(&instance, builder.ResourceCleanFinalizer) {
