@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/chideat/valkey-operator/cmd/helper/commands"
 	"github.com/chideat/valkey-operator/cmd/helper/commands/cluster"
 	"github.com/chideat/valkey-operator/cmd/helper/commands/failover"
 	"github.com/chideat/valkey-operator/cmd/helper/commands/helper"
@@ -72,6 +73,10 @@ func NewApp(ctx context.Context, cmds ...*cli.Command) *cli.App {
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	if data, err := os.ReadFile(commands.InjectedPasswordPath); err != nil || len(data) == 0 {
+		log.Printf("WARNING: default Valkey user is unauthenticated (nopass +@all); no password for the default user was found (configure spec.users to set one)")
+	}
 
 	app := NewApp(
 		ctx,
