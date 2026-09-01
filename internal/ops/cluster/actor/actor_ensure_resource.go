@@ -207,7 +207,9 @@ func (a *actorEnsureResource) ensureConfigMap(ctx context.Context, cluster types
 			return actor.RequeueWithError(err)
 		}
 	} else if !reflect.DeepEqual(oldCm.Data, cm.Data) {
-		if err := a.client.UpdateConfigMap(ctx, cluster.GetNamespace(), cm); err != nil {
+		// cm is built from the CR, so it carries no ResourceVersion; CreateOrUpdate adopts
+		// the stored one, which is the replace this call intends.
+		if err := a.client.CreateOrUpdateConfigMap(ctx, cluster.GetNamespace(), cm); err != nil {
 			return actor.RequeueWithError(err)
 		}
 	}

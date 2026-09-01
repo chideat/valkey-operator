@@ -19,13 +19,11 @@ package clientset
 import (
 	"context"
 	"reflect"
-	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -91,18 +89,24 @@ func (p *ConfigMapOption) CreateConfigMap(ctx context.Context, namespace string,
 }
 
 // UpdateConfigMap implement the  ConfigMap.Interface
+//
+// The ResourceVersion carried by configMap is honoured as an optimistic-concurrency
+// precondition: a caller passing an object it read asserts it has seen that version, so a
+// write that lands in between is reported as a conflict instead of being silently
+// discarded. Callers that build a complete desired object from scratch have no version to
+// assert and must go through CreateOrUpdateConfigMap, which adopts the stored one.
+//
+// NOTE: do not reintroduce a Get-then-stamp of the stored ResourceVersion here. It makes
+// every update unconditional, so a stale snapshot overwrites newer state and no conflict is
+// ever raised — that is what let a deleted User reappear in the ACL ConfigMap.
 func (p *ConfigMapOption) UpdateConfigMap(ctx context.Context, namespace string, configMap *corev1.ConfigMap) error {
-	return retry.RetryOnConflict(wait.Backoff{
-		Steps:    10,
-		Duration: 10 * time.Millisecond,
-		Factor:   1.0,
-		Jitter:   0.1,
+	return retry.OnError(retry.DefaultRetry, func(err error) bool {
+		return errors.IsInternalError(err) ||
+			errors.IsServerTimeout(err) ||
+			errors.IsTimeout(err) ||
+			errors.IsUnexpectedServerError(err) ||
+			errors.IsServiceUnavailable(err)
 	}, func() error {
-		oldCm, err := p.GetConfigMap(ctx, namespace, configMap.Name)
-		if err != nil {
-			return err
-		}
-		configMap.ResourceVersion = oldCm.ResourceVersion
 		return p.client.Update(ctx, configMap)
 	})
 }
@@ -130,11 +134,13 @@ func (p *ConfigMapOption) CreateOrUpdateConfigMap(ctx context.Context, namespace
 		return err
 	}
 
-	// Already exists, need to Update.
-	// Set the correct resource version to ensure we are on the latest version. This way the only valid
-	// namespace is our spec(https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#concurrency-control-and-consistency),
-	// we will replace the current namespace state.
-	configMap.ResourceVersion = storedConfigMap.ResourceVersion
+	// Already exists, need to Update. Adopt the stored version only for an object the caller
+	// built from scratch — that is a request to replace the ConfigMap with the given content.
+	// An object the caller read keeps its own version, so a concurrent write is reported as a
+	// conflict rather than being overwritten.
+	if configMap.ResourceVersion == "" {
+		configMap.ResourceVersion = storedConfigMap.ResourceVersion
+	}
 	return p.UpdateConfigMap(ctx, namespace, configMap)
 }
 
@@ -160,12 +166,20 @@ func (p *ConfigMapOption) ListConfigMaps(ctx context.Context, namespace string) 
 	return cms, err
 }
 
+// UpdateIfConfigMapChanged writes newConfigmap when its Data differs from what is stored.
+//
+// Its callers hand over a freshly built object, so the version compared against is adopted
+// when the caller carries none — the write is the intended replacement of exactly the
+// content that was just found to differ.
 func (p *ConfigMapOption) UpdateIfConfigMapChanged(ctx context.Context, newConfigmap *corev1.ConfigMap) error {
 	oldConfigmap, err := p.GetConfigMap(ctx, newConfigmap.Namespace, newConfigmap.Name)
 	if err != nil {
 		return err
 	}
 	if !reflect.DeepEqual(newConfigmap.Data, oldConfigmap.Data) {
+		if newConfigmap.ResourceVersion == "" {
+			newConfigmap.ResourceVersion = oldConfigmap.ResourceVersion
+		}
 		return p.UpdateConfigMap(ctx, newConfigmap.Namespace, newConfigmap)
 	}
 	return nil

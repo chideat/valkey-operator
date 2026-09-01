@@ -18,8 +18,6 @@ package actor
 
 import (
 	"context"
-	"maps"
-	"reflect"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
@@ -84,8 +82,10 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	} else if oldCm != nil && oldCm.GetDeletionTimestamp() != nil {
 		logger.Info("configmap is being deleted, skip update", "target", name)
 		return actor.NewResult(ops.CommandRequeue)
-	} else {
-		// sync acl configmap
+	} else if oldCm == nil {
+		// Seed the acl configmap. Only when it is absent: rebuilding it from the snapshot
+		// loaded above would write every entry back, and the User controller may have
+		// removed or added one since — which is how a deleted user came back.
 		oldCm = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            name,
@@ -95,25 +95,21 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 			},
 			Data: users.Encode(true),
 		}
+		// create acl with old password
+		// create acl file, after restart, the password is updated
+		if err := a.client.CreateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
+			logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
+			return actor.NewResultWithError(ops.CommandRequeue, err)
+		}
 		isUpdated = true
-
-		// // create acl with old password
-		// // create acl file, after restart, the password is updated
-		// if err := a.client.CreateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
-		// 	logger.Error(err, "create acl configmap failed", "target", oldCm.Name)
-		// 	return actor.NewResultWithError(ops.CommandRequeue, err)
-		// }
-
-		// // wait for resource sync
-		// time.Sleep(time.Second * 1)
-		// if oldCm, err = a.client.GetConfigMap(ctx, inst.GetNamespace(), name); err != nil {
-		// 	logger.Error(err, "get configmap failed", "target", name)
-		// 	return actor.NewResultWithError(ops.CommandRequeue, err)
-		// }
 	}
 
 	logger.Info("update account", "namespace", inst.GetNamespace(), "name", inst.GetName(), "aclConfigMap", oldCm.Name, "opUser", opUser == nil)
 
+	// From here on users holds only the accounts this actor owns. The remaining entries
+	// belong to the User controller, and are left to the stored object rather than
+	// carried over from a snapshot several API round-trips old.
+	users = users[0:0]
 	if opUser == nil {
 		secretName := aclbuilder.GenerateACLOperatorSecretName(inst.Arch(), inst.GetName())
 		opUser, err = acl.NewOperatorUser(ctx, a.client, secretName, inst.GetNamespace(), ownRefs)
@@ -133,13 +129,17 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 		inst.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created operator user to enable acl")
 	}
 
-	if !reflect.DeepEqual(users.Encode(true), oldCm.Data) {
-		isUpdated = true
+	// Compare per entry, not whole maps: the configmap legitimately holds accounts this
+	// actor does not own, and a difference there is not its to act on.
+	for username, data := range users.Encode(true) {
+		if oldCm.Data[username] != data {
+			isUpdated = true
+			break
+		}
 	}
 	if isUpdated {
-		maps.Copy(oldCm.Data, users.Encode(true))
-		if err := a.client.CreateOrUpdateConfigMap(ctx, inst.GetNamespace(), oldCm); err != nil {
-			logger.Error(err, "update acl configmap failed", "target", oldCm.Name)
+		if err := acl.ApplyUsersToConfigMap(ctx, a.client, inst.GetNamespace(), name, users); err != nil {
+			logger.Error(err, "update acl configmap failed", "target", name)
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 		return actor.Requeue()

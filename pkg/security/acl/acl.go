@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"github.com/chideat/valkey-operator/pkg/kubernetes"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
@@ -27,6 +28,7 @@ import (
 	"github.com/chideat/valkey-operator/pkg/types/user"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 )
 
 // LoadACLUsers load acls from configmap
@@ -59,6 +61,32 @@ func LoadACLUsers(ctx context.Context, clientset kubernetes.ClientSet, cm *corev
 		users = append(users, &u)
 	}
 	return users, nil
+}
+
+// ApplyUsersToConfigMap writes the given users into the ACL ConfigMap named by namespace/name.
+//
+// The object is re-read on every attempt and only the caller's own entries are set, so entries
+// owned by another writer — the custom accounts the User controller manages — are carried over
+// from the current object instead of from a snapshot taken before the surrounding work began.
+// Writing a whole stale snapshot back is what used to resurrect a user that had just been
+// deleted, and could equally drop one that had just been added.
+//
+// Pass only the accounts this caller owns. A fresh read protects entries this call does not
+// mention; it does nothing for an entry it does mention with a stale value.
+func ApplyUsersToConfigMap(ctx context.Context, clientset kubernetes.ClientSet, namespace, name string, users types.Users) error {
+	// Encode mutates the users it patches, so compute it once outside the retry.
+	data := users.Encode(true)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cm, err := clientset.GetConfigMap(ctx, namespace, name)
+		if err != nil {
+			return err
+		}
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+		maps.Copy(cm.Data, data)
+		return clientset.UpdateConfigMap(ctx, namespace, cm)
+	})
 }
 
 func NewOperatorUser(ctx context.Context, clientset kubernetes.ClientSet, secretName, namespace string, ownerRefs []metav1.OwnerReference) (*user.User, error) {

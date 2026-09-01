@@ -90,13 +90,13 @@ func TestActorUpdateConfig_ConfigUnchanged(t *testing.T) {
 	}
 
 	clientMock.On("GetConfigMap", ctx, "default", newCm.Name).Return(oldCm, nil)
-	clientMock.On("UpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
+	clientMock.On("CreateOrUpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
 
 	a := NewSentinelUpdateConfig(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
 
 	assert.Nil(t, result)
-	clientMock.AssertNumberOfCalls(t, "UpdateConfigMap", 1)
+	clientMock.AssertNumberOfCalls(t, "CreateOrUpdateConfigMap", 1)
 	clientMock.AssertExpectations(t)
 }
 
@@ -125,13 +125,13 @@ func TestActorUpdateConfig_HotConfigChanged(t *testing.T) {
 
 	clientMock.On("GetConfigMap", ctx, "default", newCm.Name).Return(oldCm, nil)
 	// First call: update CM with last-applied annotation; second call: final update
-	clientMock.On("UpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
+	clientMock.On("CreateOrUpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
 
 	a := NewSentinelUpdateConfig(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
 
 	assert.Nil(t, result)
-	clientMock.AssertNumberOfCalls(t, "UpdateConfigMap", 2)
+	clientMock.AssertNumberOfCalls(t, "CreateOrUpdateConfigMap", 2)
 	clientMock.AssertExpectations(t)
 }
 
@@ -159,13 +159,13 @@ func TestActorUpdateConfig_RestartRequiredChanged(t *testing.T) {
 	}
 
 	clientMock.On("GetConfigMap", ctx, "default", newCm.Name).Return(oldCm, nil)
-	clientMock.On("UpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
+	clientMock.On("CreateOrUpdateConfigMap", ctx, "default", mock.Anything).Return(nil)
 
 	a := NewSentinelUpdateConfig(clientMock, logr.Discard())
 	result := a.Do(ctx, inst)
 
 	// Restart called on inst (restartErr=nil), so result should be nil
 	assert.Nil(t, result)
-	clientMock.AssertNumberOfCalls(t, "UpdateConfigMap", 2)
+	clientMock.AssertNumberOfCalls(t, "CreateOrUpdateConfigMap", 2)
 	clientMock.AssertExpectations(t)
 }
