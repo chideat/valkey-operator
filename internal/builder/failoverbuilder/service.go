@@ -49,13 +49,7 @@ func GenerateReadWriteService(rf *v1alpha1.Failover) *corev1.Service {
 	labels := GenerateCommonLabels(rf.Name)
 
 	svcName := RWServiceName(rf.Name)
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            svcName,
@@ -67,7 +61,7 @@ func GenerateReadWriteService(rf *v1alpha1.Failover) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Type:           rf.Spec.Access.ServiceType,
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports: []corev1.ServicePort{
 				{
 					Port:       builder.DefaultValkeyServerPort,
@@ -86,13 +80,7 @@ func GenerateReadonlyService(rf *v1alpha1.Failover) *corev1.Service {
 	selectors[builder.RoleLabelKey] = string(core.NodeRoleReplica)
 	labels := GenerateCommonLabels(rf.Name, selectors)
 
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -105,7 +93,7 @@ func GenerateReadonlyService(rf *v1alpha1.Failover) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Type:           rf.Spec.Access.ServiceType,
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports: []corev1.ServicePort{
 				{
 					Port:       builder.DefaultValkeyServerPort,
@@ -132,13 +120,7 @@ func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
 		"prometheus.io/path":   "/metrics",
 	}
 	annotations := lo.Assign(defaultAnnotations, rf.Spec.Access.Annotations)
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,7 +132,7 @@ func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Type:           corev1.ServiceTypeClusterIP,
 			ClusterIP:      corev1.ClusterIPNone,
 			Selector:       selectors,
@@ -172,13 +154,7 @@ func GeneratePodService(rf *v1alpha1.Failover, index int) *corev1.Service {
 }
 
 func GeneratePodNodePortService(rf *v1alpha1.Failover, index int, nodePort int32) *corev1.Service {
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if rf.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 	selectors := GenerateSelectorLabels(rf.Name)
 	labels := lo.Assign(GenerateCommonLabels(rf.Name))
 	selectors[builder.PodNameLabelKey] = FailoverStatefulSetName(rf.Name) + "-" + strconv.Itoa(index)
@@ -194,7 +170,7 @@ func GeneratePodNodePortService(rf *v1alpha1.Failover, index int, nodePort int32
 		Spec: corev1.ServiceSpec{
 			Type:           rf.Spec.Access.ServiceType,
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports: []corev1.ServicePort{
 				{
 					Port:       builder.DefaultValkeyServerPort,

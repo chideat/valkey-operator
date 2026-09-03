@@ -44,13 +44,7 @@ func GenerateHeadlessService(cluster *v1alpha1.Cluster, index int) *corev1.Servi
 		labels    = GenerateClusterStatefulSetLabels(cluster.Name, index)
 	)
 
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(cluster.Spec.Access.IPFamilyPrefer)
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379}
 	gossipPort := corev1.ServicePort{Name: "gossip", Port: 16379}
 	svc := &corev1.Service{
@@ -62,7 +56,7 @@ func GenerateHeadlessService(cluster *v1alpha1.Cluster, index int) *corev1.Servi
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports:          []corev1.ServicePort{clientPort, gossipPort},
 			Selector:       selectors,
 			ClusterIP:      corev1.ClusterIPNone,
@@ -77,13 +71,7 @@ func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
 	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
 	labels[builder.ArchLabelKey] = string(core.ValkeyCluster)
 
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(cluster.Spec.Access.IPFamilyPrefer)
 
 	var ports []corev1.ServicePort
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379}
@@ -101,7 +89,7 @@ func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports:          ports,
 			Selector:       selectors,
 		},
@@ -114,13 +102,7 @@ func GenerateNodePortService(cluster *v1alpha1.Cluster, name string, labels map[
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: name,
 	}
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(cluster.Spec.Access.IPFamilyPrefer)
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:          labels,
@@ -130,7 +112,7 @@ func GenerateNodePortService(cluster *v1alpha1.Cluster, name string, labels map[
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports:          []corev1.ServicePort{clientPort},
 			Selector:       selectorLabels,
 			Type:           corev1.ServiceTypeNodePort,
@@ -147,13 +129,7 @@ func GeneratePodService(cluster *v1alpha1.Cluster, name string, typ corev1.Servi
 	}
 	labels := GenerateClusterStatefulSetLabels(cluster.Name, -1)
 
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if cluster.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(cluster.Spec.Access.IPFamilyPrefer)
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:          labels,
@@ -164,7 +140,7 @@ func GeneratePodService(cluster *v1alpha1.Cluster, name string, typ corev1.Servi
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Ports:          []corev1.ServicePort{clientPort, gossipPort},
 			Selector:       selectors,
 			Type:           typ,

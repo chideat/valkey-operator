@@ -43,6 +43,28 @@ func ResourcePrefix(arch core.Arch) string {
 	}
 }
 
+// IPFamilySpec renders the Service IP-family fields for an access preference.
+//
+// An unset preference yields (nil, nil): the API server then assigns the
+// cluster's own families, the only choice that is correct on IPv4-only,
+// IPv6-only and dual-stack alike. Pinning IPv4 for "unspecified" makes every
+// Service outright invalid on a single-stack IPv6 cluster —
+// `spec.ipFamilies[0]: Invalid value: "IPv4": not configured on this cluster` —
+// so nothing deploys at all.
+//
+// In normal operation the preference is resolved once by the Valkey defaulting
+// webhook (config.DefaultIPFamily) and every consumer sees the same family,
+// which matters because a Valkey cluster or sentinel registers exactly one
+// address per node. This unset path is the floor for when that did not happen:
+// ENABLE_WEBHOOKS=false, a resource created before the operator upgrade, or an
+// unreachable webhook.
+func IPFamilySpec(prefer corev1.IPFamily) ([]corev1.IPFamily, *corev1.IPFamilyPolicy) {
+	if prefer == "" {
+		return nil, nil
+	}
+	return []corev1.IPFamily{prefer}, ptr.To(corev1.IPFamilyPolicySingleStack)
+}
+
 func LocalhostAlias(family corev1.IPFamily) corev1.HostAlias {
 	localhost := "127.0.0.1"
 	if family == corev1.IPv6Protocol {

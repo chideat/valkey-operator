@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -529,6 +530,41 @@ func TestGetValkeyExporterImage(t *testing.T) {
 
 			result := GetValkeyExporterImage(obj)
 			assert.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+// The operator's own address is the only signal that says what this cluster
+// allocates, and getting it wrong is what made every Service invalid on an
+// IPv6-only cluster — so an unresolvable value must stay empty rather than
+// fall back to a family.
+func TestDefaultIPFamily(t *testing.T) {
+	tests := []struct {
+		name   string
+		podIPs string
+		want   corev1.IPFamily
+	}{
+		{name: "single-stack IPv4", podIPs: "10.244.1.4", want: corev1.IPv4Protocol},
+		{name: "single-stack IPv6", podIPs: "fd00:10:244::4", want: corev1.IPv6Protocol},
+		// status.podIPs is ordered, and its head is status.podIP by API
+		// contract: the cluster's primary family, whichever is listed second.
+		{name: "dual-stack IPv4 primary", podIPs: "10.244.1.4,fd00:10:244::4", want: corev1.IPv4Protocol},
+		{name: "dual-stack IPv6 primary", podIPs: "fd00:10:244::4,10.244.1.4", want: corev1.IPv6Protocol},
+		{name: "spaces are tolerated", podIPs: " 10.244.1.4 , fd00::4", want: corev1.IPv4Protocol},
+		// An IPv4-mapped address is an IPv4 address however it is spelled.
+		{name: "IPv4-mapped IPv6", podIPs: "::ffff:10.244.1.4", want: corev1.IPv4Protocol},
+		// Every unresolvable case must yield "", never a family. Callers read
+		// that as "unspecified" and let the API server choose.
+		{name: "unset", podIPs: "", want: ""},
+		{name: "not an address", podIPs: "not-an-ip", want: ""},
+		{name: "empty leading entry", podIPs: ",10.244.1.4", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("POD_IPS", tt.podIPs)
+			if got := DefaultIPFamily(); got != tt.want {
+				t.Errorf("DefaultIPFamily() = %q, want %q", got, tt.want)
+			}
 		})
 	}
 }
