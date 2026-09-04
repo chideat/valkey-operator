@@ -19,6 +19,7 @@ package valkey
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -52,5 +53,27 @@ func (a Address) Port() int {
 
 func (a Address) String() string {
 	host, port, _ := a.parse()
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// DialAddress returns addr in the form net.Dial accepts.
+//
+// Valkey prints IPv6 literals bare in CLUSTER NODES, nodes.conf and INFO
+// ("fd00::1:6379"), and Go's dialer rejects that form with "too many colons
+// in address" — it wants "[fd00::1]:6379". When addr parses as an IPv6
+// literal followed by a port the host is bracketed; hostnames, IPv4,
+// already-bracketed literals and anything unparseable are returned
+// unchanged, so a dial error still names exactly what the caller passed.
+// A bare IPv6 literal with no port is inherently ambiguous — its last group
+// reads as the port — and is not dialable either way.
+func DialAddress(addr string) string {
+	host, port, err := Address(addr).parse()
+	if err != nil {
+		return addr
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.Is6() {
+		return addr
+	}
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }

@@ -173,8 +173,13 @@ type valkeyClient struct {
 	pool *redis.Pool
 }
 
-// NewValkeyClient
+// NewValkeyClient returns a pooled client for addr.
+//
+// Callers hand in addresses straight out of CLUSTER NODES and INFO, where an
+// IPv6 literal is bare and undialable as-is; normalising once here covers
+// every dial site rather than trusting each caller to remember.
 func NewValkeyClient(addr string, authInfo AuthConfig) ValkeyClient {
+	addr = DialAddress(addr)
 	client := valkeyClient{authInfo: &authInfo, addr: addr}
 	client.pool = &redis.Pool{
 		DialContext: func(ctx context.Context) (redis.Conn, error) {
