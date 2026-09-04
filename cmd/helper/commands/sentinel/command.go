@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/chideat/valkey-operator/cmd/helper/commands"
@@ -183,10 +181,10 @@ func NewCommand(ctx context.Context) *cli.Command {
 					defer cancel()
 
 					var sentinelNodes []string
-					if val, err := url.Parse(sentinelUri); err != nil {
+					if nodes, err := commands.ParseMonitorURI(sentinelUri); err != nil {
 						return cli.Exit(fmt.Sprintf("parse sentinel uri failed, error=%s", err), 1)
 					} else {
-						sentinelNodes = strings.Split(val.Host, ",")
+						sentinelNodes = nodes
 					}
 
 					var valkeyCli valkey.ValkeyClient

@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -328,11 +327,11 @@ func Shutdown(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 			if val := c.String("monitor-uri"); val == "" {
 				logger.Error(err, "require monitor uri")
 				return errors.New("require monitor uri")
-			} else if u, err := url.Parse(val); err != nil {
+			} else if nodes, err := commands.ParseMonitorURI(val); err != nil {
 				logger.Error(err, "parse monitor uri failed")
 				return err
 			} else {
-				sentinelNodes = strings.Split(u.Host, ",")
+				sentinelNodes = nodes
 			}
 
 			logger.Info("do failover", "sentinelNodes", sentinelNodes, "serveAddresses", serveAddresses)

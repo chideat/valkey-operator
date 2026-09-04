@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"net/url"
 	"strings"
 	"time"
 
@@ -207,10 +206,10 @@ func Failover(ctx context.Context, c *cli.Context, client *kubernetes.Clientset,
 	}
 
 	var sentinelNodes []string
-	if val, err := url.Parse(sentinelUri); err != nil {
+	if nodes, err := commands.ParseMonitorURI(sentinelUri); err != nil {
 		return cli.Exit(fmt.Sprintf("parse sentinel uri failed, error=%s", err), 1)
 	} else {
-		sentinelNodes = strings.Split(val.Host, ",")
+		sentinelNodes = nodes
 	}
 
 	senAuthInfo, err := commands.LoadMonitorAuthInfo(c, ctx, client)
