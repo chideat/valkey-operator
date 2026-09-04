@@ -175,23 +175,34 @@ func RebalanceSlots(ctx context.Context, authInfo valkey.AuthInfo, address strin
 	}
 }
 
+// getLocalAddressByIPFamily picks, out of a server's bind list, the address a
+// peer dials it by: the first non-loopback entry of the preferred family, the
+// first non-loopback entry when no family is preferred, and def when nothing
+// qualifies. Both loopback literals are skipped, since the entrypoints bind
+// 127.0.0.1 or ::1 next to the pod address, and so are the names the loopback
+// used to be bound by. Anything that is not an IP literal never matches a
+// family.
 func getLocalAddressByIPFamily(family string, ips []string, def string) string {
-	nips := ips[0:0]
+	var candidates []string
 	for _, addr := range ips {
-		if addr == "127.0.0.1" || addr == "localhost" || addr == "local.inject" || addr == "ipv6-localhost" {
+		switch addr {
+		case "127.0.0.1", "::1", "localhost", "local.inject", "ipv6-localhost":
 			continue
 		}
-		nips = append(nips, addr)
+		candidates = append(candidates, addr)
 	}
-	if len(nips) == 0 {
+	if len(candidates) == 0 {
 		return def
 	}
 
 	if family == "" {
-		return nips[0]
+		return candidates[0]
 	}
-	for _, addr := range ips {
-		ip, _ := netip.ParseAddr(addr)
+	for _, addr := range candidates {
+		ip, err := netip.ParseAddr(addr)
+		if err != nil {
+			continue
+		}
 		if ip.Is4() && family == string(v1.IPv4Protocol) ||
 			ip.Is6() && family == string(v1.IPv6Protocol) {
 			return addr
