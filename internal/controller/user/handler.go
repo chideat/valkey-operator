@@ -26,6 +26,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
@@ -58,17 +59,22 @@ func (r *UserHandler) Delete(ctx context.Context, inst v1alpha1.User, logger log
 
 	vkName := inst.Spec.InstanceName
 	cmName := aclbuilder.GenerateACLConfigMapName(inst.Spec.Arch, vkName)
-	if configMap, err := r.k8sClient.GetConfigMap(ctx, inst.Namespace, cmName); err != nil {
-		if !errors.IsNotFound(err) {
-			logger.Error(err, "delete user from configmap failed")
+	// Read inside the retry: the update carries the version this read returned, so a write
+	// racing with it conflicts and the removal is replayed against the newer content instead
+	// of one of the two writers silently losing its change.
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		configMap, err := r.k8sClient.GetConfigMap(ctx, inst.Namespace, cmName)
+		if err != nil {
 			return err
 		}
-	} else if _, ok := configMap.Data[inst.Spec.Username]; ok {
+		if _, ok := configMap.Data[inst.Spec.Username]; !ok {
+			return nil
+		}
 		delete(configMap.Data, inst.Spec.Username)
-		if err := r.k8sClient.UpdateConfigMap(ctx, inst.Namespace, configMap); err != nil {
-			logger.Error(err, "delete user from configmap failed", "configmap", cmName)
-			return err
-		}
+		return r.k8sClient.UpdateConfigMap(ctx, inst.Namespace, configMap)
+	}); err != nil && !errors.IsNotFound(err) {
+		logger.Error(err, "delete user from configmap failed", "configmap", cmName)
+		return err
 	}
 
 	switch inst.Spec.Arch {
@@ -127,6 +133,24 @@ func (r *UserHandler) Delete(ctx context.Context, inst v1alpha1.User, logger log
 	return nil
 }
 
+// upsertUserInACLConfigMap writes one user's entry into the ACL ConfigMap, re-reading the
+// object on every attempt so that entries owned by other writers — the other Users and the
+// instance's own default/operator accounts — are carried over from the current object rather
+// than from a snapshot that may be several API round-trips old.
+func (r *UserHandler) upsertUserInACLConfigMap(ctx context.Context, namespace, name, username, entry string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		configMap, err := r.k8sClient.GetConfigMap(ctx, namespace, name)
+		if err != nil {
+			return err
+		}
+		if configMap.Data == nil {
+			configMap.Data = map[string]string{}
+		}
+		configMap.Data[username] = entry
+		return r.k8sClient.UpdateConfigMap(ctx, namespace, configMap)
+	})
+}
+
 func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Logger) error {
 	if inst.Annotations == nil {
 		inst.Annotations = map[string]string{}
@@ -183,12 +207,6 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			return err
 		}
 
-		configmap, err := r.k8sClient.GetConfigMap(ctx, inst.Namespace, cmName)
-		if err != nil {
-			return err
-		}
-		configmap.Data[inst.Spec.Username] = string(info)
-
 		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rcm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, aclRules)
@@ -202,8 +220,8 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			logger.V(3).Info("skip system account online update", "username", inst.Spec.Username)
 		}
 
-		if err := r.k8sClient.UpdateConfigMap(ctx, inst.Namespace, configmap); err != nil {
-			logger.Error(err, "update configmap failed", "configmap", configmap.Name)
+		if err := r.upsertUserInACLConfigMap(ctx, inst.Namespace, cmName, inst.Spec.Username, string(info)); err != nil {
+			logger.Error(err, "update configmap failed", "configmap", cmName)
 			return err
 		}
 	case core.ValkeyFailover, core.ValkeyReplica:
@@ -220,10 +238,6 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			logger.V(3).Info("instance is not ready", "instance", vkName)
 			return fmt.Errorf("instance is not ready")
 		}
-		configmap, err := r.k8sClient.GetConfigMap(ctx, inst.Namespace, cmName)
-		if err != nil {
-			return err
-		}
 		userObj, err := types.NewUserFromValkeyUser(inst.Spec.Username, inst.Spec.AclRules, userPassword)
 		if err != nil {
 			return err
@@ -232,8 +246,6 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		if err != nil {
 			return err
 		}
-		configmap.Data[inst.Spec.Username] = string(info)
-
 		if inst.Spec.AccountType != v1alpha1.SystemAccount {
 			for _, node := range rfm.Nodes() {
 				_, err := node.SetACLUser(ctx, inst.Spec.Username, passwords, inst.Spec.AclRules)
@@ -247,8 +259,8 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			logger.V(3).Info("skip system account online update", "username", inst.Spec.Username)
 		}
 
-		if err := r.k8sClient.UpdateConfigMap(ctx, inst.Namespace, configmap); err != nil {
-			logger.Error(err, "update configmap failed", "configmap", configmap.Name)
+		if err := r.upsertUserInACLConfigMap(ctx, inst.Namespace, cmName, inst.Spec.Username, string(info)); err != nil {
+			logger.Error(err, "update configmap failed", "configmap", cmName)
 			return err
 		}
 	}
