@@ -30,9 +30,20 @@ func Test_fixClusterNodesConf(t *testing.T) {
 		want []byte
 	}{
 		{
-			// A freshly seeded node carries a node-id but no shard-id; it must
-			// pass through untouched (the operator must not inject a shard-id).
-			name: "new init node without shard-id preserved",
+			// A freshly seeded node: node-id plus its own per-pod shard-id. Both
+			// must pass through untouched — shard-id is valkey's to re-home once
+			// the node replicates, but it has to be present or valkey never adds
+			// the node to server.cluster->shards.
+			name: "new init node with seeded shard-id preserved",
+			data: []byte(`267600f4b192a940a20759aa0ebeee22f41d69e6 :0@0,,shard-id=8fbc4e6a1d2f3b5c7e9a0d1f2b3c4d5e6f708192 myself,master - 0 0 0 connected
+vars currentEpoch 0 lastVoteEpoch 0`),
+			want: []byte(`267600f4b192a940a20759aa0ebeee22f41d69e6 :0@0,,shard-id=8fbc4e6a1d2f3b5c7e9a0d1f2b3c4d5e6f708192 myself,master - 0 0 0 connected
+vars currentEpoch 0 lastVoteEpoch 0`),
+		},
+		{
+			// Nodes seeded by an operator predating the shard-id seed still load;
+			// the sanitizer must not start injecting one on recovery either.
+			name: "legacy init node without shard-id preserved",
 			data: []byte(`267600f4b192a940a20759aa0ebeee22f41d69e6 :0@0 myself,master - 0 0 0 connected
 vars currentEpoch 0 lastVoteEpoch 0`),
 			want: []byte(`267600f4b192a940a20759aa0ebeee22f41d69e6 :0@0 myself,master - 0 0 0 connected
@@ -97,23 +108,72 @@ vars currentEpoch 7 lastVoteEpoch 7`),
 func Test_generateValkeyCluterNodeRecord(t *testing.T) {
 	got := string(generateValkeyCluterNodeRecord("default", "drc-c77-0-0"))
 
-	// Regression guard for valkey-io/valkey#2811: the seeded record must NOT
-	// carry a shard-id (a pre-written shard-id makes an empty replica look like
-	// an empty primary to peers and permanently breaks failover on valkey 9.1).
-	if strings.Contains(got, "shard-id") {
-		t.Fatalf("seeded node record must not contain a shard-id, got:\n%s", got)
-	}
-	// It must still seed a deterministic node-id so the pod keeps a stable
-	// identity across restarts.
+	// It must seed a deterministic node-id so the pod keeps a stable identity
+	// across restarts.
 	if !strings.Contains(got, "myself,master") {
 		t.Fatalf("seeded node record must declare myself,master, got:\n%s", got)
 	}
-	nodeID := strings.Fields(got)[0]
+	fields := strings.Fields(got)
+	nodeID := fields[0]
 	if len(nodeID) != 40 {
 		t.Fatalf("expected a 40-char node-id, got %q", nodeID)
 	}
-	// Determinism: same namespace/pod -> same node-id.
+	// Determinism: same namespace/pod -> same record.
 	if again := string(generateValkeyCluterNodeRecord("default", "drc-c77-0-0")); again != got {
 		t.Fatalf("node record not deterministic:\n%s\n!=\n%s", got, again)
+	}
+
+	// The record must carry a shard-id. valkey adds a node to
+	// server.cluster->shards only from the "shard-id=" aux handler — the
+	// clusterLoadConfig fallback for a primary "without a persisted shard_id"
+	// never fires, because createClusterNode has already filled shard_id with
+	// random hex and auxShardIdPresent() only measures strlen of that. A seeded
+	// primary with no shard-id is therefore absent from its own CLUSTER SHARDS
+	// reply along with the slots it owns, and valkey-go (which reads CLUSTER
+	// SHARDS on servers >= 8) fails every key in that range with "the slot has
+	// no valkey node".
+	shardID := ""
+	for _, part := range strings.Split(fields[1], ",") {
+		if v, ok := strings.CutPrefix(part, "shard-id="); ok {
+			shardID = v
+		}
+	}
+	if shardID == "" {
+		t.Fatalf("seeded node record must carry a shard-id, got:\n%s", got)
+	}
+	// valkey's verifyClusterNodeId rejects anything that is not 40 hex chars,
+	// and a rejected aux field aborts nodes.conf loading entirely.
+	if len(shardID) != 40 {
+		t.Fatalf("expected a 40-char shard-id, got %q", shardID)
+	}
+	for _, r := range shardID {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			t.Fatalf("shard-id must be lowercase hex, got %q", shardID)
+		}
+	}
+	if shardID == nodeID {
+		t.Fatalf("shard-id must not duplicate the node-id, both %q", shardID)
+	}
+
+	// Regression guard for the valkey 9.1 failover breakage (valkey-io/valkey#2811):
+	// the pods of one shard must NOT start out sharing a shard-id. When they did,
+	// the replica's first post-REPLICATE announcement took valkey's same-shard
+	// stale-packet branch and was dropped forever, so peers kept seeing it as an
+	// empty primary and failover elections drew zero votes. Per-pod uniqueness
+	// keeps that announcement on the cross-shard-move path.
+	peer := string(generateValkeyCluterNodeRecord("default", "drc-c77-0-1"))
+	peerShardID := ""
+	for _, part := range strings.Split(strings.Fields(peer)[1], ",") {
+		if v, ok := strings.CutPrefix(part, "shard-id="); ok {
+			peerShardID = v
+		}
+	}
+	if peerShardID == shardID {
+		t.Fatalf("pods of the same shard must not share a seeded shard-id, both %q", shardID)
+	}
+
+	// The seeded line must survive the recovery sanitizer untouched.
+	if fixed := string(fixClusterNodesConf([]byte(got))); fixed != got {
+		t.Fatalf("fixClusterNodesConf altered the seeded record:\n%s\n!=\n%s", fixed, got)
 	}
 }
