@@ -64,7 +64,7 @@ func (m *mockSentinelInstance) Refresh(ctx context.Context) error { return nil }
 
 // types.Instance
 func (m *mockSentinelInstance) Arch() core.Arch                     { return core.ValkeySentinel }
-func (m *mockSentinelInstance) Issuer() *certmetav1.ObjectReference { return nil }
+func (m *mockSentinelInstance) Issuer() *certmetav1.IssuerReference { return nil }
 func (m *mockSentinelInstance) Users() types.Users                  { return nil }
 func (m *mockSentinelInstance) TLSConfig() *tls.Config              { return nil }
 func (m *mockSentinelInstance) IsInService() bool                   { return true }

@@ -110,12 +110,12 @@ func (s *Failover) Arch() core.Arch {
 	return core.ValkeyFailover
 }
 
-func (c *Failover) Issuer() *certmetav1.ObjectReference {
+func (c *Failover) Issuer() *certmetav1.IssuerReference {
 	if c == nil {
 		return nil
 	}
 	if c.Spec.Access.EnableTLS {
-		return &certmetav1.ObjectReference{
+		return &certmetav1.IssuerReference{
 			Name: c.Spec.Access.CertIssuer,
 			Kind: c.Spec.Access.CertIssuerType,
 		}

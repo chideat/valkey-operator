@@ -106,9 +106,9 @@ func (c *ValkeyCluster) Arch() core.Arch {
 	return core.ValkeyCluster
 }
 
-func (c *ValkeyCluster) Issuer() *certmetav1.ObjectReference {
+func (c *ValkeyCluster) Issuer() *certmetav1.IssuerReference {
 	if c.Spec.Access.EnableTLS {
-		return &certmetav1.ObjectReference{
+		return &certmetav1.IssuerReference{
 			Name: c.Spec.Access.CertIssuer,
 			Kind: c.Spec.Access.CertIssuerType,
 		}

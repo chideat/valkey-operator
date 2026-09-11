@@ -65,7 +65,7 @@ type Instance interface {
 	// node version is available (initial bootstrap), returns Version().
 	SafeVersion() version.ValkeyVersion
 	// Issuer custom cert issuer
-	Issuer() *certmetav1.ObjectReference
+	Issuer() *certmetav1.IssuerReference
 	Users() Users
 	TLSConfig() *tls.Config
 	IsInService() bool

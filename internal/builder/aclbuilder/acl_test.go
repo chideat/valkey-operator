@@ -40,7 +40,7 @@ import (
 type mockInstance struct {
 	metav1.ObjectMeta
 	runtime.Object
-	issuer    *certmetav1.ObjectReference
+	issuer    *certmetav1.IssuerReference
 	gvk       schema.GroupVersionKind
 	ownerRefs []metav1.OwnerReference
 }
@@ -97,7 +97,7 @@ func (m *mockInstance) Arch() core.Arch {
 	return core.ValkeyCluster
 }
 
-func (m *mockInstance) Issuer() *certmetav1.ObjectReference {
+func (m *mockInstance) Issuer() *certmetav1.IssuerReference {
 	return m.issuer
 }
 
@@ -147,7 +147,7 @@ func newMockInstance() *mockInstance {
 			Namespace: "test-namespace",
 			UID:       "test-uid",
 		},
-		issuer: &certmetav1.ObjectReference{
+		issuer: &certmetav1.IssuerReference{
 			Name:  "test-issuer",
 			Kind:  "ClusterIssuer",
 			Group: "cert-manager.io",

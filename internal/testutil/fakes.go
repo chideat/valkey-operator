@@ -178,7 +178,7 @@ func (m *FakeFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...
 }
 func (m *FakeFailoverInstance) Refresh(ctx context.Context) error   { return nil }
 func (m *FakeFailoverInstance) Arch() core.Arch                     { return core.ValkeyFailover }
-func (m *FakeFailoverInstance) Issuer() *certmetav1.ObjectReference { return nil }
+func (m *FakeFailoverInstance) Issuer() *certmetav1.IssuerReference { return nil }
 func (m *FakeFailoverInstance) Users() types.Users                  { return nil }
 func (m *FakeFailoverInstance) TLSConfig() *tls.Config              { return nil }
 func (m *FakeFailoverInstance) IsInService() bool                   { return true }
