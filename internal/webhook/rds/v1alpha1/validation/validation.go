@@ -107,7 +107,12 @@ func ValidateReplicationScalingResource(resReq *corev1.ResourceRequirements, dat
 	return
 }
 
-func ValidatePasswordSecret(namespace, secretName string, mgrClient client.Client, warns *admission.Warnings) error {
+// ValidatePasswordSecret checks the referenced password secret exists and its
+// password meets the policy. The reader should be UNCACHED (the manager's API
+// reader): admission races the informer cache when a client creates the
+// secret and the Valkey CR back to back — a cached read returns a false
+// NotFound and rejects a perfectly valid create.
+func ValidatePasswordSecret(namespace, secretName string, mgrClient client.Reader, warns *admission.Warnings) error {
 	if mgrClient == nil {
 		return nil
 	}

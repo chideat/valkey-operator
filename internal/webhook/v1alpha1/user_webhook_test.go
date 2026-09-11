@@ -185,6 +185,7 @@ var _ = Describe("User Webhook", func() {
 
 		validator = UserCustomValidator{
 			mgrClient: k8sClient,
+			apiReader: k8sClient,
 		}
 		defaulter = UserCustomDefaulter{
 			mgrClient: k8sClient,
