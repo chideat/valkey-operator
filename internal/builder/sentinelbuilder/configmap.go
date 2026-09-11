@@ -55,6 +55,13 @@ func GenerateSentinelConfigMap(inst types.SentinelInstance) (*corev1.ConfigMap, 
 	defaultConfig = lo.Assign(defaultConfig, innerValkeyConfig)
 
 	for k, v := range sen.Spec.CustomConfigs {
+		// user-supplied keys are the only untrusted input here, so the forbidden set is
+		// applied to them and not to the operator's own defaults below. Without this,
+		// a "requirepass" in CustomConfigs would render a plaintext password into the
+		// Sentinel ConfigMap — the cluster and failover renderers already filter it.
+		if builder.IsForbiddenValkeyConfig(k) {
+			continue
+		}
 		defaultConfig[strings.ToLower(k)] = strings.TrimSpace(v)
 	}
 	for k, v := range constConfig {
