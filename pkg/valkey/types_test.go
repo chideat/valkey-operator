@@ -157,3 +157,46 @@ func TestAddress_String(t *testing.T) {
 		})
 	}
 }
+
+func TestDialAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		addr string
+		want string
+	}{
+		{"bare IPv6 as CLUSTER NODES prints it", "fd00:10:244::a1:6379", "[fd00:10:244::a1]:6379"},
+		{"bare IPv6 loopback", "::1:6379", "[::1]:6379"},
+		{"bare IPv6 with zone", "fe80::1%eth0:6379", "[fe80::1%eth0]:6379"},
+		{"already bracketed", "[fd00:10:244::a1]:6379", "[fd00:10:244::a1]:6379"},
+		{"IPv4", "10.0.0.1:6379", "10.0.0.1:6379"},
+		{"hostname", "local.inject:6379", "local.inject:6379"},
+		{"service name", "rfr-x-readwrite.ns.svc:6379", "rfr-x-readwrite.ns.svc:6379"},
+		{"port only", ":6379", ":6379"},
+		{"IPv6 without a port", "fd00:10:244::a1", "fd00:10:244::a1"},
+		{"IPv6 without a port, digits last", "fd00::1", "fd00::1"},
+		{"port-less IPv6 whose last group is numeric reads as host:port", "2001:db8::1:2:3:4", "[2001:db8::1:2:3]:4"},
+		{"non-numeric port", "fd00::1:abc", "fd00::1:abc"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DialAddress(tt.addr); got != tt.want {
+				t.Errorf("DialAddress(%q) = %q, want %q", tt.addr, got, tt.want)
+			}
+		})
+	}
+}
+
+// The runner dials ClusterNode.Addr verbatim, so the constructor is where a
+// bare IPv6 literal has to become dialable.
+func TestNewValkeyClient_NormalisesDialAddress(t *testing.T) {
+	c := NewValkeyClient("fd00:10:244::a1:6379", AuthConfig{})
+	defer c.Close()
+	vc, ok := c.(*valkeyClient)
+	if !ok {
+		t.Fatalf("unexpected client type %T", c)
+	}
+	if want := "[fd00:10:244::a1]:6379"; vc.addr != want {
+		t.Fatalf("stored addr = %q, want %q", vc.addr, want)
+	}
+}
