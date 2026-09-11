@@ -48,17 +48,13 @@ For detailed installation and configuration instructions, see the [User Guide](.
 
 ## Supported Versions
 
-| Valkey Version | Kubernetes Versions | Status   |
-|----------------|---------------------|----------|
-| 7.2.x          | 1.31, 1.32, 1.33    | Stable   |
-| 8.0.x          | 1.31, 1.32, 1.33    | Stable   |
-| 8.1.x          | 1.31, 1.32, 1.33    | Stable   |
-| 9.0.x          | 1.33                | Stable   |
-| 9.1.x          | 1.33                | Preview  |
-
-> Valkey 9.1 is still an upstream release candidate. It has been validated
-> on K8s 1.33 and is exposed for evaluation, but is not recommended for
-> production.
+| Valkey Version | Kubernetes Versions    | Status  |
+|----------------|------------------------|---------|
+| 7.2.x          | 1.31, 1.32, 1.33, 1.34 | Stable  |
+| 8.0.x          | 1.31, 1.32, 1.33, 1.34 | Stable  |
+| 8.1.x          | 1.31, 1.32, 1.33, 1.34 | Stable  |
+| 9.0.x          | 1.33, 1.34             | Stable  |
+| 9.1.x          | 1.33, 1.34             | Stable  |
 
 ## Documentation
 

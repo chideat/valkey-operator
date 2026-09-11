@@ -131,7 +131,7 @@ func (m *MockClusterInstance) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (m *MockClusterInstance) Issuer() *certmetav1.ObjectReference {
+func (m *MockClusterInstance) Issuer() *certmetav1.IssuerReference {
 	return nil
 }
 
