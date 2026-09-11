@@ -13,7 +13,19 @@ echo "# Run: cluster heal"
 
 # Set up listening IP based on preference
 LISTEN="${POD_IP}"
-LOCALHOST="local.inject"
+# The loopback entry is bound as a literal, never as the local.inject alias the
+# clients in this pod resolve through /etc/hosts: valkey-server picks a bind
+# entry's address family by looking for a colon in it, so a hostname is always
+# looked up as IPv4 and the server aborts with "Name has no usable address" when
+# the alias behind it is ::1. The literal has to be the address the alias
+# resolves to, or the probes and hooks that dial local.inject reach a port
+# nothing listens on. builder.LocalhostAlias writes that alias from the same
+# field, so the two mappings must stay in step: IPv6 -> ::1, anything else, the
+# unset value included -> 127.0.0.1.
+LOCALHOST="127.0.0.1"
+if [ "${IP_FAMILY_PREFER}" = "IPv6" ]; then
+    LOCALHOST="::1"
+fi
 if echo "${POD_IPS}" | grep -q ','; then
     POD_IPS_LIST=$(echo "${POD_IPS}" | tr ',' ' ')
     for ip in $POD_IPS_LIST; do

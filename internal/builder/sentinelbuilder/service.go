@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 )
 
 func SentinelHeadlessServiceName(sentinelName string) string {
@@ -43,13 +42,7 @@ func GenerateSentinelHeadlessService(inst *v1alpha1.Sentinel) *corev1.Service {
 
 	selectors := GenerateSelectorLabels(inst.Name)
 	labels := GenerateCommonLabels(inst.Name)
-	ptype := corev1.IPFamilyPolicySingleStack
-	protocol := []corev1.IPFamily{}
-	if inst.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
+	protocol, ptype := builder.IPFamilySpec(inst.Spec.Access.IPFamilyPrefer)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,7 +54,7 @@ func GenerateSentinelHeadlessService(inst *v1alpha1.Sentinel) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: &ptype,
+			IPFamilyPolicy: ptype,
 			Type:           corev1.ServiceTypeClusterIP,
 			ClusterIP:      corev1.ClusterIPNone,
 			Selector:       selectors,
@@ -84,14 +77,9 @@ func GeneratePodService(sen *v1alpha1.Sentinel, index int) *corev1.Service {
 
 func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int32) *corev1.Service {
 	var (
-		name     = SentinelPodServiceName(sen.Name, index)
-		protocol = []corev1.IPFamily{}
+		name            = SentinelPodServiceName(sen.Name, index)
+		protocol, ptype = builder.IPFamilySpec(sen.Spec.Access.IPFamilyPrefer)
 	)
-	if sen.Spec.Access.IPFamilyPrefer == corev1.IPv6Protocol {
-		protocol = append(protocol, corev1.IPv6Protocol)
-	} else {
-		protocol = append(protocol, corev1.IPv4Protocol)
-	}
 	labels := GenerateCommonLabels(sen.Name)
 	selectors := map[string]string{
 		builder.PodNameLabelKey: name,
@@ -107,7 +95,7 @@ func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int3
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
-			IPFamilyPolicy: ptr.To(corev1.IPFamilyPolicySingleStack),
+			IPFamilyPolicy: ptype,
 			Type:           sen.Spec.Access.ServiceType,
 			Ports: []corev1.ServicePort{
 				{

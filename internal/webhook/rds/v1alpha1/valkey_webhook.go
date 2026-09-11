@@ -26,12 +26,14 @@ import (
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/webhook/rds/v1alpha1/helper"
 	"github.com/chideat/valkey-operator/internal/webhook/rds/v1alpha1/validation"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -67,6 +69,8 @@ var _ admission.Defaulter[*rdsv1alpha1.Valkey] = &ValkeyCustomDefaulter{}
 
 // Default implements admission.Defaulter so a webhook will be registered for the Kind inst.
 func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.Valkey) error {
+	defaultIPFamily(ctx, inst)
+
 	if inst.Annotations == nil {
 		inst.Annotations = make(map[string]string)
 	}
@@ -126,6 +130,7 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.V
 				inst.Spec.Sentinel.Replicas = 3
 			}
 			inst.Spec.Sentinel.Access.ServiceType = inst.Spec.Access.ServiceType
+			inst.Spec.Sentinel.Access.IPFamilyPrefer = inst.Spec.Access.IPFamilyPrefer
 
 			sentinel := inst.Spec.Sentinel
 			if sentinel.Resources.Limits.Cpu().IsZero() && sentinel.Resources.Limits.Memory().IsZero() {
@@ -375,4 +380,40 @@ func (v *ValkeyCustomValidator) ValidateUpdate(ctx context.Context, oldInst, new
 // ValidateDelete implements admission.Validator so a webhook will be registered for the type inst.
 func (v *ValkeyCustomValidator) ValidateDelete(ctx context.Context, inst *rdsv1alpha1.Valkey) (warns admission.Warnings, err error) {
 	return
+}
+
+// defaultIPFamily pins Access.IPFamilyPrefer to the family this cluster
+// allocates, so that every consumer of the instance agrees on one.
+//
+// That agreement is the point. A Valkey cluster registers exactly one address
+// per node on the cluster bus, and a sentinel one address per monitored node,
+// so the family reaching Service.spec.ipFamilies, the IP_FAMILY_PREFER env the
+// entrypoints select LISTEN with, and builder.LocalhostAlias must be the same
+// one. Left unset, each of those decides independently — they happen to agree
+// on most clusters, and when they do not the result is a split cluster bus
+// rather than an error.
+//
+// Create only, and only when the field is empty:
+//
+//   - an explicit preference is the user's, never overwritten;
+//   - on update the field feeds cluster-announce-ip, so writing it into a
+//     running instance would re-register every node, and it reaches the pod
+//     spec as an env var, so it would roll every pod to do it. Existing
+//     resources keep their empty value and are served by the unset path in
+//     builder.IPFamilySpec.
+//
+// A cluster whose family cannot be resolved (POD_IPS unset, as under
+// `make run`) is left unset for the same floor to handle.
+func defaultIPFamily(ctx context.Context, inst *rdsv1alpha1.Valkey) {
+	if inst.Spec.Access.IPFamilyPrefer != "" {
+		return
+	}
+	// A decode failure here means the request context is not an admission one,
+	// which no real webhook call is; treat it as "not a create" and leave the
+	// field alone rather than guessing.
+	req, err := admission.RequestFromContext(ctx)
+	if err != nil || req.Operation != admissionv1.Create {
+		return
+	}
+	inst.Spec.Access.IPFamilyPrefer = config.DefaultIPFamily()
 }

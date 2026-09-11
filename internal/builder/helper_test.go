@@ -535,3 +535,31 @@ func TestMergeRestartAnnotation(t *testing.T) {
 		})
 	}
 }
+
+// The unset case is the whole point: every Service the operator built pinned
+// ipFamilies to IPv4 whenever no preference was given, which an IPv6-only
+// cluster rejects outright ("not configured on this cluster"), so nothing
+// deployed at all.
+func TestIPFamilySpec(t *testing.T) {
+	t.Run("unset emits nothing so the API server decides", func(t *testing.T) {
+		families, policy := IPFamilySpec("")
+		if families != nil {
+			t.Errorf("IPFamilies = %v, want nil", families)
+		}
+		if policy != nil {
+			t.Errorf("IPFamilyPolicy = %v, want nil", *policy)
+		}
+	})
+
+	for _, family := range []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol} {
+		t.Run("explicit "+string(family)+" is pinned single-stack", func(t *testing.T) {
+			families, policy := IPFamilySpec(family)
+			if len(families) != 1 || families[0] != family {
+				t.Errorf("IPFamilies = %v, want [%s]", families, family)
+			}
+			if policy == nil || *policy != corev1.IPFamilyPolicySingleStack {
+				t.Errorf("IPFamilyPolicy = %v, want SingleStack", policy)
+			}
+		})
+	}
+}

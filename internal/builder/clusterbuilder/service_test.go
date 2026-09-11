@@ -504,3 +504,66 @@ func TestGeneratePodService(t *testing.T) {
 		})
 	}
 }
+
+// Every generator in this file must render three states, not two. The tables
+// above parameterize only IPv4 and IPv6 — the two the old conditional got
+// right — which is how an unset preference silently rendered as IPv4 and made
+// every Service invalid on a single-stack IPv6 cluster.
+func TestServiceIPFamilies(t *testing.T) {
+	newCluster := func(family corev1.IPFamily) *v1alpha1.Cluster {
+		return &v1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cluster",
+				Namespace: "default",
+				UID:       k8stypes.UID("test-cluster-uid"),
+			},
+			Spec: v1alpha1.ClusterSpec{
+				Access: core.InstanceAccess{IPFamilyPrefer: family},
+			},
+		}
+	}
+
+	generators := map[string]func(*v1alpha1.Cluster) *corev1.Service{
+		"GenerateHeadlessService": func(c *v1alpha1.Cluster) *corev1.Service {
+			return GenerateHeadlessService(c, 0)
+		},
+		"GenerateInstanceService": GenerateInstanceService,
+		"GenerateNodePortService": func(c *v1alpha1.Cluster) *corev1.Service {
+			return GenerateNodePortService(c, "test-nodeport", map[string]string{}, 30000)
+		},
+		"GeneratePodService": func(c *v1alpha1.Cluster) *corev1.Service {
+			return GeneratePodService(c, "test-pod-svc", corev1.ServiceTypeClusterIP, nil)
+		},
+	}
+	for name, generate := range generators {
+		t.Run(name, func(t *testing.T) {
+			assertIPFamilyStates(t, func(family corev1.IPFamily) *corev1.Service {
+				return generate(newCluster(family))
+			})
+		})
+	}
+}
+
+// assertIPFamilyStates checks the three-state contract shared by every service
+// builder: an explicit preference is pinned single-stack, and an unset one
+// leaves both fields nil so the API server assigns the cluster's own families.
+func assertIPFamilyStates(t *testing.T, generate func(corev1.IPFamily) *corev1.Service) {
+	t.Helper()
+
+	t.Run("unset defers to the cluster", func(t *testing.T) {
+		svc := generate("")
+		require.NotNil(t, svc)
+		assert.Nil(t, svc.Spec.IPFamilies, "an unset preference must not pin a family")
+		assert.Nil(t, svc.Spec.IPFamilyPolicy, "an unset preference must not pin a policy")
+	})
+
+	for _, family := range []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol} {
+		t.Run("explicit "+string(family), func(t *testing.T) {
+			svc := generate(family)
+			require.NotNil(t, svc)
+			assert.Equal(t, []corev1.IPFamily{family}, svc.Spec.IPFamilies)
+			require.NotNil(t, svc.Spec.IPFamilyPolicy)
+			assert.Equal(t, corev1.IPFamilyPolicySingleStack, *svc.Spec.IPFamilyPolicy)
+		})
+	}
+}

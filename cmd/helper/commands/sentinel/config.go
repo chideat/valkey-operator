@@ -277,6 +277,28 @@ func loadCachedData(ctx context.Context, client *kubernetes.Clientset, opts *Hea
 	return obj.Get(opts.TargetName), nil
 }
 
+// internalIPFromBind picks, out of a master's bind list, the address a sentinel
+// monitors it by when nothing was announced: the first entry of the preferred
+// family that is not a loopback. An entry that is not an IP literal is skipped
+// rather than parsed, so a bind list carrying a hostname (older entrypoints
+// bound the local.inject alias by name) cannot panic here. Nothing matches when
+// no family is preferred.
+func internalIPFromBind(bind string, ipFamily string) string {
+	for _, item := range strings.Fields(bind) {
+		if item == "127.0.0.1" || item == "::1" {
+			continue
+		}
+		addr, err := netip.ParseAddr(item)
+		if err != nil {
+			continue
+		}
+		if (ipFamily == "IPv6" && addr.Is6()) || (ipFamily == "IPv4" && addr.Is4()) {
+			return item
+		}
+	}
+	return ""
+}
+
 func refreshValkeyServerInfo(ctx context.Context, c *cli.Context, client *kubernetes.Clientset, server *MonitorServer, logger logr.Logger) (*MonitorServer, error) {
 	authInfo, err := commands.LoadMonitorAuthInfo(c, ctx, client)
 	if err != nil {
@@ -322,19 +344,9 @@ func refreshValkeyServerInfo(ctx context.Context, c *cli.Context, client *kubern
 			server.IP = config["replica-announce-ip"]
 		} else if config["replica-announce-port"] != "" {
 			server.Port = config["replica-announce-port"]
-		} else {
+		} else if ip := internalIPFromBind(config["bind"], ipFamily); ip != "" {
 			// internal ip and port
-			items := strings.Fields(config["bind"])
-			for _, item := range items {
-				if item == "127.0.0.1" || item == "::1" {
-					continue
-				}
-				addr := netip.MustParseAddr(item)
-				if (ipFamily == "IPv6" && addr.Is6()) || (ipFamily == "IPv4" && addr.Is4()) {
-					server.IP = item
-					break
-				}
-			}
+			server.IP = ip
 		}
 	} else if info.MasterLinkStatus == "up" {
 		server.IP = info.MasterHost
