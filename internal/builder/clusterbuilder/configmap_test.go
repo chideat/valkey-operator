@@ -500,3 +500,42 @@ func TestNewConfigMapForCR(t *testing.T) {
 		})
 	}
 }
+
+// The forbidden-directive filter looked up the raw key before lowercasing. Valkey parses
+// directive names case-insensitively, so "RequirePass" configures the same thing as
+// "requirepass" but missed the exact-spelling lookup and rendered a plaintext password
+// straight into the ConfigMap. The 8.0+ aliases primaryauth/primaryuser were absent from
+// the forbidden set entirely, so they bypassed it in any casing.
+func TestBuildValkeyConfigsDropsForbiddenCustomConfigs(t *testing.T) {
+	forbidden := map[string]string{
+		"RequirePass":       "s3cret-cased",
+		"requirepass":       "s3cret",
+		"primaryauth":       "s3cret-primary",
+		"primaryuser":       "admin",
+		"PrimaryAuth":       "s3cret-primary-cased",
+		"tls-key-file-pass": "s3cret-tls",
+		"MasterAuth":        "s3cret-master",
+	}
+
+	rendered, err := testBuildValkeyConfigs(t, "test-cluster", "default", forbidden,
+		corev1.ResourceRequirements{}, version.ValkeyVersion("8.0"))
+	assert.NoError(t, err)
+	assert.NotEmpty(t, rendered)
+
+	for key, val := range forbidden {
+		assert.NotContains(t, rendered, val,
+			"forbidden directive %q rendered its value into the cluster ConfigMap", key)
+		for _, line := range strings.Split(rendered, "\n") {
+			name, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+			assert.NotEqual(t, strings.ToLower(key), name,
+				"forbidden directive %q was rendered into the cluster ConfigMap", key)
+		}
+	}
+
+	// the filter must not swallow ordinary tunables alongside them
+	allowed, err := testBuildValkeyConfigs(t, "test-cluster", "default",
+		map[string]string{"maxmemory-policy": "noeviction"},
+		corev1.ResourceRequirements{}, version.ValkeyVersion("8.0"))
+	assert.NoError(t, err)
+	assert.Contains(t, allowed, "maxmemory-policy noeviction")
+}

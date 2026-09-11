@@ -111,7 +111,7 @@ func buildValkeyConfigs(cluster types.ClusterInstance) (string, error) {
 	}
 
 	for k, v := range configMap {
-		if policy := builder.ValkeyConfigRestartPolicy[k]; policy == builder.Forbid {
+		if builder.IsForbiddenValkeyConfig(k) {
 			continue
 		}
 

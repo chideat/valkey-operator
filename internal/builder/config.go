@@ -87,16 +87,23 @@ var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
 	"replicaof":        Forbid,
 	"gopher-enabled":   Forbid,
 	// "ignore-warnings":       Forbid,
-	"aclfile":               Forbid,
-	"requirepass":           Forbid,
-	"masterauth":            Forbid,
-	"masteruser":            Forbid,
-	"slave-announce-ip":     Forbid,
-	"replica-announce-ip":   Forbid,
-	"slave-announce-port":   Forbid,
-	"replica-announce-port": Forbid,
-	"cluster-enabled":       Forbid,
-	"cluster-config-file":   Forbid,
+	"aclfile":     Forbid,
+	"requirepass": Forbid,
+	// masterauth/masteruser are the 7.2 spellings; 8.0 renamed them to primaryauth/primaryuser
+	// and kept the old names as aliases. Both spellings must be forbidden, or a custom config
+	// could reintroduce a plaintext password through the alias the filter does not know about.
+	"masterauth":               Forbid,
+	"masteruser":               Forbid,
+	"primaryauth":              Forbid,
+	"primaryuser":              Forbid,
+	"tls-key-file-pass":        Forbid,
+	"tls-client-key-file-pass": Forbid,
+	"slave-announce-ip":        Forbid,
+	"replica-announce-ip":      Forbid,
+	"slave-announce-port":      Forbid,
+	"replica-announce-port":    Forbid,
+	"cluster-enabled":          Forbid,
+	"cluster-config-file":      Forbid,
 
 	// RequireRestart
 	"tcp-backlog":         RequireRestart,
@@ -106,6 +113,17 @@ var ValkeyConfigRestartPolicy = map[string]ValkeyConfigSettingRule{
 	"io-threads":          RequireRestart,
 	"io-threads-do-reads": RequireRestart,
 	"loadmodule":          RequireRestart,
+}
+
+// IsForbiddenValkeyConfig reports whether a config directive may never be rendered into a
+// config file from user-supplied input.
+//
+// The lookup is deliberately case- and space-insensitive. Valkey parses directive names
+// case-insensitively, so "RequirePass" and "requirepass" configure the same thing; matching
+// only the exact lowercase spelling would let a differently-cased key carry a plaintext
+// password straight into a ConfigMap.
+func IsForbiddenValkeyConfig(key string) bool {
+	return ValkeyConfigRestartPolicy[strings.ToLower(strings.TrimSpace(key))] == Forbid
 }
 
 type ValkeyConfigValues []string
@@ -136,7 +154,7 @@ func LoadValkeyConfig(data string) (ValkeyConfig, error) {
 		}
 		key := fields[0]
 		// filter unsupported config
-		if policy := ValkeyConfigRestartPolicy[key]; policy == Forbid {
+		if IsForbiddenValkeyConfig(key) {
 			continue
 		}
 		val := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(fields[1]), `"`), `"`)

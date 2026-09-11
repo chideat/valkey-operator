@@ -21,6 +21,44 @@ import (
 	"testing"
 )
 
+func TestIsForbiddenValkeyConfig(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"requirepass", true},
+		{"masterauth", true},
+		{"masteruser", true},
+		// the 8.0+ spellings — aliases of the above, so equally able to carry a password
+		{"primaryauth", true},
+		{"primaryuser", true},
+		{"tls-key-file-pass", true},
+		{"tls-client-key-file-pass", true},
+		{"aclfile", true},
+
+		// Valkey matches directive names case-insensitively, so a differently-cased key
+		// must not slip past the filter and reach a rendered config file.
+		{"RequirePass", true},
+		{"MASTERAUTH", true},
+		{"PrimaryAuth", true},
+		{"  requirepass  ", true},
+
+		// ordinary tunables stay allowed
+		{"maxmemory", false},
+		{"maxmemory-policy", false},
+		{"tcp-backlog", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			if got := IsForbiddenValkeyConfig(tt.key); got != tt.want {
+				t.Errorf("IsForbiddenValkeyConfig(%q) = %v, want %v", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValkeyConfigValuesString(t *testing.T) {
 	tests := []struct {
 		name   string

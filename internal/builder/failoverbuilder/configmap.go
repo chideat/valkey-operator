@@ -90,7 +90,7 @@ func GenerateConfigMap(inst types.FailoverInstance) (*corev1.ConfigMap, error) {
 	}
 
 	for k, v := range configMap {
-		if policy := builder.ValkeyConfigRestartPolicy[k]; policy == builder.Forbid {
+		if builder.IsForbiddenValkeyConfig(k) {
 			continue
 		}
 
