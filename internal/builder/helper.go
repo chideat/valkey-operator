@@ -63,81 +63,95 @@ func GetPullPolicy(policies ...corev1.PullPolicy) corev1.PullPolicy {
 	return corev1.PullIfNotPresent
 }
 
-func GetPodSecurityContext(secctx *corev1.PodSecurityContext) (podSec *corev1.PodSecurityContext) {
-	// 999 is the default userid for offical docker image
-	// 1000 is the default groupid for offical docker image
-	_, groupId := int64(999), int64(1000)
+// 999 is the default userid for the official docker image
+// 1000 is the default groupid for the official docker image
+const (
+	defaultValkeyUserID  int64 = 999
+	defaultValkeyGroupID int64 = 1000
+)
+
+// GetPodSecurityContext fills in the pod-level defaults, preserving anything the caller
+// already set. Only FSGroup and SeccompProfile belong here; per-container hardening is
+// GetContainerSecurityContext's job.
+func GetPodSecurityContext(secctx *corev1.PodSecurityContext) *corev1.PodSecurityContext {
+	groupID := defaultValkeyGroupID
 	if secctx == nil {
-		podSec = &corev1.PodSecurityContext{FSGroup: &groupId}
-	} else {
-		podSec = &corev1.PodSecurityContext{}
-		if secctx.FSGroup != nil {
-			podSec.FSGroup = secctx.FSGroup
+		secctx = &corev1.PodSecurityContext{}
+	}
+
+	if secctx.FSGroup == nil {
+		secctx.FSGroup = &groupID
+	}
+	if secctx.SeccompProfile == nil {
+		secctx.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		}
 	}
-	return
+	return secctx
 }
 
-func GetSecurityContext(secctx *corev1.PodSecurityContext) (sec *corev1.SecurityContext) {
-	// 999 is the default userid for offical docker image
-	// 1000 is the default groupid for offical docker image
-	userId, groupId := int64(999), int64(1000)
+// GetContainerSecurityContext fills in defaults that satisfy the Pod Security Admission
+// "restricted" profile, leaving any field the caller set alone.
+//
+// Every field below is required by that profile, so omitting one means the pod is rejected
+// outright on a namespace that enforces it.
+func GetContainerSecurityContext(secctx *corev1.SecurityContext) *corev1.SecurityContext {
+	userID, groupID := defaultValkeyUserID, defaultValkeyGroupID
 	if secctx == nil {
-		sec = &corev1.SecurityContext{
-			RunAsUser:              &userId,
-			RunAsGroup:             &groupId,
-			RunAsNonRoot:           ptr.To(true),
-			ReadOnlyRootFilesystem: ptr.To(true),
+		secctx = &corev1.SecurityContext{}
+	}
+
+	if secctx.RunAsUser == nil {
+		secctx.RunAsUser = &userID
+	}
+	if secctx.RunAsGroup == nil {
+		secctx.RunAsGroup = &groupID
+	}
+	if *secctx.RunAsUser != 0 {
+		if secctx.RunAsNonRoot == nil {
+			secctx.RunAsNonRoot = ptr.To(true)
 		}
 	} else {
-		sec = &corev1.SecurityContext{
-			RunAsUser:              &userId,
-			RunAsGroup:             &groupId,
-			RunAsNonRoot:           ptr.To(true),
-			ReadOnlyRootFilesystem: ptr.To(true),
-		}
-		if secctx.RunAsUser != nil {
-			sec.RunAsUser = secctx.RunAsUser
-		}
-		if secctx.RunAsGroup != nil {
-			sec.RunAsGroup = secctx.RunAsGroup
-		}
-		if secctx.RunAsNonRoot != nil {
-			sec.RunAsNonRoot = secctx.RunAsNonRoot
+		// a caller asking for uid 0 means it: init containers fixing file ownership cannot
+		// also claim to be non-root, and leaving both set makes the kubelet refuse the pod
+		secctx.RunAsNonRoot = nil
+	}
+	if secctx.ReadOnlyRootFilesystem == nil {
+		secctx.ReadOnlyRootFilesystem = ptr.To(true)
+	}
+	if secctx.AllowPrivilegeEscalation == nil {
+		secctx.AllowPrivilegeEscalation = ptr.To(false)
+	}
+	if secctx.Capabilities == nil {
+		secctx.Capabilities = &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
 		}
 	}
-	return
+	if secctx.Privileged == nil {
+		secctx.Privileged = ptr.To(false)
+	}
+	if secctx.SeccompProfile == nil {
+		secctx.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		}
+	}
+	return secctx
 }
 
-func GetContainerSecurityContext(secctx *corev1.SecurityContext) (sec *corev1.SecurityContext) {
-	// 999 is the default userid for offical docker image
-	// 1000 is the default groupid for offical docker image
-	userId, groupId := int64(999), int64(1000)
-	if secctx == nil {
-		sec = &corev1.SecurityContext{
-			RunAsUser:              &userId,
-			RunAsGroup:             &groupId,
-			RunAsNonRoot:           ptr.To(true),
-			ReadOnlyRootFilesystem: ptr.To(true),
-		}
-	} else {
-		sec = &corev1.SecurityContext{
-			RunAsUser:              &userId,
-			RunAsGroup:             &groupId,
-			RunAsNonRoot:           ptr.To(true),
-			ReadOnlyRootFilesystem: ptr.To(true),
-		}
-		if secctx.RunAsUser != nil {
-			sec.RunAsUser = secctx.RunAsUser
-		}
-		if secctx.RunAsGroup != nil {
-			sec.RunAsGroup = secctx.RunAsGroup
-		}
-		if secctx.RunAsNonRoot != nil {
-			sec.RunAsNonRoot = secctx.RunAsNonRoot
-		}
+// GetSecurityContext derives a container security context from the pod-level one a CR
+// supplies, then hardens it. Several builders expose only a PodSecurityContext field.
+func GetSecurityContext(podsecctx *corev1.PodSecurityContext) *corev1.SecurityContext {
+	if podsecctx == nil {
+		podsecctx = &corev1.PodSecurityContext{}
 	}
-	return
+	return GetContainerSecurityContext(&corev1.SecurityContext{
+		SELinuxOptions: podsecctx.SELinuxOptions,
+		WindowsOptions: podsecctx.WindowsOptions,
+		RunAsUser:      podsecctx.RunAsUser,
+		RunAsGroup:     podsecctx.RunAsGroup,
+		RunAsNonRoot:   podsecctx.RunAsNonRoot,
+		SeccompProfile: podsecctx.SeccompProfile,
+	})
 }
 
 func ParsePodIndex(name string) (index int, err error) {

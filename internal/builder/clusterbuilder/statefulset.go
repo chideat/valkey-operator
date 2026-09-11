@@ -349,6 +349,12 @@ func buildValkeyDataInitContainer(cluster *v1alpha1.Cluster, user *user.User, en
 		ImagePullPolicy: builder.GetPullPolicy(cluster.Spec.ImagePullPolicy),
 		Env:             envs,
 		Command:         []string{"sh", "-c", "/opt/init_cluster.sh"},
+		// Without this the container inherits no securityContext at all and, because the
+		// image carries no USER directive, starts as root — which a namespace enforcing the
+		// Pod Security Admission "restricted" profile rejects. The failover and sentinel
+		// init containers already run non-root; init_cluster.sh's chown is best-effort
+		// (`chown -f ... || true`) and the pod's fsGroup covers volume ownership.
+		SecurityContext: builder.GetSecurityContext(cluster.Spec.SecurityContext),
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("200m"),
