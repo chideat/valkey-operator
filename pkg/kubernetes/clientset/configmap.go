@@ -93,8 +93,9 @@ func (p *ConfigMapOption) CreateConfigMap(ctx context.Context, namespace string,
 // The ResourceVersion carried by configMap is honoured as an optimistic-concurrency
 // precondition: a caller passing an object it read asserts it has seen that version, so a
 // write that lands in between is reported as a conflict instead of being silently
-// discarded. Callers that build a complete desired object from scratch have no version to
-// assert and must go through CreateOrUpdateConfigMap, which adopts the stored one.
+// discarded. Callers that build a complete desired object from scratch leave the field
+// empty and keep the unconditional overwrite they intend: ConfigMap's registry strategy
+// allows an unconditional update, so the API server adopts the stored version itself.
 //
 // NOTE: do not reintroduce a Get-then-stamp of the stored ResourceVersion here. It makes
 // every update unconditional, so a stale snapshot overwrites newer state and no conflict is
@@ -166,20 +167,12 @@ func (p *ConfigMapOption) ListConfigMaps(ctx context.Context, namespace string) 
 	return cms, err
 }
 
-// UpdateIfConfigMapChanged writes newConfigmap when its Data differs from what is stored.
-//
-// Its callers hand over a freshly built object, so the version compared against is adopted
-// when the caller carries none — the write is the intended replacement of exactly the
-// content that was just found to differ.
 func (p *ConfigMapOption) UpdateIfConfigMapChanged(ctx context.Context, newConfigmap *corev1.ConfigMap) error {
 	oldConfigmap, err := p.GetConfigMap(ctx, newConfigmap.Namespace, newConfigmap.Name)
 	if err != nil {
 		return err
 	}
 	if !reflect.DeepEqual(newConfigmap.Data, oldConfigmap.Data) {
-		if newConfigmap.ResourceVersion == "" {
-			newConfigmap.ResourceVersion = oldConfigmap.ResourceVersion
-		}
 		return p.UpdateConfigMap(ctx, newConfigmap.Namespace, newConfigmap)
 	}
 	return nil

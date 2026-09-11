@@ -124,6 +124,28 @@ func TestUpdateConfigMapAcceptsCurrentObject(t *testing.T) {
 	assert.Equal(t, "d-updated", got.Data["default"])
 }
 
+// TestUpdateConfigMapUnversionedObjectOverwrites pins the behaviour the callers that build a
+// complete desired object rely on: with no ResourceVersion there is no precondition, so the
+// write replaces whatever is stored. ConfigMap's registry strategy allows an unconditional
+// update, so the API server adopts the stored version itself — dropping the client-side stamp
+// does NOT oblige those callers to route through CreateOrUpdateConfigMap. This test is the
+// gate for that assumption; without it, removing the stamp reads as though every builder-fresh
+// write had to be rerouted.
+func TestUpdateConfigMapUnversionedObjectOverwrites(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestConfigMapClient(t, map[string]string{"default": "d", "user1": "u1"})
+
+	built := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: testCMName, Namespace: testCMNamespace},
+		Data:       map[string]string{"default": "rebuilt"},
+	}
+	require.NoError(t, svc.UpdateConfigMap(ctx, testCMNamespace, built))
+
+	got, err := svc.GetConfigMap(ctx, testCMNamespace, testCMName)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"default": "rebuilt"}, got.Data)
+}
+
 func TestCreateOrUpdateConfigMap(t *testing.T) {
 	ctx := context.Background()
 
@@ -177,8 +199,8 @@ func TestCreateOrUpdateConfigMap(t *testing.T) {
 	})
 }
 
-// UpdateIfConfigMapChanged is handed builder-fresh objects by its callers, so it must adopt
-// the version it just compared against rather than failing validation on a missing one.
+// UpdateIfConfigMapChanged is handed builder-fresh objects by its callers, so it rides the
+// unconditional-overwrite path: replacing the content it just found to differ is the intent.
 func TestUpdateIfConfigMapChanged(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestConfigMapClient(t, map[string]string{"valkey.conf": "old"})

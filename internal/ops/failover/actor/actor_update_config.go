@@ -98,10 +98,8 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 			conf.Annotations[builder.LastAppliedConfigAnnotationKey] = oldCm.Data[builder.ValkeyConfigKey]
 		}
 
-		// update configmap with last applied config. conf is built from the CR and carries
-		// no ResourceVersion, so CreateOrUpdate adopts the stored one — this write is the
-		// whole desired config, not a merge into someone else's.
-		if err := a.client.CreateOrUpdateConfigMap(ctx, conf.GetNamespace(), conf); err != nil {
+		// update configmap with last applied config
+		if err := a.client.UpdateConfigMap(ctx, conf.GetNamespace(), conf); err != nil {
 			logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(conf))
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
@@ -149,7 +147,7 @@ func (a *actorUpdateConfigMap) Do(ctx context.Context, val types.Instance) *acto
 	}
 
 	// update configmap without last applied config
-	if err := a.client.CreateOrUpdateConfigMap(ctx, newCm.GetNamespace(), newCm); err != nil {
+	if err := a.client.UpdateConfigMap(ctx, newCm.GetNamespace(), newCm); err != nil {
 		logger.Error(err, "update config failed", "target", client.ObjectKeyFromObject(newCm))
 		return actor.NewResultWithError(ops.CommandRequeue, err)
 	}
