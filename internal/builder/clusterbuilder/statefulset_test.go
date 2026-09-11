@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 func TestVolumeMounts(t *testing.T) {
@@ -167,4 +168,56 @@ func TestBuildPersistentClaimsOwnerReferences(t *testing.T) {
 		require.Len(t, pvcs, 1)
 		assert.Empty(t, pvcs[0].OwnerReferences)
 	})
+}
+
+// The cluster data init container carried no securityContext at all. The helper image
+// declares no USER, so the container started as root and a namespace enforcing the Pod
+// Security Admission "restricted" profile rejected the whole pod -- no instance of the
+// cluster architecture could be created there.
+func TestValkeyDataInitContainerHasSecurityContext(t *testing.T) {
+	cluster := &v1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec:       v1alpha1.ClusterSpec{},
+	}
+	c := buildValkeyDataInitContainer(cluster, &user.User{Password: &user.Password{}}, nil)
+	require.NotNil(t, c)
+	require.NotNil(t, c.SecurityContext, "init container must carry a securityContext")
+
+	sc := c.SecurityContext
+	require.NotNil(t, sc.RunAsUser)
+	assert.NotEqual(t, int64(0), *sc.RunAsUser, "init container must not run as root")
+	require.NotNil(t, sc.RunAsNonRoot)
+	assert.True(t, *sc.RunAsNonRoot)
+
+	// the four fields the "restricted" profile requires
+	require.NotNil(t, sc.AllowPrivilegeEscalation)
+	assert.False(t, *sc.AllowPrivilegeEscalation)
+	require.NotNil(t, sc.Capabilities)
+	assert.Equal(t, []corev1.Capability{"ALL"}, sc.Capabilities.Drop)
+	require.NotNil(t, sc.Privileged)
+	assert.False(t, *sc.Privileged)
+	require.NotNil(t, sc.SeccompProfile)
+	assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, sc.SeccompProfile.Type)
+}
+
+// A caller-supplied securityContext must survive. The previous implementation rebuilt a
+// fresh struct and copied back only RunAsUser/RunAsGroup/RunAsNonRoot, silently discarding
+// everything else the caller had set.
+func TestValkeyDataInitContainerHonoursCallerSecurityContext(t *testing.T) {
+	cluster := &v1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec: v1alpha1.ClusterSpec{
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsUser:      ptr.To(int64(1234)),
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
+			},
+		},
+	}
+	c := buildValkeyDataInitContainer(cluster, &user.User{Password: &user.Password{}}, nil)
+	require.NotNil(t, c)
+	require.NotNil(t, c.SecurityContext)
+
+	assert.Equal(t, int64(1234), *c.SecurityContext.RunAsUser)
+	assert.Equal(t, corev1.SeccompProfileTypeUnconfined, c.SecurityContext.SeccompProfile.Type,
+		"a caller-supplied seccomp profile must not be overwritten by the default")
 }

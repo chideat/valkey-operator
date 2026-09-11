@@ -160,6 +160,26 @@ func TestGetPullPolicy(t *testing.T) {
 	}
 }
 
+func runtimeDefaultSeccomp() *corev1.SeccompProfile {
+	return &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}
+}
+
+// restrictedContainerContext is the container security context the builders are expected to
+// produce: the caller's identity fields plus every field the Pod Security Admission
+// "restricted" profile requires.
+func restrictedContainerContext(userID, groupID *int64, runAsNonRoot *bool) *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		RunAsUser:                userID,
+		RunAsGroup:               groupID,
+		RunAsNonRoot:             runAsNonRoot,
+		ReadOnlyRootFilesystem:   ptr.To(true),
+		AllowPrivilegeEscalation: ptr.To(false),
+		Privileged:               ptr.To(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		SeccompProfile:           runtimeDefaultSeccomp(),
+	}
+}
+
 func TestGetPodSecurityContext(t *testing.T) {
 	defaultGroupId := int64(1000)
 	customFsGroup := int64(2000)
@@ -172,17 +192,29 @@ func TestGetPodSecurityContext(t *testing.T) {
 		{
 			name:   "Nil security context",
 			secctx: nil,
-			want:   &corev1.PodSecurityContext{FSGroup: &defaultGroupId},
+			want:   &corev1.PodSecurityContext{FSGroup: &defaultGroupId, SeccompProfile: runtimeDefaultSeccomp()},
 		},
 		{
+			// an empty context is still filled in: it means "caller set nothing", not
+			// "caller wants nothing"
 			name:   "Empty security context",
 			secctx: &corev1.PodSecurityContext{},
-			want:   &corev1.PodSecurityContext{},
+			want:   &corev1.PodSecurityContext{FSGroup: &defaultGroupId, SeccompProfile: runtimeDefaultSeccomp()},
 		},
 		{
 			name:   "Security context with custom FSGroup",
 			secctx: &corev1.PodSecurityContext{FSGroup: &customFsGroup},
-			want:   &corev1.PodSecurityContext{FSGroup: &customFsGroup},
+			want:   &corev1.PodSecurityContext{FSGroup: &customFsGroup, SeccompProfile: runtimeDefaultSeccomp()},
+		},
+		{
+			name: "caller-supplied seccomp profile is preserved",
+			secctx: &corev1.PodSecurityContext{
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
+			},
+			want: &corev1.PodSecurityContext{
+				FSGroup:        &defaultGroupId,
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
+			},
 		},
 	}
 
@@ -200,7 +232,6 @@ func TestGetSecurityContext(t *testing.T) {
 	defaultUserId, defaultGroupId := int64(999), int64(1000)
 	customUserId, customGroupId := int64(1234), int64(5678)
 	runAsNonRoot := true
-	readOnlyRootFilesystem := true
 
 	tests := []struct {
 		name   string
@@ -210,22 +241,12 @@ func TestGetSecurityContext(t *testing.T) {
 		{
 			name:   "Nil security context",
 			secctx: nil,
-			want: &corev1.SecurityContext{
-				RunAsUser:              &defaultUserId,
-				RunAsGroup:             &defaultGroupId,
-				RunAsNonRoot:           ptr.To(true),
-				ReadOnlyRootFilesystem: ptr.To(true),
-			},
+			want:   restrictedContainerContext(&defaultUserId, &defaultGroupId, ptr.To(true)),
 		},
 		{
 			name:   "Empty security context",
 			secctx: &corev1.PodSecurityContext{},
-			want: &corev1.SecurityContext{
-				RunAsUser:              &defaultUserId,
-				RunAsGroup:             &defaultGroupId,
-				RunAsNonRoot:           ptr.To(true),
-				ReadOnlyRootFilesystem: ptr.To(true),
-			},
+			want:   restrictedContainerContext(&defaultUserId, &defaultGroupId, ptr.To(true)),
 		},
 		{
 			name: "Security context with custom values",
@@ -234,12 +255,7 @@ func TestGetSecurityContext(t *testing.T) {
 				RunAsGroup:   &customGroupId,
 				RunAsNonRoot: &runAsNonRoot,
 			},
-			want: &corev1.SecurityContext{
-				RunAsUser:              &customUserId,
-				RunAsGroup:             &customGroupId,
-				RunAsNonRoot:           &runAsNonRoot,
-				ReadOnlyRootFilesystem: &readOnlyRootFilesystem,
-			},
+			want: restrictedContainerContext(&customUserId, &customGroupId, &runAsNonRoot),
 		},
 	}
 
@@ -253,11 +269,56 @@ func TestGetSecurityContext(t *testing.T) {
 	}
 }
 
+// TestGetContainerSecurityContext_rootIsHonoured covers the init containers that must run as
+// root to fix file ownership. Leaving RunAsNonRoot set alongside uid 0 makes the kubelet
+// refuse to start the container, so the hardening has to step aside when uid 0 is explicit.
+func TestGetContainerSecurityContext_rootIsHonoured(t *testing.T) {
+	got := GetContainerSecurityContext(&corev1.SecurityContext{RunAsUser: ptr.To(int64(0))})
+
+	if got.RunAsNonRoot != nil {
+		t.Errorf("RunAsNonRoot = %v, want nil when RunAsUser is 0", *got.RunAsNonRoot)
+	}
+	if got.RunAsUser == nil || *got.RunAsUser != 0 {
+		t.Errorf("RunAsUser = %v, want 0", got.RunAsUser)
+	}
+	// the rest of the restricted profile still applies
+	if got.AllowPrivilegeEscalation == nil || *got.AllowPrivilegeEscalation {
+		t.Error("AllowPrivilegeEscalation should still be false for a root container")
+	}
+	if got.SeccompProfile == nil || got.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Error("SeccompProfile should still default to RuntimeDefault for a root container")
+	}
+}
+
+// TestGetContainerSecurityContext_callerFieldsWin guards the regression this rewrite fixed:
+// the previous implementation built a fresh context and silently dropped everything the
+// caller had set apart from RunAsUser/RunAsGroup/RunAsNonRoot.
+func TestGetContainerSecurityContext_callerFieldsWin(t *testing.T) {
+	got := GetContainerSecurityContext(&corev1.SecurityContext{
+		ReadOnlyRootFilesystem:   ptr.To(false),
+		AllowPrivilegeEscalation: ptr.To(true),
+		Capabilities:             &corev1.Capabilities{Add: []corev1.Capability{"NET_BIND_SERVICE"}},
+		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
+	})
+
+	if got.ReadOnlyRootFilesystem == nil || *got.ReadOnlyRootFilesystem {
+		t.Error("caller's ReadOnlyRootFilesystem=false was overwritten")
+	}
+	if got.AllowPrivilegeEscalation == nil || !*got.AllowPrivilegeEscalation {
+		t.Error("caller's AllowPrivilegeEscalation=true was overwritten")
+	}
+	if got.Capabilities == nil || !reflect.DeepEqual(got.Capabilities.Add, []corev1.Capability{"NET_BIND_SERVICE"}) {
+		t.Errorf("caller's Capabilities were overwritten: %v", got.Capabilities)
+	}
+	if got.SeccompProfile == nil || got.SeccompProfile.Type != corev1.SeccompProfileTypeUnconfined {
+		t.Errorf("caller's SeccompProfile was overwritten: %v", got.SeccompProfile)
+	}
+}
+
 func TestGetContainerSecurityContext(t *testing.T) {
 	defaultUserId, defaultGroupId := int64(999), int64(1000)
 	customUserId, customGroupId := int64(1234), int64(5678)
 	runAsNonRoot := true
-	readOnlyRootFilesystem := true
 
 	tests := []struct {
 		name   string
@@ -267,22 +328,12 @@ func TestGetContainerSecurityContext(t *testing.T) {
 		{
 			name:   "Nil security context",
 			secctx: nil,
-			want: &corev1.SecurityContext{
-				RunAsUser:              &defaultUserId,
-				RunAsGroup:             &defaultGroupId,
-				RunAsNonRoot:           ptr.To(true),
-				ReadOnlyRootFilesystem: ptr.To(true),
-			},
+			want:   restrictedContainerContext(&defaultUserId, &defaultGroupId, ptr.To(true)),
 		},
 		{
 			name:   "Empty security context",
 			secctx: &corev1.SecurityContext{},
-			want: &corev1.SecurityContext{
-				RunAsUser:              &defaultUserId,
-				RunAsGroup:             &defaultGroupId,
-				RunAsNonRoot:           ptr.To(true),
-				ReadOnlyRootFilesystem: ptr.To(true),
-			},
+			want:   restrictedContainerContext(&defaultUserId, &defaultGroupId, ptr.To(true)),
 		},
 		{
 			name: "Security context with custom values",
@@ -291,12 +342,7 @@ func TestGetContainerSecurityContext(t *testing.T) {
 				RunAsGroup:   &customGroupId,
 				RunAsNonRoot: &runAsNonRoot,
 			},
-			want: &corev1.SecurityContext{
-				RunAsUser:              &customUserId,
-				RunAsGroup:             &customGroupId,
-				RunAsNonRoot:           &runAsNonRoot,
-				ReadOnlyRootFilesystem: &readOnlyRootFilesystem,
-			},
+			want: restrictedContainerContext(&customUserId, &customGroupId, &runAsNonRoot),
 		},
 	}
 
