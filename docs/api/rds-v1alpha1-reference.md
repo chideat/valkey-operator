@@ -118,9 +118,8 @@ func (in *ValkeyReplicas) DeepCopyInto(out *ValkeyReplicas)
 
 type ValkeySpec struct {
 	// Version specifies the Valkey version to deploy.
-	// Stable: 7.2, 8.0, 8.1, 8.2, 9.0
-	// Preview/RC (not recommended for production): 9.1
-	// +kubebuilder:validation:Enum="7.2";"8.0";"8.1";"8.2";"9.0";"9.1"
+	// Stable: 7.2, 8.0, 8.1, 9.0, 9.1
+	// +kubebuilder:validation:Enum="7.2";"8.0";"8.1";"9.0";"9.1"
 	Version string `json:"version"`
 
 	// Arch supports cluster, sentinel
@@ -137,7 +136,10 @@ type ValkeySpec struct {
 	// for detailed settings, please refer to https://github.com/valkey-io/valkey/blob/unstable/valkey.conf
 	CustomConfigs map[string]string `json:"customConfigs,omitempty"`
 
-	// Modules defines the module settings for Valkey
+	// Modules defines a list of modules to be loaded into the valkey instance.
+	// Each module is specified by its name and version.
+	// Modules are loaded at startup and can extend Redis functionality.
+	// +optional
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
 
 	// Storage defines the storage settings for Valkey
