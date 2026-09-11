@@ -71,7 +71,7 @@ func (r *ValkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		logger.Error(err, "Fail to get valkey instance")
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	} else if inst.GetDeletionTimestamp() != nil {
-		if err := r.processFinalizer(inst); err != nil {
+		if err := r.processFinalizer(ctx, inst); err != nil {
 			logger.Error(err, "fail to process finalizer")
 			return r.updateInstanceStatus(ctx, inst, err, logger)
 		}
@@ -115,6 +115,12 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 		inst.Spec.CustomConfigs = map[string]string{}
 	}
 
+	// Record the PVC selector before anything that can fail, so an instance that never
+	// becomes ready can still have its PVCs cleaned up on delete.
+	if len(inst.Status.MatchLabels) == 0 {
+		inst.Status.MatchLabels = failoverbuilder.GenerateSelectorLabels(inst.Name)
+	}
+
 	failover := &v1alpha1.Failover{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      inst.Name,
@@ -131,7 +137,6 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 			logger.Error(err, "fail to create failover instance")
 			return err
 		}
-		inst.Status.MatchLabels = failoverbuilder.GenerateSelectorLabels(inst.Name)
 		return nil
 	} else if err != nil {
 		return err
@@ -139,9 +144,6 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 		return fmt.Errorf("redis failover %s is deleting, waiting for it to be deleted", failover.Name)
 	}
 
-	if len(inst.Status.MatchLabels) == 0 {
-		inst.Status.MatchLabels = failoverbuilder.GenerateSelectorLabels(inst.Name)
-	}
 	if inst.Spec.PodAnnotations == nil {
 		inst.Spec.PodAnnotations = make(map[string]string)
 	}
@@ -197,6 +199,11 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 	if inst.Spec.PodAnnotations == nil {
 		inst.Spec.PodAnnotations = make(map[string]string)
 	}
+	// Record the PVC selector before anything that can fail, so an instance that never
+	// becomes ready can still have its PVCs cleaned up on delete.
+	if len(inst.Status.MatchLabels) == 0 {
+		inst.Status.MatchLabels = clusterbuilder.GenerateClusterLabels(inst.Name, nil)
+	}
 
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      inst.Name,
@@ -215,7 +222,6 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 			inst.Status.Message = err.Error()
 			return err
 		}
-		inst.Status.MatchLabels = clusterbuilder.GenerateClusterLabels(inst.Name, nil)
 		return nil
 	} else if err != nil {
 		return err
@@ -223,10 +229,6 @@ func (r *ValkeyReconciler) reconcileCluster(ctx context.Context, inst *rdsv1alph
 		// wait old resource deleted
 		logger.V(3).Info("redis cluster is deleting, waiting for it to be deleted")
 		return fmt.Errorf("redis cluster %s is deleting, waiting for it to be deleted", cluster.Name)
-	}
-
-	if len(inst.Status.MatchLabels) == 0 {
-		inst.Status.MatchLabels = clusterbuilder.GenerateClusterLabels(inst.Name, nil)
 	}
 
 	for key := range vkHandler.GetValkeyConfigsApplyPolicyByVersion(inst.Spec.Version) {
@@ -351,21 +353,55 @@ func (r *ValkeyReconciler) updateInstance(ctx context.Context, inst *rdsv1alpha1
 	}
 }
 
-func (r *ValkeyReconciler) processFinalizer(inst *rdsv1alpha1.Valkey) error {
+// pvcSelectors returns the label selectors that identify the instance's PVCs.
+//
+// status.matchLabels is the recorded selector, but it is only persisted once the instance
+// reconciled far enough to reach reconcileCluster/reconcileFailover. An instance that failed
+// earlier — an unresolvable image version, a rejected child CR, an invalid arch — is deleted
+// with an empty status, and the selector must still be derivable, or the finalizer blocks
+// deletion forever.
+//
+// Deriving is always possible: the child CR carries the instance's own name, so both
+// selectors are pure functions of it, and they are exactly the labels the builders stamp
+// onto the PVCs through the StatefulSet's volumeClaimTemplates.
+func pvcSelectors(inst *rdsv1alpha1.Valkey) []map[string]string {
+	if len(inst.Status.MatchLabels) > 0 {
+		return []map[string]string{inst.Status.MatchLabels}
+	}
+
+	clusterLabels := clusterbuilder.GenerateClusterLabels(inst.Name, nil)
+	failoverLabels := failoverbuilder.GenerateSelectorLabels(inst.Name)
+	switch inst.Spec.Arch {
+	case core.ValkeyCluster:
+		return []map[string]string{clusterLabels}
+	case core.ValkeyFailover, core.ValkeyReplica:
+		return []map[string]string{failoverLabels}
+	default:
+		// The arch was never defaulted or is invalid, so the topology is unknown. Try both:
+		// each selector carries InstanceNameLabelKey, which scopes it to this instance, so
+		// neither can match another instance's PVCs.
+		return []map[string]string{clusterLabels, failoverLabels}
+	}
+}
+
+// processFinalizer reclaims the instance's PVCs and then removes the finalizer that asked
+// for it. The data PVCs carry no ownerReference, so this is the only thing that takes the
+// storage with the instance — and a failure here leaves the CR in Terminating for good,
+// recoverable only by hand-patching finalizers.
+func (r *ValkeyReconciler) processFinalizer(ctx context.Context, inst *rdsv1alpha1.Valkey) error {
 	for _, v := range inst.GetFinalizers() {
 		if v == pvcFinalizer {
-			// delete pvcs
-			if inst.Status.MatchLabels == nil {
-				return fmt.Errorf("can't delete inst pvcs, status.matchLabels is empty")
-			}
-			err := r.DeleteAllOf(context.TODO(), &corev1.PersistentVolumeClaim{}, client.InNamespace(inst.Namespace),
-				client.MatchingLabels(inst.Status.MatchLabels))
-			if err != nil {
-				return err
+			for _, selector := range pvcSelectors(inst) {
+				if err := r.DeleteAllOf(ctx, &corev1.PersistentVolumeClaim{}, client.InNamespace(inst.Namespace),
+					client.MatchingLabels(selector)); err != nil {
+					return err
+				}
 			}
 			controllerutil.RemoveFinalizer(inst, v)
-			err = r.Update(context.TODO(), inst)
-			if err != nil {
+			if err := r.Update(ctx, inst); err != nil {
+				if errors.IsNotFound(err) {
+					continue
+				}
 				return err
 			}
 		}
