@@ -70,6 +70,29 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+The operator image WITHOUT its tag, and the tag on its own.
+
+The operator derives the valkey-helper image from OPERATOR_IMAGE_NAME and
+OPERATOR_VERSION by appending ":$OPERATOR_VERSION" to the name (see
+config.GetFullImageURL). OPERATOR_IMAGE_NAME must therefore carry no tag --
+its in-code default, "chideat/valkey-operator", does not -- or the helper
+image comes out with two tags and every pod fails with InvalidImageName.
+*/}}
+{{- define "valkey-operator.imageName" -}}
+{{- $registry := .Values.image.registry -}}
+{{- $repository := .Values.image.repository -}}
+{{- if $registry -}}
+{{- printf "%s/%s" $registry $repository -}}
+{{- else -}}
+{{- $repository -}}
+{{- end -}}
+{{- end }}
+
+{{- define "valkey-operator.imageTag" -}}
+{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- end }}
+
+{{/*
 Create the operator image reference.
 */}}
 {{- define "valkey-operator.image" -}}

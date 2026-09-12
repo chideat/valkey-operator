@@ -106,6 +106,11 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=valkey-operator-manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	# The Helm chart ships its own copy of the CRDs, which Helm installs from crds/
+	# and never upgrades. Copying them here keeps the chart from drifting behind the
+	# generated ones: that drift silently shipped a CRD whose version enum predated
+	# 9.0/9.1 support and a User CRD missing status.phase.
+	cp config/crd/bases/*.yaml charts/valkey-operator/crds/
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.

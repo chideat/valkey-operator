@@ -17,8 +17,8 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
         defaultRegistry: {{ .Values.operatorConfig.defaultRegistry | quote }}
-        operatorImageName: {{ include "valkey-operator.image" . | quote }}
-        operatorVersion: {{ .Chart.AppVersion | quote }}
+        operatorImageName: {{ include "valkey-operator.imageName" . | quote }}
+        operatorVersion: {{ include "valkey-operator.imageTag" . | quote }}
         defaultExporterImageName: {{ .Values.operatorConfig.defaultExporterImageName | quote }}
         defaultExporterVersion: {{ .Values.operatorConfig.defaultExporterVersion | quote }}
         valkeyImageName: {{ .Values.operatorConfig.valkeyImageName | quote }}
