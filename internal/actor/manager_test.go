@@ -424,3 +424,51 @@ func TestReleasePipelineTagIsParseableVersion(t *testing.T) {
 		})
 	}
 }
+
+// TestReleasePipelineMatchesReleasedTags guards the tag lookup that decides
+// which patch version a release-branch build becomes.
+//
+// The pattern used to be "^v${VERSION}\.$" -- anchored on a trailing literal
+// dot, so it matched no tag that has ever existed. LARGEST_TAG was therefore
+// always empty and the patch-increment branch below it was unreachable: every
+// build on release-2.0 produced another v2.0.0 candidate, even after v2.0.0 had
+// shipped. The pattern is read out of the workflow so the two cannot drift.
+func TestReleasePipelineMatchesReleasedTags(t *testing.T) {
+	const workflow = "../../.github/workflows/branch-pipeline.yaml"
+
+	data, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatalf("read %s: %v", workflow, err)
+	}
+
+	m := regexp.MustCompile(`git tag --sort=-v:refname \| grep -E "([^"]+)"`).FindSubmatch(data)
+	if m == nil {
+		t.Fatalf("no release-tag grep found in %s; update this test if the lookup changed", workflow)
+	}
+	// The workflow interpolates the branch's version; release-2.0 yields "2.0".
+	pattern := strings.ReplaceAll(string(m[1]), "${VERSION}", "2.0")
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		t.Fatalf("pattern %q does not compile: %v", pattern, err)
+	}
+
+	for _, tc := range []struct {
+		tag  string
+		want bool
+	}{
+		{"v2.0.0", true},
+		{"v2.0.7", true},
+		{"v2.0.10", true},
+		{"v1.1.0", false},
+		{"v2.1.0", false},
+		{"v2.0.0-rc.202609140224.1bd2300", false}, // candidates must not win the lookup
+		{"v2.0.", false},
+	} {
+		t.Run(tc.tag, func(t *testing.T) {
+			if got := re.MatchString(tc.tag); got != tc.want {
+				t.Errorf("pattern %q matched %q = %v, want %v", pattern, tc.tag, got, tc.want)
+			}
+		})
+	}
+}
