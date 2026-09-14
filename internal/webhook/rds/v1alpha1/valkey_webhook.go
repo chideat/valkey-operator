@@ -131,6 +131,18 @@ func (d *ValkeyCustomDefaulter) Default(ctx context.Context, inst *rdsv1alpha1.V
 			}
 			inst.Spec.Sentinel.Access.ServiceType = inst.Spec.Access.ServiceType
 			inst.Spec.Sentinel.Access.IPFamilyPrefer = inst.Spec.Access.IPFamilyPrefer
+			// The sentinel has to match the failover on TLS, not merely be
+			// allowed to differ. The valkey pods dial the sentinel using the
+			// failover's own TLS setting, and the operator picks its sentinel
+			// client up from Spec.Sentinel.Access.EnableTLS, so a mismatch is
+			// not a weaker configuration -- it is one side speaking TLS to a
+			// plaintext listener. Left unpropagated, access.enableTLS on a
+			// failover instance produced exactly that: TLS valkey pods, a
+			// plaintext sentinel, and every node stuck in Initializing behind a
+			// "TLS handshake timeout".
+			inst.Spec.Sentinel.Access.EnableTLS = inst.Spec.Access.EnableTLS
+			inst.Spec.Sentinel.Access.CertIssuer = inst.Spec.Access.CertIssuer
+			inst.Spec.Sentinel.Access.CertIssuerType = inst.Spec.Access.CertIssuerType
 
 			sentinel := inst.Spec.Sentinel
 			if sentinel.Resources.Limits.Cpu().IsZero() && sentinel.Resources.Limits.Memory().IsZero() {
