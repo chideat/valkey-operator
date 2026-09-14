@@ -68,9 +68,32 @@ const (
 	tlsCAIssuerName = "valkey-e2e-ca"
 )
 
-// certManagerNamespace is where a CA ClusterIssuer looks for its signing key
-// (cert-manager's cluster resource namespace).
-var certManagerNamespace = utils.GetEnv("CERT_MANAGER_NAMESPACE", "cert-manager")
+// tlsIssuerKind reports which cert-manager issuer kind the TLS cases use.
+//
+// A namespaced Issuer is the default because it keeps every artifact these
+// cases create inside the test namespace. A CA ClusterIssuer would instead have
+// to keep its signing secret in cert-manager's cluster resource namespace,
+// which on a cluster where cert-manager is part of the platform is a namespace
+// the platform owns and these tests have no business writing into. Set
+// TLS_TEST_ISSUER_KIND=ClusterIssuer to exercise that path where the cluster is
+// disposable.
+func tlsIssuerKind() string {
+	if k := utils.GetEnv("TLS_TEST_ISSUER_KIND"); k != "" {
+		return k
+	}
+	return "Issuer"
+}
+
+// tlsIssuerNamespace is where the CA certificate and its signing secret live.
+// A CA Issuer reads its secret from its own namespace; a CA ClusterIssuer reads
+// it from cert-manager's cluster resource namespace, which CERT_MANAGER_NAMESPACE
+// must match.
+func tlsIssuerNamespace() string {
+	if tlsIssuerKind() == "ClusterIssuer" {
+		return utils.GetEnv("CERT_MANAGER_NAMESPACE", "cert-manager")
+	}
+	return testNamespace
+}
 
 // tlsTestVersion picks the valkey version the TLS cases run against.
 //
@@ -89,30 +112,85 @@ func tlsTestVersion() string {
 	return supportedVersions[len(supportedVersions)-1]
 }
 
-// ensureTLSIssuer creates the CA ClusterIssuer the TLS instances reference.
+// createTLSIssuer creates an issuer of the configured kind, ignoring an issuer
+// a previous run left behind.
+func createTLSIssuer(ctx context.Context, name string, config certv1.IssuerConfig) {
+	var obj client.Object
+	if tlsIssuerKind() == "ClusterIssuer" {
+		obj = &certv1.ClusterIssuer{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       certv1.IssuerSpec{IssuerConfig: config},
+		}
+	} else {
+		obj = &certv1.Issuer{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+			Spec:       certv1.IssuerSpec{IssuerConfig: config},
+		}
+	}
+	if err := k8sClient.Create(ctx, obj); err != nil && !errors.IsAlreadyExists(err) {
+		Expect(err).To(Succeed())
+	}
+}
+
+// waitTLSIssuerReady blocks until the issuer can actually sign.
+//
+// An issuer that never goes ready stalls every TLS instance in Initializing
+// waiting for a certificate that is never issued -- indistinguishable from the
+// operator being unable to create the Certificate at all. Failing here instead
+// keeps the cause obvious.
+func waitTLSIssuerReady(ctx context.Context, name string) {
+	By(fmt.Sprintf("waiting for %s %s to be ready", tlsIssuerKind(), name))
+
+	key := types.NamespacedName{Name: name}
+	if tlsIssuerKind() != "ClusterIssuer" {
+		key.Namespace = testNamespace
+	}
+	Eventually(func() (string, error) {
+		var conditions []certv1.IssuerCondition
+		if tlsIssuerKind() == "ClusterIssuer" {
+			var issuer certv1.ClusterIssuer
+			if err := k8sClient.Get(ctx, key, &issuer); err != nil {
+				return "", err
+			}
+			conditions = issuer.Status.Conditions
+		} else {
+			var issuer certv1.Issuer
+			if err := k8sClient.Get(ctx, key, &issuer); err != nil {
+				return "", err
+			}
+			conditions = issuer.Status.Conditions
+		}
+		for _, cond := range conditions {
+			if cond.Type == certv1.IssuerConditionReady {
+				return fmt.Sprintf("%s: %s", cond.Status, cond.Message), nil
+			}
+		}
+		return "no ready condition yet", nil
+	}).WithTimeout(time.Minute*3).WithPolling(time.Second*5).
+		Should(HavePrefix(string(certmetav1.ConditionTrue)),
+			"issuer %s is not usable; its signing secret is read from namespace %q",
+			name, tlsIssuerNamespace())
+}
+
+// ensureTLSIssuer creates the CA issuer the TLS instances reference.
 //
 // cert-manager ships no issuer of its own, so without this an instance with
 // access.enableTLS would fail for a missing issuer rather than for anything the
-// operator did.
+// operator did. The chain is bootstrapped rather than self-signed per instance
+// so the issued certificates verify against a separate root, which is what
+// makes chain verification mean anything.
 func ensureTLSIssuer(ctx context.Context) {
 	By("creating the self-signed bootstrap issuer")
-	selfSigned := &certv1.ClusterIssuer{
-		ObjectMeta: metav1.ObjectMeta{Name: tlsSelfSignedIssuerName},
-		Spec: certv1.IssuerSpec{
-			IssuerConfig: certv1.IssuerConfig{
-				SelfSigned: &certv1.SelfSignedIssuer{},
-			},
-		},
-	}
-	if err := k8sClient.Create(ctx, selfSigned); err != nil && !errors.IsAlreadyExists(err) {
-		Expect(err).To(Succeed())
-	}
+	createTLSIssuer(ctx, tlsSelfSignedIssuerName, certv1.IssuerConfig{
+		SelfSigned: &certv1.SelfSignedIssuer{},
+	})
+	waitTLSIssuerReady(ctx, tlsSelfSignedIssuerName)
 
 	By("issuing the CA certificate")
 	caCert := &certv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tlsCAIssuerName,
-			Namespace: certManagerNamespace,
+			Namespace: tlsIssuerNamespace(),
 		},
 		Spec: certv1.CertificateSpec{
 			IsCA:       true,
@@ -124,7 +202,7 @@ func ensureTLSIssuer(ctx context.Context) {
 			},
 			IssuerRef: certmetav1.IssuerReference{
 				Name:  tlsSelfSignedIssuerName,
-				Kind:  "ClusterIssuer",
+				Kind:  tlsIssuerKind(),
 				Group: certv1.SchemeGroupVersion.Group,
 			},
 		},
@@ -138,45 +216,15 @@ func ensureTLSIssuer(ctx context.Context) {
 		var secret corev1.Secret
 		return k8sClient.Get(ctx, types.NamespacedName{
 			Name:      tlsCAIssuerName,
-			Namespace: certManagerNamespace,
+			Namespace: tlsIssuerNamespace(),
 		}, &secret)
 	}).WithTimeout(time.Minute * 3).WithPolling(time.Second * 5).Should(Succeed())
 
 	By("creating the CA issuer")
-	caIssuer := &certv1.ClusterIssuer{
-		ObjectMeta: metav1.ObjectMeta{Name: tlsCAIssuerName},
-		Spec: certv1.IssuerSpec{
-			IssuerConfig: certv1.IssuerConfig{
-				CA: &certv1.CAIssuer{SecretName: tlsCAIssuerName},
-			},
-		},
-	}
-	if err := k8sClient.Create(ctx, caIssuer); err != nil && !errors.IsAlreadyExists(err) {
-		Expect(err).To(Succeed())
-	}
-
-	// A CA issuer looks for its signing secret in cert-manager's cluster
-	// resource namespace, which is not necessarily where the certificate above
-	// was created. Get that wrong and the issuer stays not-ready, every TLS
-	// instance stalls waiting for a certificate that is never issued, and the
-	// failure is indistinguishable from the operator being unable to create the
-	// Certificate at all. Fail here instead, where the cause is obvious.
-	By("waiting for the CA issuer to be ready")
-	Eventually(func() (string, error) {
-		var issuer certv1.ClusterIssuer
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: tlsCAIssuerName}, &issuer); err != nil {
-			return "", err
-		}
-		for _, cond := range issuer.Status.Conditions {
-			if cond.Type == certv1.IssuerConditionReady {
-				return fmt.Sprintf("%s: %s", cond.Status, cond.Message), nil
-			}
-		}
-		return "no ready condition yet", nil
-	}).WithTimeout(time.Minute*3).WithPolling(time.Second*5).
-		Should(HavePrefix(string(certmetav1.ConditionTrue)),
-			"the CA issuer is not usable -- check that CERT_MANAGER_NAMESPACE (%q) matches "+
-				"cert-manager's --cluster-resource-namespace", certManagerNamespace)
+	createTLSIssuer(ctx, tlsCAIssuerName, certv1.IssuerConfig{
+		CA: &certv1.CAIssuer{SecretName: tlsCAIssuerName},
+	})
+	waitTLSIssuerReady(ctx, tlsCAIssuerName)
 }
 
 // getInstanceTLSSecret returns the secret holding the instance certificate.
@@ -226,7 +274,7 @@ func newTLSInstance(arch core.Arch, accessType corev1.ServiceType) *rdsv1alpha1.
 				ServiceType:    accessType,
 				EnableTLS:      true,
 				CertIssuer:     tlsCAIssuerName,
-				CertIssuerType: "ClusterIssuer",
+				CertIssuerType: tlsIssuerKind(),
 			},
 			Exporter: &rdsv1alpha1.ValkeyExporter{},
 		},
