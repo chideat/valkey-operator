@@ -38,6 +38,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	valkeybufredv1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/actor"
@@ -64,6 +65,11 @@ func init() {
 
 	utilruntime.Must(valkeybufredv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(rdsv1alpha1.AddToScheme(scheme))
+	// Required for instances with access.enableTLS: the operator creates a
+	// cert-manager Certificate for them. Without this the typed client cannot
+	// map the object and every such instance stops at Initializing with
+	// "no kind is registered for the type v1.Certificate".
+	utilruntime.Must(certv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
