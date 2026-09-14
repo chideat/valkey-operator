@@ -637,29 +637,29 @@ func (c *valkeyClient) ClusterInfo(ctx context.Context) (*ClusterNodeInfo, error
 			case "cluster_state":
 				info.ClusterState = fields[1]
 			case "cluster_slots_assigned":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterSlotsAssigned = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterSlotsAssigned = val
 			case "cluster_slots_ok":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterSlotsOk = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterSlotsOk = val
 			case "cluster_slots_pfail":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterSlotsPfail = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterSlotsPfail = val
 			case "cluster_slots_fail":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterSlotsFail = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterSlotsFail = val
 			case "cluster_known_nodes":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterKnownNodes = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterKnownNodes = val
 			case "cluster_size":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterSize = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterSize = val
 			case "cluster_current_epoch":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterCurrentEpoch = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterCurrentEpoch = val
 			case "cluster_my_epoch":
-				val, _ := strconv.ParseInt(fields[1], 10, 64)
-				info.ClusterMyEpoch = int(val)
+				val, _ := strconv.Atoi(fields[1])
+				info.ClusterMyEpoch = val
 			}
 		}
 		return &info

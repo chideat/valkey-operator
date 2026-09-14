@@ -132,3 +132,34 @@ func TestGetDefaultIPFamily(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePortsRejectsOutOfRangePorts(t *testing.T) {
+	// A port above 65535 used to survive the range branch: the loop counter was
+	// narrowed with int32(i) and no ceiling was applied, so "1-70000" silently
+	// produced ports no listener could ever bind.
+	for _, input := range []string{
+		"1-70000",      // range end above uint16
+		"70000-70010",  // range start above uint16
+		"70000",        // single port above uint16
+		"1-2147483647", // range end at the int32 boundary
+	} {
+		t.Run(input, func(t *testing.T) {
+			ports, err := ParsePorts(input)
+			assert.Assert(t, err != nil, "%q must be rejected, got ports %v", input, ports)
+			assert.Assert(t, ports == nil)
+		})
+	}
+}
+
+func TestParsePortsAcceptsBoundaryPorts(t *testing.T) {
+	for _, input := range []string{"65535", "65530-65535", "1", "6379,16379"} {
+		t.Run(input, func(t *testing.T) {
+			ports, err := ParsePorts(input)
+			assert.NilError(t, err)
+			assert.Assert(t, len(ports) > 0)
+			for _, p := range ports {
+				assert.Assert(t, p > 0 && p <= 65535, "port %d out of range", p)
+			}
+		})
+	}
+}
