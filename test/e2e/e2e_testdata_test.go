@@ -14,6 +14,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
+	"github.com/chideat/valkey-operator/internal/util"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
 	"github.com/chideat/valkey-operator/test/utils"
 	"github.com/valkey-io/valkey-go"
@@ -196,10 +197,33 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 		ClientName:   "e2e-tests",
 		DisableCache: true, // prevents CLIENT TRACKING which restricted users can't run
 	}
-	if inst.Spec.Arch == core.ValkeyFailover {
-		options.Sentinel = valkey.SentinelOption{
-			MasterSet: "mymaster",
+	if inst.Spec.Access.EnableTLS {
+		// Build the client config with the operator's own helper rather than a
+		// copy of it. The nodes are dialled by IP while the issued certificate
+		// carries DNS SANs only, so this is exactly the case the helper has to
+		// get right, and running it here puts it under test against a real
+		// cert-manager certificate instead of a self-minted one.
+		tlsSecret, err := getInstanceTLSSecret(ctx, inst)
+		if err != nil {
+			return nil, err
 		}
+		tlsConf, err := util.LoadCertConfigFromSecret(tlsSecret)
+		if err != nil {
+			return nil, fmt.Errorf("load tls config for %s failed: %w", inst.GetName(), err)
+		}
+		options.TLSConfig = tlsConf
+		// Sentinel connections are configured separately: newSentinelOpt
+		// overwrites the client's TLSConfig with SentinelOption.TLSConfig, so
+		// setting only the one above leaves the sentinel dialled in plaintext
+		// and the node answers the handshake with "wrong version number".
+		// Every pod of an instance serves the same certificate, so the same
+		// config is correct for both.
+		options.Sentinel.TLSConfig = tlsConf
+	}
+	if inst.Spec.Arch == core.ValkeyFailover {
+		// Assign the field rather than the struct: replacing it would discard
+		// the sentinel TLS config set above.
+		options.Sentinel.MasterSet = "mymaster"
 	} else if inst.Spec.Arch == core.ValkeyCluster {
 		options.ShuffleInit = true
 	}
