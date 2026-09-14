@@ -52,8 +52,14 @@ jobs:
 
     - name: Check for [skip ci] in commit message
       id: check_skip_ci
+      # The message goes through the environment, never straight into the script.
+      # Interpolating it inline pastes arbitrary commit text into the shell: a
+      # message containing a quote breaks the condition outright, and one crafted
+      # with a command substitution would execute on the runner.
+      env:
+        HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
       run: |
-        if [[ "${{ github.event.head_commit.message }}" =~ \[skip\ ci\] ]]; then
+        if [[ "$HEAD_COMMIT_MESSAGE" =~ \[skip\ ci\] ]]; then
           echo "CI skip detected, exiting."
           exit 0
         fi
