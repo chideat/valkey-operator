@@ -5,7 +5,7 @@ VALKEY_CONFIG_FILE="/tmp/valkey.conf"
 ACL_CONFIG_FILE="/tmp/acl.conf"
 ANNOUNCE_CONFIG_FILE="/data/announce.conf"
 OPERATOR_PASSWORD_FILE="/account/password"
-TLS_DIR="/tmp"
+TLS_DIR="/tls"
 
 # init valkey.config, ignore replica-priority and slave-priority
 cat ${VALKEY_DEFAULT_CONFIG_FILE} | grep -vE "^(replica-priority|slave-priority)" > "$VALKEY_CONFIG_FILE"
