@@ -119,8 +119,14 @@ func (m *ActorManager) Search(cmd Command, inst Object) Actor {
 		crVersion = "100.0.0"
 	}
 
-	ver, _ := semver.NewVersion(crVersion)
-	if ver == nil {
+	// An unparseable version makes every actor lookup below fail, which surfaces
+	// to the caller as "actor for command not register" — a message that points at
+	// actor registration rather than at the version string that actually broke.
+	// Log the parse error so the real cause is one grep away.
+	ver, err := semver.NewVersion(crVersion)
+	if err != nil || ver == nil {
+		m.logger.Error(err, "parse instance version failed, no actor can be matched",
+			"version", crVersion, "command", cmd.String())
 		return nil
 	}
 	if val, err := ver.SetPrerelease(""); err == nil {
