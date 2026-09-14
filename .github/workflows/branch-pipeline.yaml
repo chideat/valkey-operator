@@ -52,8 +52,14 @@ jobs:
 
     - name: Check for [skip ci] in commit message
       id: check_skip_ci
+      # The message goes through the environment, never straight into the script.
+      # Interpolating it inline pastes arbitrary commit text into the shell: a
+      # message containing a quote breaks the condition outright, and one crafted
+      # with a command substitution would execute on the runner.
+      env:
+        HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
       run: |
-        if [[ "${{ github.event.head_commit.message }}" =~ \[skip\ ci\] ]]; then
+        if [[ "$HEAD_COMMIT_MESSAGE" =~ \[skip\ ci\] ]]; then
           echo "CI skip detected, exiting."
           exit 0
         fi
@@ -66,7 +72,10 @@ jobs:
         else
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           VERSION="${BRANCH_NAME#release-}"
-          TS=$(date '+%m%d%H%M')
+          # %Y prefix is required: SemVer forbids leading zeros in numeric
+          # pre-release identifiers, so a bare %m%d%H%M produces an unparseable
+          # tag for every build in January-September (e.g. 09121529).
+          TS=$(date '+%Y%m%d%H%M')
           # Get the latest tag matching the release version, looking at all tags now
           LARGEST_TAG=$(git tag --sort=-v:refname | grep "^v${VERSION}\\.$" | head -n 1)
           if [ -z "$LARGEST_TAG" ]; then

@@ -88,7 +88,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      # Created with the preinstalled gh CLI rather than a third-party action.
+      # This repository restricts workflows to GitHub-owned and verified-creator
+      # actions, and softprops/action-gh-release is neither, so referencing it
+      # made the whole workflow fail at startup: no jobs ran, no image was built
+      # and no release was published for the tag that triggered it.
       - name: Create Release
-        uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_VERSION" --generate-notes --verify-tag

@@ -18,7 +18,12 @@ package actor
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/chideat/valkey-operator/api/core"
@@ -367,4 +372,55 @@ func TestActorManager_Search(t *testing.T) {
 		t.Errorf("Search should return nil")
 	}
 	am.Add(core.ValkeyCluster, MockNewClusterEnsureResource(nil, logger))
+}
+
+// TestReleasePipelineTagIsParseableVersion guards the contract between the
+// release pipeline and Search: every tag branch-pipeline.yaml can emit must be a
+// version Search can parse.
+//
+// SemVer forbids leading zeros in numeric pre-release identifiers, so a bare
+// '+%m%d%H%M' timestamp yields an unparseable tag for every build in January to
+// September (e.g. v2.0.0-rc.09121529.d812ee9). Search then matches no actor for
+// any command and the operator silently stops creating workloads.
+//
+// The format is read out of the workflow rather than duplicated here so the two
+// cannot drift apart.
+func TestReleasePipelineTagIsParseableVersion(t *testing.T) {
+	const workflow = "../../.github/workflows/branch-pipeline.yaml"
+
+	data, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatalf("read %s: %v", workflow, err)
+	}
+
+	matches := regexp.MustCompile(`TS=\$\(date '\+([^']+)'\)`).FindSubmatch(data)
+	if matches == nil {
+		t.Fatalf("no timestamp format found in %s; update this test if the tag scheme changed", workflow)
+	}
+	strftime := string(matches[1])
+
+	// Only the directives the workflow is allowed to use.
+	layout := strftime
+	for _, r := range []struct{ directive, goLayout string }{
+		{"%Y", "2006"}, {"%m", "01"}, {"%d", "02"},
+		{"%H", "15"}, {"%M", "04"}, {"%S", "05"},
+	} {
+		layout = strings.ReplaceAll(layout, r.directive, r.goLayout)
+	}
+	if strings.Contains(layout, "%") {
+		t.Fatalf("unsupported strftime directive in %q; extend this test", strftime)
+	}
+
+	// One sample per month, at the smallest day/hour/minute, which is when
+	// leading zeros are most likely.
+	for month := 1; month <= 12; month++ {
+		ts := time.Date(2026, time.Month(month), 1, 0, 5, 0, 0, time.UTC).Format(layout)
+		tag := fmt.Sprintf("v2.0.0-rc.%s.d812ee9", ts)
+
+		t.Run(tag, func(t *testing.T) {
+			ver, err := semver.NewVersion(tag)
+			assert.NoError(t, err, "tag %q emitted by %s is not a parseable version", tag, workflow)
+			assert.NotNil(t, ver)
+		})
+	}
 }
