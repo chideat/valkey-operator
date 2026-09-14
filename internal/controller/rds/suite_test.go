@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -62,8 +63,7 @@ var _ = BeforeSuite(func() {
 		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
 		// Note that you must have the required binaries setup under the bin directory to perform
 		// the tests directly. When we run make test it will be setup and used automatically.
-		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
-			fmt.Sprintf("1.30.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
+		BinaryAssetsDirectory: envtestAssetsDir(),
 	}
 
 	var err error
@@ -88,3 +88,19 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+// envtestAssetsDir locates the envtest binaries under bin/k8s without pinning a
+// Kubernetes version. The path used to hardcode 1.30.0, which drifted from
+// ENVTEST_K8S_VERSION in the Makefile and left a bare `go test ./...` failing
+// with "fork/exec .../etcd: no such file or directory" while `make test` passed.
+// Whatever `make envtest` installed is used instead. KUBEBUILDER_ASSETS, which
+// `make test` sets, still takes precedence inside envtest itself.
+func envtestAssetsDir() string {
+	matches, err := filepath.Glob(filepath.Join("..", "..", "..", "bin", "k8s",
+		fmt.Sprintf("*-%s-%s", runtime.GOOS, runtime.GOARCH)))
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	sort.Strings(matches)
+	return matches[len(matches)-1]
+}

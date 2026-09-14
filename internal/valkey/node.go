@@ -19,7 +19,6 @@ package node
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
 	"net/netip"
@@ -238,24 +237,12 @@ func (n *ValkeyNode) loadTLS(ctx context.Context) (*tls.Config, error) {
 		return nil, err
 	}
 
-	if secret.Data[corev1.TLSCertKey] == nil || secret.Data[corev1.TLSPrivateKeyKey] == nil ||
-		secret.Data["ca.crt"] == nil {
-		logger.Error(fmt.Errorf("invalid tls secret"), "tls secret is invaid")
-		return nil, fmt.Errorf("tls secret is invalid")
-	}
-	cert, err := tls.X509KeyPair(secret.Data[corev1.TLSCertKey], secret.Data[corev1.TLSPrivateKeyKey])
+	conf, err := util.LoadCertConfigFromSecret(secret)
 	if err != nil {
-		logger.Error(err, "generate X509KeyPair failed")
+		logger.Error(err, "load tls config from secret failed")
 		return nil, err
 	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(secret.Data["ca.crt"])
-
-	return &tls.Config{
-		InsecureSkipVerify: true, // #nosec
-		RootCAs:            caCertPool,
-		Certificates:       []tls.Certificate{cert},
-	}, nil
+	return conf, nil
 }
 
 func (n *ValkeyNode) getValkeyConnect(ctx context.Context, node *ValkeyNode) (vkcli.ValkeyClient, error) {
@@ -524,8 +511,8 @@ func (n *ValkeyNode) Index() int {
 
 	name := n.Pod.Name
 	if i := strings.LastIndex(name, "-"); i > 0 {
-		index, _ := strconv.ParseInt(name[i+1:], 10, 64)
-		return int(index)
+		index, _ := strconv.Atoi(name[i+1:])
+		return index
 	}
 	return -1
 }

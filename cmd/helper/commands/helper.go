@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/valkey"
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -51,9 +52,10 @@ func LoadMonitorAuthInfo(c *cli.Context, ctx context.Context, client *kubernetes
 		namespace      = c.String("namespace")
 		passwordSecret = c.String("monitor-operator-secret-name")
 		// tls
-		isTLSEnabled = c.Bool("tls")
-		tlsKeyFile   = c.String("tls-key-file")
-		tlsCertFile  = c.String("tls-cert-file")
+		isTLSEnabled  = c.Bool("tls")
+		tlsKeyFile    = c.String("tls-key-file")
+		tlsCertFile   = c.String("tls-cert-file")
+		tlsCACertFile = c.String("tls-ca-file")
 	)
 
 	var (
@@ -74,7 +76,7 @@ func LoadMonitorAuthInfo(c *cli.Context, ctx context.Context, client *kubernetes
 		}
 	}
 	if isTLSEnabled {
-		if tlsConf, err = LoadTLSCofig(tlsKeyFile, tlsCertFile); err != nil {
+		if tlsConf, err = LoadTLSCofig(tlsKeyFile, tlsCertFile, tlsCACertFile); err != nil {
 			return nil, err
 		}
 	}
@@ -89,9 +91,10 @@ func LoadAuthInfo(c *cli.Context, ctx context.Context) (*valkey.AuthInfo, error)
 		// acl
 		opUsername = c.String("operator-username")
 		// tls
-		isTLSEnabled = c.Bool("tls")
-		tlsKeyFile   = c.String("tls-key-file")
-		tlsCertFile  = c.String("tls-cert-file")
+		isTLSEnabled  = c.Bool("tls")
+		tlsKeyFile    = c.String("tls-key-file")
+		tlsCertFile   = c.String("tls-cert-file")
+		tlsCACertFile = c.String("tls-ca-file")
 	)
 
 	var (
@@ -112,7 +115,7 @@ func LoadAuthInfo(c *cli.Context, ctx context.Context) (*valkey.AuthInfo, error)
 	}
 
 	if isTLSEnabled {
-		if tlsConf, err = LoadTLSCofig(tlsKeyFile, tlsCertFile); err != nil {
+		if tlsConf, err = LoadTLSCofig(tlsKeyFile, tlsCertFile, tlsCACertFile); err != nil {
 			return nil, err
 		}
 	}
@@ -123,18 +126,17 @@ func LoadAuthInfo(c *cli.Context, ctx context.Context) (*valkey.AuthInfo, error)
 	}, nil
 }
 
-func LoadTLSCofig(tlsKeyFile, tlsCertFile string) (*tls.Config, error) {
+// LoadTLSCofig builds the helper's TLS client config.
+//
+// This previously set InsecureSkipVerify with no RootCAs at all, so the helper
+// accepted any certificate presented to it. The CA is mounted alongside the
+// certificate and key in every instance pod and the --tls-ca-file flag already
+// carried its path; it was simply never read.
+func LoadTLSCofig(tlsKeyFile, tlsCertFile, tlsCACertFile string) (*tls.Config, error) {
 	if tlsKeyFile == "" || tlsCertFile == "" {
 		return nil, fmt.Errorf("tls file path not configed")
 	}
-	cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
-	if err != nil {
-		return nil, err
-	}
-	return &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true, // #nosec G402
-	}, nil
+	return util.LoadCertConfigFromFiles(tlsCertFile, tlsKeyFile, tlsCACertFile)
 }
 
 // NewOwnerReference

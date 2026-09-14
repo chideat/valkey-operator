@@ -18,6 +18,7 @@ package helper
 
 import (
 	"fmt"
+	"math"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -44,6 +45,9 @@ func ParsePorts(portSequence string) ([]int32, error) {
 			if port <= 0 {
 				return nil, fmt.Errorf("port must be greater than 0")
 			}
+			if port > math.MaxUint16 {
+				return nil, fmt.Errorf("port must not be greater than %d", math.MaxUint16)
+			}
 			portMap[int32(port)] += 1
 		} else if len(portRangeParts) == 2 {
 			start, err := strconv.Atoi(portRangeParts[0])
@@ -55,10 +59,16 @@ func ParsePorts(portSequence string) ([]int32, error) {
 				return nil, err
 			}
 
+			// Bound the range before narrowing to int32. The single-port branch
+			// above already parses with a 32-bit size; without the same ceiling
+			// here a value above MaxInt32 wraps to a negative or unrelated port.
+			if start <= 0 || end <= 0 {
+				return nil, fmt.Errorf("port must be greater than 0")
+			}
+			if start > math.MaxUint16 || end > math.MaxUint16 {
+				return nil, fmt.Errorf("port must not be greater than %d", math.MaxUint16)
+			}
 			for i := start; i <= end; i++ {
-				if i <= 0 {
-					return nil, fmt.Errorf("port must be greater than 0")
-				}
 				portMap[int32(i)] += 1
 			}
 		} else {
