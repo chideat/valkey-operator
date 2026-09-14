@@ -22,6 +22,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -133,5 +134,67 @@ func TestDefaultPropagatesIPFamilyToSentinel(t *testing.T) {
 	}
 	if got := inst.Spec.Sentinel.Access.IPFamilyPrefer; got != corev1.IPv6Protocol {
 		t.Errorf("sentinel IPFamilyPrefer = %q, want IPv6", got)
+	}
+}
+
+// A failover instance and its sentinel share one certificate and dial each
+// other, so TLS is not a per-side preference: the valkey pods reach the
+// sentinel using the failover's own setting, and the operator reaches it using
+// the sentinel's. Leaving the sentinel's unset produced TLS valkey pods talking
+// to a plaintext sentinel, and the instance never left Initializing.
+func TestDefaultPropagatesTLSToSentinel(t *testing.T) {
+	inst := &rdsv1alpha1.Valkey{
+		Spec: rdsv1alpha1.ValkeySpec{
+			Arch: core.ValkeyFailover,
+			Access: core.InstanceAccess{
+				ServiceType:    corev1.ServiceTypeNodePort,
+				EnableTLS:      true,
+				CertIssuer:     "valkey-ca",
+				CertIssuerType: "Issuer",
+			},
+		},
+	}
+	if err := (&ValkeyCustomDefaulter{}).Default(admissionCtx(admissionv1.Create), inst); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+
+	if inst.Spec.Sentinel == nil {
+		t.Fatal("a failover instance must have sentinel settings after defaulting")
+	}
+	if !inst.Spec.Sentinel.Access.EnableTLS {
+		t.Error("sentinel EnableTLS = false, want true: the valkey pods dial the " +
+			"sentinel over TLS, so a plaintext sentinel cannot answer them")
+	}
+	if got := inst.Spec.Sentinel.Access.CertIssuer; got != "valkey-ca" {
+		t.Errorf("sentinel CertIssuer = %q, want %q", got, "valkey-ca")
+	}
+	if got := inst.Spec.Sentinel.Access.CertIssuerType; got != "Issuer" {
+		t.Errorf("sentinel CertIssuerType = %q, want %q", got, "Issuer")
+	}
+}
+
+// The inverse mismatch is equally broken -- the valkey pods would dial a TLS
+// sentinel in plaintext -- so a sentinel-only setting is corrected rather than
+// honoured.
+func TestDefaultDoesNotLeaveSentinelTLSAheadOfTheInstance(t *testing.T) {
+	inst := &rdsv1alpha1.Valkey{
+		Spec: rdsv1alpha1.ValkeySpec{
+			Arch:   core.ValkeyFailover,
+			Access: core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP},
+			Sentinel: &v1alpha1.SentinelSettings{
+				SentinelSpec: v1alpha1.SentinelSpec{
+					Access: v1alpha1.SentinelInstanceAccess{
+						InstanceAccess: core.InstanceAccess{EnableTLS: true},
+					},
+				},
+			},
+		},
+	}
+	if err := (&ValkeyCustomDefaulter{}).Default(admissionCtx(admissionv1.Create), inst); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if inst.Spec.Sentinel.Access.EnableTLS {
+		t.Error("sentinel EnableTLS stayed true while the instance is plaintext; " +
+			"the valkey pods would dial a TLS listener without TLS")
 	}
 }
