@@ -19,7 +19,6 @@ package sentinel
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"slices"
 	"strconv"
@@ -136,19 +135,12 @@ func (s *ValkeySentinel) loadTLS(ctx context.Context, logger logr.Logger) (*tls.
 		logger.Error(fmt.Errorf("invalid tls secret"), "tls secret is invaid")
 		return nil, fmt.Errorf("tls secret is invalid")
 	} else {
-		cert, err := tls.X509KeyPair(secret.Data[corev1.TLSCertKey], secret.Data[corev1.TLSPrivateKeyKey])
+		conf, err := util.LoadCertConfigFromSecret(secret)
 		if err != nil {
-			logger.Error(err, "generate X509KeyPair failed")
+			logger.Error(err, "load tls config from secret failed")
 			return nil, err
 		}
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(secret.Data["ca.crt"])
-
-		return &tls.Config{
-			InsecureSkipVerify: true, // #nosec
-			RootCAs:            caCertPool,
-			Certificates:       []tls.Certificate{cert},
-		}, nil
+		return conf, nil
 	}
 }
 
