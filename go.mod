@@ -17,7 +17,7 @@ require (
 	github.com/samber/lo v1.53.0
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v2 v2.27.7
-	github.com/valkey-io/valkey-go v1.0.77
+	github.com/valkey-io/valkey-go v1.0.78
 	go.uber.org/zap v1.28.0
 	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.37.0
