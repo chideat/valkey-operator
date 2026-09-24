@@ -115,6 +115,7 @@ func GenerateValkeyCluster(instance *rdsv1alpha1.Valkey) (*v1alpha1.Cluster, err
 			Exporter:        exporter,
 			Storage:         instance.Spec.Storage,
 			Modules:         instance.Spec.Modules,
+			Overwrites:      instance.Spec.Overwrites,
 		},
 	}
 

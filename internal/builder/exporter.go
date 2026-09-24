@@ -66,7 +66,7 @@ func BuildExporterContainer(obj metav1.Object, exporter *core.Exporter, user *us
 		}
 	}
 	container := corev1.Container{
-		Name:            "exporter",
+		Name:            ExporterContainerName,
 		Command:         cmd,
 		Image:           image,
 		ImagePullPolicy: GetPullPolicy(exporter.ImagePullPolicy),

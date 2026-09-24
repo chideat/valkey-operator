@@ -35,6 +35,7 @@ status:
 | `tolerations` | []corev1.Toleration | Pod tolerations |
 | `nodeSelector` | map[string]string | Node selector |
 | `podAnnotations` | map[string]string | Pod annotations |
+| `overwrites` | []core.Overwrite | Patches for the StatefulSet the operator generates for the sentinel nodes |
 
 ## SentinelInstanceAccess
 

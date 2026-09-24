@@ -27,6 +27,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -145,6 +146,12 @@ func GenerateStatefulSet(inst types.FailoverInstance) (*appv1.StatefulSet, error
 			VolumeClaimTemplates: buildPersistentClaims(rf, labels),
 		},
 	}
+
+	ss, problems, err := overwrite.StatefulSet(ss, rf.Spec.Overwrites, overwrite.FailoverNodes)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, ss.Name, problems)
 	return ss, nil
 }
 
@@ -356,7 +363,7 @@ func buildValkeyDataInitContainer(rf *v1alpha1.Failover) (*corev1.Container, err
 				corev1.ResourceMemory: resource.MustParse("200Mi"),
 			},
 		},
-		Name:            "init",
+		Name:            builder.InitContainerName,
 		Image:           image,
 		ImagePullPolicy: builder.GetPullPolicy(rf.Spec.ImagePullPolicy),
 		VolumeMounts: []corev1.VolumeMount{

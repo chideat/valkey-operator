@@ -227,6 +227,10 @@ func (v *ValkeyCustomValidator) ValidateCreate(ctx context.Context, inst *rdsv1a
 		return warns, err
 	}
 
+	if err := validation.ValidateOverwrites(inst.Spec.Arch, inst.Spec.Overwrites, inst.Spec.Sentinel); err != nil {
+		return warns, err
+	}
+
 	switch inst.Spec.Arch {
 	case core.ValkeyCluster:
 		if inst.Spec.Replicas.Shards < 3 {
