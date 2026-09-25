@@ -74,6 +74,11 @@ type SentinelSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// PodAnnotations
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// Overwrites patches the objects the operator generates for the sentinel
+	// nodes.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
 
 // SentinelPhase

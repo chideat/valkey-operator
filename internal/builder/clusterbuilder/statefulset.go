@@ -24,6 +24,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -226,6 +227,12 @@ func GenerateStatefulSet(inst types.ClusterInstance, index int) (*appsv1.Statefu
 			VolumeClaimTemplates: buildPersistentClaims(cluster, selectors),
 		},
 	}
+
+	ss, problems, err := overwrite.StatefulSet(ss, spec.Overwrites, overwrite.ClusterNodes)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, ss.Name, problems)
 	return ss, nil
 }
 
@@ -344,7 +351,7 @@ func buildValkeyDataInitContainer(cluster *v1alpha1.Cluster, user *user.User, en
 	}
 
 	initContainer := corev1.Container{
-		Name:            "init",
+		Name:            builder.InitContainerName,
 		Image:           image,
 		ImagePullPolicy: builder.GetPullPolicy(cluster.Spec.ImagePullPolicy),
 		Env:             envs,
@@ -397,7 +404,7 @@ func buildValkeyAgentContainer(cluster *v1alpha1.Cluster, user *user.User, envs 
 	}
 
 	container := corev1.Container{
-		Name:            "agent",
+		Name:            builder.AgentContainerName,
 		Image:           image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env:             envs,

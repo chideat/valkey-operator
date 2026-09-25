@@ -89,6 +89,17 @@ Predefined affinity policies for pod scheduling:
 | `path` | string | Module file path |
 | `args` | []string | Module arguments (Valkey 8.0+) |
 
+## Overwrites
+
+### Overwrite
+
+Patches the objects of one kind that the operator generates. See [Customizing Generated StatefulSets](../guides/user-guide.md#customizing-generated-statefulsets) for what a patch may change.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | OverwriteKind | Kind of the generated objects to patch. Supported: `StatefulSet` |
+| `patch` | object | Strategic merge patch applied to every generated object of that kind, kept exactly as written |
+
 ## Examples
 
 ### Basic Storage Configuration
@@ -127,4 +138,18 @@ modules:
   - path: /opt/redis-stack/lib/rejson.so
   - path: /opt/redis-stack/lib/redisearch.so
     args: ["MAXSEARCHRESULTS", "10000"]
+```
+
+### Overwrites
+```yaml
+overwrites:
+  - kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            priorityClassName: critical
+            containers:
+              - name: exporter
+                args: ["--include-system-metrics=true"]
 ```

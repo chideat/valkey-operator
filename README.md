@@ -14,6 +14,7 @@
 * Online scale up/down.
 * Graceful version upgrade.
 * Nodeselector, toleration and affinity supported.
+* Generated StatefulSets can be patched through `spec.overwrites`.
 * High available in production environment.
 
 ## Quickstart

@@ -25,11 +25,15 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -174,4 +178,64 @@ func TestGenerateSentinelStatefulset_NoTLS(t *testing.T) {
 	// Verify volumes
 	// 3 base volumes (Config, Data, Opt)
 	assert.Len(t, ss.Spec.Template.Spec.Volumes, 3)
+}
+
+// TestGenerateSentinelStatefulsetAppliesOverwrites: spec.overwrites lands on
+// the generated StatefulSet, and a protected field it touches stays as
+// generated, with a Warning event that names it.
+func TestGenerateSentinelStatefulsetAppliesOverwrites(t *testing.T) {
+	newSentinel := func(overwrites ...core.Overwrite) *v1alpha1.Sentinel {
+		return &v1alpha1.Sentinel{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec: v1alpha1.SentinelSpec{
+				Image:      "valkey/valkey:8.1",
+				Replicas:   3,
+				Overwrites: overwrites,
+			},
+		}
+	}
+	patch := func(doc string) core.Overwrite {
+		return core.Overwrite{Kind: core.OverwriteKindStatefulSet, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}
+	}
+
+	plain := testutil.NewFakeSentinelInstance(newSentinel())
+	generated, err := GenerateSentinelStatefulset(plain)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Events())
+	assert.NotContains(t, generated.Annotations, overwrite.ChecksumAnnotation)
+
+	inst := testutil.NewFakeSentinelInstance(newSentinel(patch(`{"spec": {
+		"replicas": 5,
+		"template": {
+			"metadata": {"annotations": {"example.com/scrape": "true"}},
+			"spec": {"containers": [{"name": "agent", "env": [{"name": "LOG_LEVEL", "value": "debug"}]}]}
+		}
+	}}`)))
+	sts, err := GenerateSentinelStatefulset(inst)
+	require.NoError(t, err)
+
+	assert.Equal(t, generated.Spec.Replicas, sts.Spec.Replicas, "the operator scales the StatefulSet")
+	assert.Equal(t, "true", sts.Spec.Template.Annotations["example.com/scrape"])
+	var env []corev1.EnvVar
+	for _, c := range sts.Spec.Template.Spec.Containers {
+		if c.Name == builder.AgentContainerName {
+			env = c.Env
+		}
+	}
+	if assert.NotEmpty(t, env) {
+		assert.Equal(t, corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}, env[len(env)-1],
+			"the user's variable follows the operator's")
+	}
+	assert.NotEmpty(t, sts.Annotations[overwrite.ChecksumAnnotation])
+	assert.Equal(t, []string{"Warning Overwrites overwrites for " + sts.Name + ": spec.replicas restored"}, inst.Events())
+
+	t.Run("template annotations stay writable", func(t *testing.T) {
+		// The sentinel actor writes its checksums into the template
+		// annotations; an overwrite that leaves them empty must not make the
+		// map nil.
+		sts, err := GenerateSentinelStatefulset(testutil.NewFakeSentinelInstance(newSentinel(patch(`{"spec": {"minReadySeconds": 5}}`))))
+		require.NoError(t, err)
+		assert.Equal(t, int32(5), sts.Spec.MinReadySeconds)
+		assert.NotNil(t, sts.Spec.Template.Annotations)
+	})
 }

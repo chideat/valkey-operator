@@ -45,10 +45,18 @@ const (
 	ValkeySecretPasswordKey = "password" // #nosec
 )
 
+// Container names are part of the API: spec.overwrites patches containers by
+// name, so renaming one breaks existing patches.
 const (
 	ServerContainerName   = "valkey"
 	SentinelContainerName = "sentinel"
-	ValkeyConfigKey       = "valkey.conf"
+	ExporterContainerName = "exporter"
+	AgentContainerName    = "agent"
+	InitContainerName     = "init"
+)
+
+const (
+	ValkeyConfigKey = "valkey.conf"
 
 	DefaultValkeyServerPort    = 6379
 	DefaultValkeyServerBusPort = 16379

@@ -8,8 +8,9 @@
 4. [Architecture Overview](#architecture-overview)
 5. [Configuration Examples](#configuration-examples)
 6. [Monitoring](#monitoring)
-7. [Security](#security)
-8. [Troubleshooting](#troubleshooting)
+7. [Customizing Generated StatefulSets](#customizing-generated-statefulsets)
+8. [Security](#security)
+9. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
@@ -287,6 +288,10 @@ spec:
         cpu: 100m
 ```
 
+### Exporter Flags and Environment Variables
+
+The exporter runs with the flags the operator needs. To pass more, such as `--include-system-metrics` or `REDIS_EXPORTER_CHECK_KEYS`, patch the `exporter` container through `spec.overwrites`; see [Customizing Generated StatefulSets](#customizing-generated-statefulsets).
+
 ### ServiceMonitor for Prometheus Operator
 
 ```yaml
@@ -305,6 +310,78 @@ spec:
       interval: 30s
       path: /metrics
 ```
+
+## Customizing Generated StatefulSets
+
+The operator generates the StatefulSets that run the Valkey nodes (one per shard on the cluster architecture) and the sentinel nodes. `spec.overwrites` patches them, for settings the Valkey spec has no field for: a priority class, topology spread constraints, extra volumes, exporter flags, probe timing.
+
+```yaml
+apiVersion: rds.valkey.buf.red/v1alpha1
+kind: Valkey
+metadata:
+  name: demo
+spec:
+  arch: failover
+  # ...
+  overwrites:
+    - kind: StatefulSet
+      patch:
+        metadata:
+          labels:
+            team: cache
+        spec:
+          template:
+            spec:
+              priorityClassName: critical
+              containers:
+                - name: exporter
+                  args: ["--include-system-metrics=true"]
+                  env:
+                    - name: REDIS_EXPORTER_CHECK_KEYS
+                      value: "session:*"
+                - name: valkey
+                  livenessProbe:
+                    periodSeconds: 30
+  sentinel:
+    replicas: 3
+    overwrites:
+      - kind: StatefulSet
+        patch:
+          spec:
+            template:
+              spec:
+                priorityClassName: critical
+```
+
+Each patch is a [strategic merge patch](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/), so it lists only what it adds or changes. Containers, environment variables and volumes merge by name, and volume mounts by `mountPath`; lists without a merge key, such as `args`, are replaced whole. Where a patch sets a field the operator also sets, and the field is not protected, the patch wins.
+
+`spec.sentinel.overwrites` patches the sentinel StatefulSet. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
+
+The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each StatefulSet, so a change to the overwrites always updates the StatefulSets. The pods roll when the change reaches the pod template.
+
+### What a Patch Cannot Change
+
+The operator relies on parts of the StatefulSets it generates, so these are protected:
+
+- The identity and status of the StatefulSet, the operator's labels, and annotations that start with `valkey.buf.red/checksum`.
+- `replicas`, `updateStrategy`, `revisionHistoryLimit`, `ordinals`, `selector`, `serviceName`, `podManagementPolicy`, `volumeClaimTemplates` and `persistentVolumeClaimRetentionPolicy`. The operator scales and rolls the StatefulSets itself.
+- In the pod template: the operator's labels and the `kubectl.kubernetes.io/restartedAt` annotation; `affinity`, `tolerations`, `nodeSelector`, `securityContext` and `imagePullSecrets`, which have fields in the Valkey spec; `serviceAccountName`, `serviceAccount`, `automountServiceAccountToken` and `terminationGracePeriodSeconds`; the `local.inject` host alias (`127.0.0.1` or `::1`); and the operator's volumes `conf`, `sentinel-config`, `temp`, `valkey-auth`, `valkey-data`, `valkey-opt` and `valkey-tls`.
+- In every container the operator runs: `image`, `imagePullPolicy`, `command`, `ports` and `securityContext`; environment variables with the names the operator uses, such as `POD_IP`, `REDIS_ADDR` or `REDIS_PASSWORD`; and the mount paths `/account`, `/data`, `/etc/valkey`, `/mnt/opt`, `/opt`, `/tmp` and `/tls`, and anything under them.
+- In the `valkey` and `sentinel` containers: `args`, `lifecycle`, `resources`, and what a probe runs. A probe's timing can change, but a probe the operator does not set cannot be added.
+- In the `exporter` container: `resources` (set `spec.exporter.resources` instead), and the flags that the operator sets or that would point the exporter at another server or credentials: `--redis.addr`, `--redis.user`, `--redis.password`, `--redis.password-file`, `--tls-ca-cert-file`, `--tls-client-cert-file`, `--tls-client-key-file`, `--skip-tls-verification`, `--web.listen-address`, `--web.telemetry-path` and `--version`.
+- In the `init` and `agent` containers: `args`.
+
+A patch cannot add containers; it can only change the ones the operator runs:
+
+| StatefulSet | Containers | Init containers |
+|-------------|------------|-----------------|
+| Valkey nodes, cluster architecture | `valkey`, `exporter`, `agent` | `init` |
+| Valkey nodes, failover and replica architectures | `valkey`, `exporter` | `init` |
+| Sentinel nodes | `sentinel`, `agent` | `init` |
+
+The admission webhook of the Valkey resource rejects a patch that changes a protected field, adds a container, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the StatefulSet does not have, or gives a field a value of the wrong type.
+
+The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator applies the rest of the patch, keeps protected fields as generated, drops containers it does not run, and reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
 
 ## Security
 

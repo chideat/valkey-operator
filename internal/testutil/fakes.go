@@ -21,6 +21,7 @@ package testutil
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 
 	certmetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
@@ -28,6 +29,7 @@ import (
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/pkg/slot"
 	"github.com/chideat/valkey-operator/pkg/types"
+	"github.com/chideat/valkey-operator/pkg/types/user"
 	vkcli "github.com/chideat/valkey-operator/pkg/valkey"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
@@ -129,6 +131,8 @@ type FakeFailoverInstance struct {
 	monitor    types.FailoverMonitor
 	restartErr error
 	selector   map[string]string
+	users      types.Users
+	events     []string
 }
 
 var _ types.FailoverInstance = (*FakeFailoverInstance)(nil)
@@ -166,6 +170,13 @@ func (m *FakeFailoverInstance) WithSelector(sel map[string]string) *FakeFailover
 	m.selector = sel
 	return m
 }
+func (m *FakeFailoverInstance) WithUsers(users ...*user.User) *FakeFailoverInstance {
+	m.users = users
+	return m
+}
+
+// Events returns what SendEventf received, as "type reason message".
+func (m *FakeFailoverInstance) Events() []string { return m.events }
 
 func (m *FakeFailoverInstance) NamespacedName() client.ObjectKey {
 	return client.ObjectKeyFromObject(m.Failover)
@@ -179,7 +190,7 @@ func (m *FakeFailoverInstance) Restart(ctx context.Context, annotationKeyVal ...
 func (m *FakeFailoverInstance) Refresh(ctx context.Context) error   { return nil }
 func (m *FakeFailoverInstance) Arch() core.Arch                     { return core.ValkeyFailover }
 func (m *FakeFailoverInstance) Issuer() *certmetav1.IssuerReference { return nil }
-func (m *FakeFailoverInstance) Users() types.Users                  { return nil }
+func (m *FakeFailoverInstance) Users() types.Users                  { return m.users }
 func (m *FakeFailoverInstance) TLSConfig() *tls.Config              { return nil }
 func (m *FakeFailoverInstance) IsInService() bool                   { return true }
 func (m *FakeFailoverInstance) IsACLUserExists() bool               { return false }
@@ -190,12 +201,14 @@ func (m *FakeFailoverInstance) IsResourceFullfilled(ctx context.Context) (bool, 
 func (m *FakeFailoverInstance) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
 	return nil
 }
-func (m *FakeFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {}
-func (m *FakeFailoverInstance) Logger() logr.Logger                                          { return logr.Discard() }
-func (m *FakeFailoverInstance) Definition() *v1alpha1.Failover                               { return m.Failover }
-func (m *FakeFailoverInstance) Replication() types.Replication                               { return nil }
-func (m *FakeFailoverInstance) Masters() []types.ValkeyNode                                  { return m.masters }
-func (m *FakeFailoverInstance) Nodes() []types.ValkeyNode                                    { return m.nodes }
+func (m *FakeFailoverInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {
+	m.events = append(m.events, eventtype+" "+reason+" "+fmt.Sprintf(messageFmt, args...))
+}
+func (m *FakeFailoverInstance) Logger() logr.Logger            { return logr.Discard() }
+func (m *FakeFailoverInstance) Definition() *v1alpha1.Failover { return m.Failover }
+func (m *FakeFailoverInstance) Replication() types.Replication { return nil }
+func (m *FakeFailoverInstance) Masters() []types.ValkeyNode    { return m.masters }
+func (m *FakeFailoverInstance) Nodes() []types.ValkeyNode      { return m.nodes }
 func (m *FakeFailoverInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
 	return nil, nil
 }
@@ -203,3 +216,148 @@ func (m *FakeFailoverInstance) Monitor() types.FailoverMonitor { return m.monito
 func (m *FakeFailoverInstance) IsBindedSentinel() bool         { return false }
 func (m *FakeFailoverInstance) IsStandalone() bool             { return false }
 func (m *FakeFailoverInstance) Selector() map[string]string    { return m.selector }
+
+// ---------------------------------------------------------------------------
+// FakeClusterInstance
+// ---------------------------------------------------------------------------
+
+// FakeClusterInstance is a configurable types.ClusterInstance for tests. It
+// embeds *v1alpha1.Cluster for the metav1.Object / runtime.Object surface; the
+// remaining behaviour is set through the With* chainable setters.
+type FakeClusterInstance struct {
+	*v1alpha1.Cluster
+
+	version version.ValkeyVersion
+	users   types.Users
+	events  []string
+}
+
+var _ types.ClusterInstance = (*FakeClusterInstance)(nil)
+
+// NewFakeClusterInstance wraps the given Cluster definition; version defaults
+// to 8.0.
+func NewFakeClusterInstance(cluster *v1alpha1.Cluster) *FakeClusterInstance {
+	return &FakeClusterInstance{
+		Cluster: cluster,
+		version: version.ValkeyVersion("8.0"),
+	}
+}
+
+func (m *FakeClusterInstance) WithUsers(users ...*user.User) *FakeClusterInstance {
+	m.users = users
+	return m
+}
+
+// Events returns what SendEventf received, as "type reason message".
+func (m *FakeClusterInstance) Events() []string { return m.events }
+
+func (m *FakeClusterInstance) NamespacedName() client.ObjectKey {
+	return client.ObjectKeyFromObject(m.Cluster)
+}
+func (m *FakeClusterInstance) Version() version.ValkeyVersion     { return m.version }
+func (m *FakeClusterInstance) SafeVersion() version.ValkeyVersion { return m.version }
+func (m *FakeClusterInstance) IsReady() bool                      { return true }
+func (m *FakeClusterInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
+	return nil
+}
+func (m *FakeClusterInstance) Refresh(ctx context.Context) error   { return nil }
+func (m *FakeClusterInstance) Arch() core.Arch                     { return core.ValkeyCluster }
+func (m *FakeClusterInstance) Issuer() *certmetav1.IssuerReference { return nil }
+func (m *FakeClusterInstance) Users() types.Users                  { return m.users }
+func (m *FakeClusterInstance) TLSConfig() *tls.Config              { return nil }
+func (m *FakeClusterInstance) IsInService() bool                   { return true }
+func (m *FakeClusterInstance) IsACLUserExists() bool               { return false }
+func (m *FakeClusterInstance) IsACLAppliedToAll() bool             { return false }
+func (m *FakeClusterInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
+	return true, nil
+}
+func (m *FakeClusterInstance) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
+	return nil
+}
+func (m *FakeClusterInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {
+	m.events = append(m.events, eventtype+" "+reason+" "+fmt.Sprintf(messageFmt, args...))
+}
+func (m *FakeClusterInstance) Logger() logr.Logger             { return logr.Discard() }
+func (m *FakeClusterInstance) Definition() *v1alpha1.Cluster   { return m.Cluster }
+func (m *FakeClusterInstance) Status() *v1alpha1.ClusterStatus { return &m.Cluster.Status }
+func (m *FakeClusterInstance) Masters() []types.ValkeyNode     { return nil }
+func (m *FakeClusterInstance) Nodes() []types.ValkeyNode       { return nil }
+func (m *FakeClusterInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
+	return nil, nil
+}
+func (m *FakeClusterInstance) Shards() []types.ClusterShard       { return nil }
+func (m *FakeClusterInstance) Shard(index int) types.ClusterShard { return nil }
+func (m *FakeClusterInstance) RewriteShards(ctx context.Context, shards []*v1alpha1.ClusterShards) error {
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// FakeSentinelInstance
+// ---------------------------------------------------------------------------
+
+// FakeSentinelInstance is a configurable types.SentinelInstance for tests. It
+// embeds *v1alpha1.Sentinel for the metav1.Object / runtime.Object surface; the
+// remaining behaviour is set through the With* chainable setters.
+type FakeSentinelInstance struct {
+	*v1alpha1.Sentinel
+
+	version version.ValkeyVersion
+	users   types.Users
+	events  []string
+}
+
+var _ types.SentinelInstance = (*FakeSentinelInstance)(nil)
+
+// NewFakeSentinelInstance wraps the given Sentinel definition; version
+// defaults to 8.0.
+func NewFakeSentinelInstance(sentinel *v1alpha1.Sentinel) *FakeSentinelInstance {
+	return &FakeSentinelInstance{
+		Sentinel: sentinel,
+		version:  version.ValkeyVersion("8.0"),
+	}
+}
+
+func (m *FakeSentinelInstance) WithUsers(users ...*user.User) *FakeSentinelInstance {
+	m.users = users
+	return m
+}
+
+// Events returns what SendEventf received, as "type reason message".
+func (m *FakeSentinelInstance) Events() []string { return m.events }
+
+func (m *FakeSentinelInstance) NamespacedName() client.ObjectKey {
+	return client.ObjectKeyFromObject(m.Sentinel)
+}
+func (m *FakeSentinelInstance) Version() version.ValkeyVersion     { return m.version }
+func (m *FakeSentinelInstance) SafeVersion() version.ValkeyVersion { return m.version }
+func (m *FakeSentinelInstance) IsReady() bool                      { return true }
+func (m *FakeSentinelInstance) Restart(ctx context.Context, annotationKeyVal ...string) error {
+	return nil
+}
+func (m *FakeSentinelInstance) Refresh(ctx context.Context) error   { return nil }
+func (m *FakeSentinelInstance) Arch() core.Arch                     { return core.ValkeySentinel }
+func (m *FakeSentinelInstance) Issuer() *certmetav1.IssuerReference { return nil }
+func (m *FakeSentinelInstance) Users() types.Users                  { return m.users }
+func (m *FakeSentinelInstance) TLSConfig() *tls.Config              { return nil }
+func (m *FakeSentinelInstance) IsInService() bool                   { return true }
+func (m *FakeSentinelInstance) IsACLUserExists() bool               { return false }
+func (m *FakeSentinelInstance) IsACLAppliedToAll() bool             { return false }
+func (m *FakeSentinelInstance) IsResourceFullfilled(ctx context.Context) (bool, error) {
+	return true, nil
+}
+func (m *FakeSentinelInstance) UpdateStatus(ctx context.Context, st types.InstanceStatus, message string) error {
+	return nil
+}
+func (m *FakeSentinelInstance) SendEventf(eventtype, reason, messageFmt string, args ...any) {
+	m.events = append(m.events, eventtype+" "+reason+" "+fmt.Sprintf(messageFmt, args...))
+}
+func (m *FakeSentinelInstance) Logger() logr.Logger                    { return logr.Discard() }
+func (m *FakeSentinelInstance) Definition() *v1alpha1.Sentinel         { return m.Sentinel }
+func (m *FakeSentinelInstance) Replication() types.SentinelReplication { return nil }
+func (m *FakeSentinelInstance) Nodes() []types.SentinelNode            { return nil }
+func (m *FakeSentinelInstance) RawNodes(ctx context.Context) ([]corev1.Pod, error) {
+	return nil, nil
+}
+func (m *FakeSentinelInstance) Clusters(ctx context.Context) ([]string, error) { return nil, nil }
+func (m *FakeSentinelInstance) GetPassword() (string, error)                   { return "", nil }
+func (m *FakeSentinelInstance) Selector() map[string]string                    { return nil }

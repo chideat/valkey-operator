@@ -21,11 +21,15 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/chideat/valkey-operator/pkg/types/user"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -220,4 +224,57 @@ func TestValkeyDataInitContainerHonoursCallerSecurityContext(t *testing.T) {
 	assert.Equal(t, int64(1234), *c.SecurityContext.RunAsUser)
 	assert.Equal(t, corev1.SeccompProfileTypeUnconfined, c.SecurityContext.SeccompProfile.Type,
 		"a caller-supplied seccomp profile must not be overwritten by the default")
+}
+
+// TestGenerateStatefulSetAppliesOverwrites: spec.overwrites lands on the
+// generated StatefulSet, and a protected field it touches stays as generated,
+// with a Warning event that names it.
+func TestGenerateStatefulSetAppliesOverwrites(t *testing.T) {
+	newCluster := func(overwrites ...core.Overwrite) *v1alpha1.Cluster {
+		return &v1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec: v1alpha1.ClusterSpec{
+				Image:      "valkey/valkey:8.1",
+				Replicas:   v1alpha1.ClusterReplicas{Shards: 3, ReplicasOfShard: 2},
+				Exporter:   &core.Exporter{Image: "oliver006/redis_exporter:v1.67.0-alpine"},
+				Overwrites: overwrites,
+			},
+		}
+	}
+	opUser := &user.User{
+		Name:     user.DefaultOperatorUserName,
+		Role:     user.RoleOperator,
+		Password: &user.Password{SecretName: "cluster-acl-demo-operator-secret"},
+	}
+
+	plain := testutil.NewFakeClusterInstance(newCluster()).WithUsers(opUser)
+	generated, err := GenerateStatefulSet(plain, 0)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Events())
+	assert.NotContains(t, generated.Annotations, overwrite.ChecksumAnnotation)
+
+	inst := testutil.NewFakeClusterInstance(newCluster(core.Overwrite{
+		Kind: core.OverwriteKindStatefulSet,
+		Patch: apiextensionsv1.JSON{Raw: []byte(`{"spec": {
+			"replicas": 5,
+			"template": {
+				"metadata": {"annotations": {"example.com/scrape": "true"}},
+				"spec": {"containers": [{"name": "exporter", "args": ["--include-system-metrics=true"]}]}
+			}
+		}}`)},
+	})).WithUsers(opUser)
+	sts, err := GenerateStatefulSet(inst, 0)
+	require.NoError(t, err)
+
+	assert.Equal(t, generated.Spec.Replicas, sts.Spec.Replicas, "the operator scales the StatefulSet")
+	assert.Equal(t, "true", sts.Spec.Template.Annotations["example.com/scrape"])
+	var args []string
+	for _, c := range sts.Spec.Template.Spec.Containers {
+		if c.Name == builder.ExporterContainerName {
+			args = c.Args
+		}
+	}
+	assert.Equal(t, []string{"--include-system-metrics=true"}, args)
+	assert.NotEmpty(t, sts.Annotations[overwrite.ChecksumAnnotation])
+	assert.Equal(t, []string{"Warning Overwrites overwrites for " + sts.Name + ": spec.replicas restored"}, inst.Events())
 }

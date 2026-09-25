@@ -25,6 +25,7 @@ const (
 	EventUpdatePassword EventReason = "UpdatedPassword"
 	EventCleanResource  EventReason = "CleanResource"
 	EventFailover       EventReason = "Failover"
+	EventOverwrites     EventReason = "Overwrites"
 
 	EventSetupMaster   EventReason = "SetupMaster"
 	EventResetReplica  EventReason = "ResetReplica"

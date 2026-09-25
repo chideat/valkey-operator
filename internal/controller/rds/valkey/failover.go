@@ -109,6 +109,7 @@ func GenerateFailover(instance *rdsv1alpha1.Valkey) (*v1alpha1.Failover, error) 
 			Tolerations:     instance.Spec.Tolerations,
 			SecurityContext: instance.Spec.SecurityContext,
 			Sentinel:        sentinel,
+			Overwrites:      instance.Spec.Overwrites,
 		},
 	}
 

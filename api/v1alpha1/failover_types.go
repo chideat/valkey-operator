@@ -99,6 +99,11 @@ type FailoverSpec struct {
 
 	// Modules defines the module settings for Valkey
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
+
+	// Overwrites patches the objects the operator generates for the Valkey
+	// nodes; sentinel.overwrites does the same for the sentinel nodes.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
 
 type FailoverPhase string

@@ -20,12 +20,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
 
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -127,4 +131,30 @@ func ValidatePasswordSecret(namespace, secretName string, mgrClient client.Reade
 		return security.PasswordValidate(string(secret.Data["password"]), 8, 32)
 	}
 	return nil
+}
+
+// ValidateOverwrites checks spec.overwrites against what the operator
+// generates for arch, and spec.sentinel.overwrites against the sentinel nodes.
+// The sentinel patches only reach a Sentinel resource on the failover
+// architecture when the operator runs the sentinel, so they are refused
+// anywhere else rather than silently ignored.
+func ValidateOverwrites(arch core.Arch, overwrites []core.Overwrite, sentinel *v1alpha1.SentinelSettings) error {
+	component := overwrite.FailoverNodes
+	if arch == core.ValkeyCluster {
+		component = overwrite.ClusterNodes
+	}
+	errs := overwrite.Validate(overwrites, component, field.NewPath("spec", "overwrites"))
+
+	if sentinel != nil && len(sentinel.Overwrites) > 0 {
+		fldPath := field.NewPath("spec", "sentinel", "overwrites")
+		switch {
+		case arch != core.ValkeyFailover:
+			errs = append(errs, field.Forbidden(fldPath, fmt.Sprintf("the %s architecture runs no sentinel nodes", arch)))
+		case sentinel.SentinelReference != nil:
+			errs = append(errs, field.Forbidden(fldPath, "spec.sentinel.sentinelReference points to sentinel nodes the operator does not run"))
+		default:
+			errs = append(errs, overwrite.Validate(sentinel.Overwrites, overwrite.SentinelNodes, fldPath)...)
+		}
+	}
+	return errs.ToAggregate()
 }

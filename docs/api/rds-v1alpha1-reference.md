@@ -182,6 +182,11 @@ type ValkeySpec struct {
 	// Sentinel defines Sentinel configuration settings Sentinel
 	// +optional
 	Sentinel *bufredv1alpha1.SentinelSettings `json:"sentinel,omitempty"`
+
+	// Overwrites patches the objects the operator generates for the Valkey
+	// nodes; spec.sentinel.overwrites does the same for the sentinel nodes.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
     ValkeySpec defines the desired state of Valkey
 
