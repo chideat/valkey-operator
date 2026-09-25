@@ -24,6 +24,7 @@ import (
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
@@ -133,6 +134,17 @@ func GenerateSentinelStatefulset(inst types.SentinelInstance) (*appv1.StatefulSe
 			},
 		},
 	}
+
+	ss, problems, err := overwrite.StatefulSet(ss, sen.Spec.Overwrites, overwrite.SentinelNodes)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, ss.Name, problems)
+	// The sentinel actor writes its checksums into these annotations, and a
+	// merge can leave an empty map as nil.
+	if ss.Spec.Template.Annotations == nil {
+		ss.Spec.Template.Annotations = map[string]string{}
+	}
 	return ss, nil
 }
 
@@ -143,7 +155,7 @@ func buildInitContainer(sen *v1alpha1.Sentinel, _ []corev1.EnvVar) (*corev1.Cont
 	}
 
 	return &corev1.Container{
-		Name:            "init",
+		Name:            builder.InitContainerName,
 		Image:           image,
 		ImagePullPolicy: builder.GetPullPolicy(sen.Spec.ImagePullPolicy),
 		Command:         []string{"sh", "/opt/init_sentinel.sh"},
@@ -257,7 +269,7 @@ func buildAgentContainer(sen *v1alpha1.Sentinel, envs []corev1.EnvVar) (*corev1.
 		return nil, fmt.Errorf("valkey-helper image not found")
 	}
 	container := corev1.Container{
-		Name:            "agent",
+		Name:            builder.AgentContainerName,
 		Image:           image,
 		ImagePullPolicy: builder.GetPullPolicy(sen.Spec.ImagePullPolicy),
 		Env:             envs,

@@ -1347,6 +1347,38 @@ spec:
                   type: string
                 description: NodeSelector specifies the node selector for the Pod
                 type: object
+              overwrites:
+                description: |-
+                  Overwrites patches the objects the operator generates for the Valkey
+                  nodes; spec.sentinel.overwrites does the same for the sentinel nodes.
+                items:
+                  description: |-
+                    Overwrite patches the objects of one kind that the operator generates.
+
+                    Values in the patch win over the generated ones, except for the fields the
+                    operator protects: the ones its own logic reads or depends on, such as the
+                    valkey container's command, probes and resources, and the ones that already
+                    have a typed field in the spec, such as affinity and tolerations. A patch
+                    that sets a protected field is rejected at admission; one that reaches the
+                    operator without admission has those fields restored, and a Warning event
+                    names them.
+                  properties:
+                    kind:
+                      description: Kind of the generated objects to patch.
+                      enum:
+                      - StatefulSet
+                      type: string
+                    patch:
+                      description: |-
+                        Patch is a strategic merge patch applied to every generated object of
+                        that kind, metadata and spec. It is kept exactly as written.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - kind
+                  - patch
+                  type: object
+                type: array
               podAnnotations:
                 additionalProperties:
                   type: string
@@ -2956,6 +2988,38 @@ spec:
                       type: string
                     description: NodeSelector
                     type: object
+                  overwrites:
+                    description: |-
+                      Overwrites patches the objects the operator generates for the sentinel
+                      nodes.
+                    items:
+                      description: |-
+                        Overwrite patches the objects of one kind that the operator generates.
+
+                        Values in the patch win over the generated ones, except for the fields the
+                        operator protects: the ones its own logic reads or depends on, such as the
+                        valkey container's command, probes and resources, and the ones that already
+                        have a typed field in the spec, such as affinity and tolerations. A patch
+                        that sets a protected field is rejected at admission; one that reaches the
+                        operator without admission has those fields restored, and a Warning event
+                        names them.
+                      properties:
+                        kind:
+                          description: Kind of the generated objects to patch.
+                          enum:
+                          - StatefulSet
+                          type: string
+                        patch:
+                          description: |-
+                            Patch is a strategic merge patch applied to every generated object of
+                            that kind, metadata and spec. It is kept exactly as written.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - kind
+                      - patch
+                      type: object
+                    type: array
                   podAnnotations:
                     additionalProperties:
                       type: string

@@ -218,6 +218,10 @@ type ClusterSpec struct {
 
 	// Modules defines the module settings for Valkey
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
+
+	// Overwrites patches the objects the operator generates for this cluster.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
     ClusterSpec defines the desired state of Cluster
 
@@ -333,6 +337,11 @@ type FailoverSpec struct {
 
 	// Modules defines the module settings for Valkey
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
+
+	// Overwrites patches the objects the operator generates for the Valkey
+	// nodes; sentinel.overwrites does the same for the sentinel nodes.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
     FailoverSpec defines the desired state of Failover
 
@@ -563,6 +572,11 @@ type SentinelSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// PodAnnotations
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// Overwrites patches the objects the operator generates for the sentinel
+	// nodes.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
     SentinelSpec defines the desired state of Sentinel
 

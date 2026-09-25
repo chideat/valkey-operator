@@ -96,6 +96,10 @@ type ClusterSpec struct {
 
 	// Modules defines the module settings for Valkey
 	Modules []core.ValkeyModule `json:"modules,omitempty"`
+
+	// Overwrites patches the objects the operator generates for this cluster.
+	// +optional
+	Overwrites []core.Overwrite `json:"overwrites,omitempty"`
 }
 
 // ClusterPhase Valkey Cluster status
