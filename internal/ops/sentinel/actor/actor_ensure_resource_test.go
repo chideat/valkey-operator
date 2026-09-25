@@ -26,14 +26,19 @@ import (
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/chideat/valkey-operator/pkg/kubernetes/clientset/mocks"
 	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/chideat/valkey-operator/pkg/version"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -205,4 +210,47 @@ func TestSentinelActorEnsureResource_Pause_STSScaleDown(t *testing.T) {
 	assert.Equal(t, actor.CommandPaused, result.NextCommand())
 	clientMock.AssertCalled(t, "UpdateStatefulSet", ctx, "default", mock.Anything)
 	clientMock.AssertExpectations(t)
+}
+
+// TestEnsurePodDisruptionBudgetNoticesOverwrites: the budget is updated when
+// its overwrites are added or removed, although its spec stays the same.
+func TestEnsurePodDisruptionBudgetNoticesOverwrites(t *testing.T) {
+	labels := core.Overwrite{Kind: core.OverwriteKindPodDisruptionBudget, Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	newInst := func(overwrites ...core.Overwrite) *testutil.FakeSentinelInstance {
+		return testutil.NewFakeSentinelInstance(&v1alpha1.Sentinel{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec:       v1alpha1.SentinelSpec{Replicas: 3, Overwrites: overwrites},
+		})
+	}
+	live := func(overwrites ...core.Overwrite) *policyv1.PodDisruptionBudget {
+		pdb, err := sentinelbuilder.GeneratePodDisruptionBudget(newInst(overwrites...))
+		require.NoError(t, err)
+		return pdb
+	}
+	for _, tc := range []struct {
+		name   string
+		live   *policyv1.PodDisruptionBudget
+		inst   *testutil.FakeSentinelInstance
+		update bool
+	}{
+		{"no overwrites", live(), newInst(), false},
+		{"the same overwrites", live(labels), newInst(labels), false},
+		{"overwrites added", live(), newInst(labels), true},
+		{"overwrites removed", live(labels), newInst(), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			clientMock := &mocks.ClientSet{}
+			clientMock.On("GetPodDisruptionBudget", ctx, "default", tc.live.Name).Return(tc.live, nil)
+			clientMock.On("UpdatePodDisruptionBudget", ctx, "default", mock.Anything).Return(nil).Maybe()
+
+			a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+			assert.Nil(t, a.ensurePodDisruptionBudget(ctx, tc.inst, logr.Discard()))
+			if tc.update {
+				clientMock.AssertCalled(t, "UpdatePodDisruptionBudget", ctx, "default", mock.Anything)
+			} else {
+				clientMock.AssertNotCalled(t, "UpdatePodDisruptionBudget", ctx, "default", mock.Anything)
+			}
+		})
+	}
 }

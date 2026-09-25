@@ -271,3 +271,28 @@ func TestOrdered(t *testing.T) {
 	assert.Empty(t, reports)
 	assert.Empty(t, runCheck(t, g, `{"env":[{"name":"A"}]}`))
 }
+
+func TestExclusive(t *testing.T) {
+	g := exclusive{path: []string{"spec"}, generated: "maxUnavailable", others: []string{"minAvailable"}}
+	generated := `{"spec":{"maxUnavailable":1}}`
+
+	t.Run("drops the other key while the generated one is set", func(t *testing.T) {
+		m, reports := runRestore(t, g, generated, `{"spec":{"maxUnavailable":1,"minAvailable":2}}`)
+		assert.Equal(t, doc(t, generated), m)
+		assert.Equal(t, []string{"spec.minAvailable removed, it cannot be set with maxUnavailable; delete maxUnavailable with null to use it"}, reports)
+	})
+	t.Run("keeps the other key once the generated one is deleted", func(t *testing.T) {
+		m, reports := runRestore(t, g, generated, `{"spec":{"minAvailable":2}}`)
+		assert.Equal(t, doc(t, `{"spec":{"minAvailable":2}}`), m)
+		assert.Empty(t, reports)
+	})
+	t.Run("check", func(t *testing.T) {
+		assert.Equal(t, []string{"spec.minAvailable cannot be set with maxUnavailable, which the operator sets; add maxUnavailable: null"},
+			runCheck(t, g, `{"spec":{"minAvailable":2}}`))
+		assert.Equal(t, []string{"spec.minAvailable cannot be set with maxUnavailable, which the operator sets; add maxUnavailable: null"},
+			runCheck(t, g, `{"spec":{"minAvailable":2,"maxUnavailable":1}}`))
+		assert.Empty(t, runCheck(t, g, `{"spec":{"minAvailable":2,"maxUnavailable":null}}`))
+		assert.Empty(t, runCheck(t, g, `{"spec":{"maxUnavailable":"50%"}}`))
+		assert.Empty(t, runCheck(t, g, `{"spec":{"minAvailable":null}}`))
+	})
+}

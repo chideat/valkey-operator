@@ -33,6 +33,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
@@ -124,7 +125,7 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 	)
 
 	// ensure inst statefulSet
-	if ret := a.ensurePodDisruptionBudget(ctx, cr, logger); ret != nil {
+	if ret := a.ensurePodDisruptionBudget(ctx, inst, logger); ret != nil {
 		return ret
 	}
 
@@ -197,8 +198,12 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 	return nil
 }
 
-func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf *v1alpha1.Failover, logger logr.Logger) *actor.ActorResult {
-	pdb := failoverbuilder.NewPodDisruptionBudgetForCR(rf)
+func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, inst types.FailoverInstance, logger logr.Logger) *actor.ActorResult {
+	rf := inst.Definition()
+	pdb, err := failoverbuilder.GeneratePodDisruptionBudget(inst)
+	if err != nil {
+		return actor.RequeueWithError(err)
+	}
 
 	if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, rf.Namespace, pdb.Name); errors.IsNotFound(err) {
 		if err := a.client.CreatePodDisruptionBudget(ctx, rf.Namespace, pdb); err != nil {
@@ -206,7 +211,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, rf 
 		}
 	} else if err != nil {
 		return actor.RequeueWithError(err)
-	} else if !reflect.DeepEqual(oldPdb.Spec, pdb.Spec) {
+	} else if !reflect.DeepEqual(oldPdb.Spec, pdb.Spec) || overwrite.ChecksumChanged(pdb, oldPdb) {
 		pdb.ResourceVersion = oldPdb.ResourceVersion
 		if err := a.client.UpdatePodDisruptionBudget(ctx, rf.Namespace, pdb); err != nil {
 			logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))

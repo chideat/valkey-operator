@@ -143,12 +143,15 @@ func (in *Overwrite) DeepCopyInto(out *Overwrite)
 
 type OverwriteKind string
     OverwriteKind is the kind of generated object an Overwrite patches.
-    +kubebuilder:validation:Enum=StatefulSet
+    +kubebuilder:validation:Enum=StatefulSet;PodDisruptionBudget
 
 const (
 	// OverwriteKindStatefulSet patches the StatefulSets the operator generates,
 	// their pod template included.
 	OverwriteKindStatefulSet OverwriteKind = "StatefulSet"
+	// OverwriteKindPodDisruptionBudget patches the PodDisruptionBudgets the
+	// operator generates, one for each StatefulSet.
+	OverwriteKindPodDisruptionBudget OverwriteKind = "PodDisruptionBudget"
 )
 type Storage struct {
 	// The annnotations of the service which will be attached to services

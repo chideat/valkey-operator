@@ -468,6 +468,9 @@ func TestValidateOverwrites(t *testing.T) {
 	patches := func(doc string) []core.Overwrite {
 		return []core.Overwrite{{Kind: core.OverwriteKindStatefulSet, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
 	}
+	budget := func(doc string) []core.Overwrite {
+		return []core.Overwrite{{Kind: core.OverwriteKindPodDisruptionBudget, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
+	}
 	sentinel := func(doc string) *v1alpha1.SentinelSettings {
 		return &v1alpha1.SentinelSettings{SentinelSpec: v1alpha1.SentinelSpec{Replicas: 3, Overwrites: patches(doc)}}
 	}
@@ -494,6 +497,11 @@ func TestValidateOverwrites(t *testing.T) {
 		{
 			name: "protected field", arch: core.ValkeyCluster, overwrites: patches(`{"spec":{"replicas":5}}`),
 			wantErr: []string{"spec.overwrites[0].patch", "spec.replicas is protected"},
+		},
+		{name: "budget policy", arch: core.ValkeyFailover, overwrites: budget(`{"spec":{"unhealthyPodEvictionPolicy":"AlwaysAllow"}}`)},
+		{
+			name: "budget minAvailable next to maxUnavailable", arch: core.ValkeyCluster, overwrites: budget(`{"spec":{"minAvailable":1}}`),
+			wantErr: []string{"spec.overwrites[0].patch", "spec.minAvailable cannot be set with maxUnavailable"},
 		},
 		{name: "agent on the sentinel nodes", arch: core.ValkeyFailover, sentinel: sentinel(agentEnv)},
 		{

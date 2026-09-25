@@ -93,11 +93,11 @@ Predefined affinity policies for pod scheduling:
 
 ### Overwrite
 
-Patches the objects of one kind that the operator generates. See [Customizing Generated StatefulSets](../guides/user-guide.md#customizing-generated-statefulsets) for what a patch may change.
+Patches the objects of one kind that the operator generates. See [Customizing Generated Resources](../guides/user-guide.md#customizing-generated-resources) for what a patch may change.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `kind` | OverwriteKind | Kind of the generated objects to patch. Supported: `StatefulSet` |
+| `kind` | OverwriteKind | Kind of the generated objects to patch: `StatefulSet` or `PodDisruptionBudget`, each at most once |
 | `patch` | object | Strategic merge patch applied to every generated object of that kind, kept exactly as written |
 
 ## Examples
@@ -152,4 +152,8 @@ overwrites:
             containers:
               - name: exporter
                 args: ["--include-system-metrics=true"]
+  - kind: PodDisruptionBudget
+    patch:
+      spec:
+        unhealthyPodEvictionPolicy: AlwaysAllow
 ```

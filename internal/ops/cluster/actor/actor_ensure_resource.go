@@ -30,6 +30,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/ops/cluster"
@@ -279,7 +280,11 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 		// statefulset
 		name := clusterbuilder.ClusterStatefulSetName(cr.GetName(), i)
 
-		pdb := clusterbuilder.GeneratePodDisruptionBudget(cluster, i)
+		pdb, err := clusterbuilder.GeneratePodDisruptionBudget(cluster, i)
+		if err != nil {
+			logger.Error(err, "generate poddisruptionbudget failed")
+			return actor.NewResultWithError(cops.CommandAbort, err)
+		}
 		if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, cr.GetNamespace(), pdb.Name); errors.IsNotFound(err) {
 			if err = a.client.CreatePodDisruptionBudget(ctx, cr.GetNamespace(), pdb); err != nil {
 				logger.Error(err, "create poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
@@ -288,7 +293,7 @@ func (a *actorEnsureResource) ensureStatefulset(ctx context.Context, cluster typ
 		} else if err != nil {
 			logger.Error(err, "get poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
 			return actor.RequeueWithError(err)
-		} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) {
+		} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) || overwrite.ChecksumChanged(pdb, oldPdb) {
 			pdb.ResourceVersion = oldPdb.ResourceVersion
 			if err = a.client.UpdatePodDisruptionBudget(ctx, cr.GetNamespace(), pdb); err != nil {
 				logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))

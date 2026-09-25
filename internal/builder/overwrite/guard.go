@@ -650,3 +650,45 @@ func (g probe) check(patch map[string]any, at location, report reporter) {
 		fixed{g.key, h}.check(patch, at, report)
 	}
 }
+
+// exclusive guards keys under path of which at most one may be set, such as a
+// PodDisruptionBudget's minAvailable and maxUnavailable. The operator sets
+// generated, so a patch that sets one of the others has to delete generated
+// with null; otherwise the API server rejects the object on every update.
+type exclusive struct {
+	path      []string
+	generated string
+	others    []string
+}
+
+func (g exclusive) restore(_, merged map[string]any, at location, report reporter) {
+	m, ok := lookupMap(merged, g.path)
+	if !ok {
+		return
+	}
+	if _, set := m[g.generated]; !set {
+		return
+	}
+	for _, k := range g.others {
+		if _, set := m[k]; set {
+			delete(m, k)
+			report(at.child(g.path...).child(k), fmt.Sprintf("removed, it cannot be set with %s; delete %s with null to use it", g.generated, g.generated))
+		}
+	}
+}
+
+func (g exclusive) check(patch map[string]any, at location, report reporter) {
+	val, present, _ := walk(patch, g.path, at)
+	m, ok := val.(map[string]any)
+	if !present || !ok {
+		return
+	}
+	if v, set := m[g.generated]; set && v == nil {
+		return
+	}
+	for _, k := range g.others {
+		if v, set := m[k]; set && v != nil {
+			report(at.child(g.path...).child(k), fmt.Sprintf("cannot be set with %s, which the operator sets; add %s: null", g.generated, g.generated))
+		}
+	}
+}
