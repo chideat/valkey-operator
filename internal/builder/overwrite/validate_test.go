@@ -109,6 +109,7 @@ func TestValidatePodDisruptionBudget(t *testing.T) {
 		`{"metadata": {"labels": {"team": "cache"}, "annotations": {"note": "x"}}}`,
 		`{"spec": {"unhealthyPodEvictionPolicy": "AlwaysAllow"}}`,
 		`{"spec": {"maxUnavailable": "50%"}}`,
+		`{"spec": {"minAvailable": 1}}`,
 		`{"spec": {"minAvailable": 1, "maxUnavailable": null}}`,
 	} {
 		assert.Empty(t, Validate(pdbOverwrites(patch), FailoverNodes, path), patch)
@@ -121,7 +122,7 @@ func TestValidatePodDisruptionBudget(t *testing.T) {
 	}{
 		{"selector", `{"spec": {"selector": {"matchLabels": {"app": "other"}}}}`, "spec.selector is protected"},
 		{"operator label", `{"metadata": {"labels": {"app.kubernetes.io/name": "x"}}}`, "metadata.labels[app.kubernetes.io/name] is protected"},
-		{"minAvailable next to maxUnavailable", `{"spec": {"minAvailable": 1}}`, "spec.minAvailable cannot be set with maxUnavailable"},
+		{"minAvailable and maxUnavailable", `{"spec": {"minAvailable": 1, "maxUnavailable": 1}}`, "spec.minAvailable cannot be set together with maxUnavailable"},
 		{"deleting the spec", `{"spec": null}`, "spec deletes protected fields"},
 		{"unknown field", `{"spec": {"minReadySeconds": 10}}`, `unknown field "spec.minReadySeconds"`},
 		{"directive", `{"spec": {"$retainKeys": ["selector"]}}`, "patch directive $retainKeys is not supported"},

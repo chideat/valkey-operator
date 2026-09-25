@@ -320,7 +320,19 @@ func TestRulesCoverWhatThePodDisruptionBudgetBuildersGenerate(t *testing.T) {
 				refused(fmt.Sprintf(`{"metadata":{"labels":{%q:"x"}}}`, key), fmt.Sprintf("metadata.labels[%s] is protected", key))
 			}
 			refused(`{"spec":{"selector":{"matchLabels":{"x":"y"}}}}`, "spec.selector is protected")
-			refused(`{"spec":{"minAvailable":1}}`, "spec.minAvailable cannot be set with maxUnavailable")
+
+			// minAvailable replaces the generated maxUnavailable; a patch that
+			// sets both is refused, and the builders keep one of them.
+			errs := overwrite.Validate(patchOf(t, core.OverwriteKindPodDisruptionBudget, `{"spec":{"minAvailable":1,"maxUnavailable":2}}`),
+				component, field.NewPath("spec", "overwrites"))
+			if assert.NotEmpty(t, errs) {
+				assert.Contains(t, errs.ToAggregate().Error(), "spec.minAvailable cannot be set together with maxUnavailable")
+			}
+			for _, doc := range []string{`{"spec":{"minAvailable":1}}`, `{"spec":{"minAvailable":1,"maxUnavailable":2}}`} {
+				got, _, err := overwrite.PodDisruptionBudget(pdb, patchOf(t, core.OverwriteKindPodDisruptionBudget, doc))
+				require.NoError(t, err)
+				assert.True(t, (got.Spec.MinAvailable == nil) != (got.Spec.MaxUnavailable == nil), "%s leaves both or neither set", doc)
+			}
 		})
 	}
 }

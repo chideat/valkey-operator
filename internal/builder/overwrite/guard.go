@@ -652,28 +652,37 @@ func (g probe) check(patch map[string]any, at location, report reporter) {
 }
 
 // exclusive guards keys under path of which at most one may be set, such as a
-// PodDisruptionBudget's minAvailable and maxUnavailable. The operator sets
-// generated, so a patch that sets one of the others has to delete generated
-// with null; otherwise the API server rejects the object on every update.
+// PodDisruptionBudget's minAvailable and maxUnavailable; the API server
+// rejects an object with both. The operator sets generated, and a patch that
+// sets one of the others replaces it. That needs no null to delete generated,
+// which client-side kubectl apply and merge patches drop from spec.overwrites.
+// A patch that also changes generated sets both, and keeps only generated.
 type exclusive struct {
 	path      []string
 	generated string
 	others    []string
 }
 
-func (g exclusive) restore(_, merged map[string]any, at location, report reporter) {
+func (g exclusive) restore(base, merged map[string]any, at location, report reporter) {
 	m, ok := lookupMap(merged, g.path)
 	if !ok {
 		return
 	}
-	if _, set := m[g.generated]; !set {
+	got, set := m[g.generated]
+	if !set {
 		return
 	}
+	want, _ := lookup(base, prefixed(g.path, g.generated))
 	for _, k := range g.others {
-		if _, set := m[k]; set {
-			delete(m, k)
-			report(at.child(g.path...).child(k), fmt.Sprintf("removed, it cannot be set with %s; delete %s with null to use it", g.generated, g.generated))
+		if _, other := m[k]; !other {
+			continue
 		}
+		if reflect.DeepEqual(want, got) {
+			delete(m, g.generated)
+			continue
+		}
+		delete(m, k)
+		report(at.child(g.path...).child(k), fmt.Sprintf("removed, it cannot be set together with %s", g.generated))
 	}
 }
 
@@ -683,12 +692,12 @@ func (g exclusive) check(patch map[string]any, at location, report reporter) {
 	if !present || !ok {
 		return
 	}
-	if v, set := m[g.generated]; set && v == nil {
+	if v, set := m[g.generated]; !set || v == nil {
 		return
 	}
 	for _, k := range g.others {
 		if v, set := m[k]; set && v != nil {
-			report(at.child(g.path...).child(k), fmt.Sprintf("cannot be set with %s, which the operator sets; add %s: null", g.generated, g.generated))
+			report(at.child(g.path...).child(k), fmt.Sprintf("cannot be set together with %s", g.generated))
 		}
 	}
 }

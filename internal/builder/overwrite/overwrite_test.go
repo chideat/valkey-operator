@@ -274,25 +274,29 @@ func TestPodDisruptionBudget(t *testing.T) {
 		assert.Equal(t, ptr.To(intstr.FromString("50%")), got.Spec.MaxUnavailable)
 		assert.NotEmpty(t, got.Annotations[ChecksumAnnotation])
 	})
-	t.Run("replaces maxUnavailable with minAvailable", func(t *testing.T) {
-		got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(
-			`{"spec":{"minAvailable":1,"maxUnavailable":null}}`))
-		require.NoError(t, err)
-		assert.Empty(t, problems)
-		assert.Equal(t, ptr.To(intstr.FromInt(1)), got.Spec.MinAvailable)
-		assert.Nil(t, got.Spec.MaxUnavailable)
+	t.Run("minAvailable replaces maxUnavailable", func(t *testing.T) {
+		// With or without the null, which merge patches drop before it arrives.
+		for _, patch := range []string{`{"spec":{"minAvailable":1}}`, `{"spec":{"minAvailable":1,"maxUnavailable":null}}`} {
+			got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(patch))
+			require.NoError(t, err)
+			assert.Empty(t, problems, patch)
+			assert.Equal(t, ptr.To(intstr.FromInt(1)), got.Spec.MinAvailable, patch)
+			assert.Nil(t, got.Spec.MaxUnavailable, patch)
+		}
 	})
 	t.Run("keeps the object valid and the selector generated", func(t *testing.T) {
 		got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(
-			`{"metadata":{"labels":{"app.kubernetes.io/name":"other"}},"spec":{"minAvailable":1,"selector":{"matchLabels":{"app":"other"}}}}`))
+			`{"metadata":{"labels":{"app.kubernetes.io/name":"other"}},"spec":{"minAvailable":1,"maxUnavailable":2,"selector":{"matchLabels":{"app":"other"}}}}`))
 		require.NoError(t, err)
 		want := generatedPodDisruptionBudget()
 		assert.Equal(t, want.Labels, got.Labels)
-		assert.Equal(t, want.Spec, got.Spec, "minAvailable cannot sit next to the generated maxUnavailable")
+		assert.Equal(t, want.Spec.Selector, got.Spec.Selector)
+		assert.Nil(t, got.Spec.MinAvailable, "a patch that sets both keeps maxUnavailable")
+		assert.Equal(t, ptr.To(intstr.FromInt(2)), got.Spec.MaxUnavailable)
 		assert.ElementsMatch(t, []string{
 			"metadata.labels[app.kubernetes.io/name] restored",
 			"spec.selector restored",
-			"spec.minAvailable removed, it cannot be set with maxUnavailable; delete maxUnavailable with null to use it",
+			"spec.minAvailable removed, it cannot be set together with maxUnavailable",
 		}, problems)
 	})
 }

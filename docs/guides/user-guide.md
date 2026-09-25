@@ -359,6 +359,8 @@ spec:
 
 Each patch is a [strategic merge patch](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/), so it lists only what it adds or changes. Containers, environment variables and volumes merge by name, and volume mounts by `mountPath`; lists without a merge key, such as `args`, are replaced whole. Where a patch sets a field the operator also sets, and the field is not protected, the patch wins.
 
+A `null` in a patch deletes that field, but some clients drop it before it reaches the operator: client-side `kubectl apply` and `kubectl patch --type merge` remove `null` values inside `spec.overwrites`, while `kubectl apply --server-side` and a JSON patch (`kubectl patch --type json`) keep them.
+
 `spec.sentinel.overwrites` patches the sentinel StatefulSet and PodDisruptionBudget. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
 
 The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each object it patches, so a change to the overwrites always updates those objects. Pods roll when a StatefulSet change reaches the pod template; a PodDisruptionBudget changes in place.
@@ -387,7 +389,7 @@ A patch cannot add containers; it can only change the ones the operator runs:
 
 The budget's identity and status, the operator's labels, annotations that start with `valkey.buf.red/checksum`, and `selector`, which picks the pods the budget counts, are protected. Other labels and annotations, `maxUnavailable`, `minAvailable` and `unhealthyPodEvictionPolicy` can change.
 
-The operator sets `maxUnavailable`, and a budget cannot have both `maxUnavailable` and `minAvailable`, so a patch that sets `minAvailable` also deletes `maxUnavailable`:
+The operator sets `maxUnavailable`, and a budget cannot have both `maxUnavailable` and `minAvailable`, so a patch that sets `minAvailable` replaces the operator's `maxUnavailable`:
 
 ```yaml
 overwrites:
@@ -395,14 +397,13 @@ overwrites:
     patch:
       spec:
         minAvailable: 1
-        maxUnavailable: null
 ```
 
 ### Rejected and Restored Patches
 
-The admission webhook of the Valkey resource rejects a patch that changes a protected field, adds a container, sets `minAvailable` without deleting `maxUnavailable`, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the object does not have, or gives a field a value of the wrong type.
+The admission webhook of the Valkey resource rejects a patch that changes a protected field, adds a container, sets both `minAvailable` and `maxUnavailable`, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the object does not have, or gives a field a value of the wrong type.
 
-The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator applies the rest of the patch, keeps protected fields as generated, drops containers it does not run and a `minAvailable` that would sit next to `maxUnavailable`, and reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
+The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator applies the rest of the patch, keeps protected fields as generated, drops containers it does not run and a `minAvailable` set together with `maxUnavailable`, and reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
 
 ## Security
 

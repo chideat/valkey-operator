@@ -499,9 +499,10 @@ func TestValidateOverwrites(t *testing.T) {
 			wantErr: []string{"spec.overwrites[0].patch", "spec.replicas is protected"},
 		},
 		{name: "budget policy", arch: core.ValkeyFailover, overwrites: budget(`{"spec":{"unhealthyPodEvictionPolicy":"AlwaysAllow"}}`)},
+		{name: "budget minAvailable", arch: core.ValkeyCluster, overwrites: budget(`{"spec":{"minAvailable":1}}`)},
 		{
-			name: "budget minAvailable next to maxUnavailable", arch: core.ValkeyCluster, overwrites: budget(`{"spec":{"minAvailable":1}}`),
-			wantErr: []string{"spec.overwrites[0].patch", "spec.minAvailable cannot be set with maxUnavailable"},
+			name: "budget minAvailable and maxUnavailable", arch: core.ValkeyCluster, overwrites: budget(`{"spec":{"minAvailable":1,"maxUnavailable":1}}`),
+			wantErr: []string{"spec.overwrites[0].patch", "spec.minAvailable cannot be set together with maxUnavailable"},
 		},
 		{name: "agent on the sentinel nodes", arch: core.ValkeyFailover, sentinel: sentinel(agentEnv)},
 		{
