@@ -155,10 +155,14 @@ func IsStatefulsetChanged2(newSts, sts *appsv1.StatefulSet, logger logr.Logger) 
 		return false, false
 	}
 
+	// The API server fills in revisionHistoryLimit (10) and each claim template's
+	// status (phase Pending). The builders set neither, so a difference in them is
+	// not a change, and must not send the StatefulSet down the recreate path.
 	immutableChanged := !cmp.Equal(newSts.Spec, sts.Spec, cmpopts.EquateEmpty(),
 		cmpopts.IgnoreFields(appsv1.StatefulSetSpec{},
 			"Replicas", "Ordinals", "Template", "UpdateStrategy",
-			"PersistentVolumeClaimRetentionPolicy", "MinReadySeconds"))
+			"PersistentVolumeClaimRetentionPolicy", "MinReadySeconds", "RevisionHistoryLimit"),
+		cmpopts.IgnoreFields(corev1.PersistentVolumeClaim{}, "Status"))
 
 	return changed, immutableChanged
 }

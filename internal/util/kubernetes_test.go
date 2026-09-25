@@ -1519,8 +1519,26 @@ func TestIsStatefulsetChanged2(t *testing.T) {
 		}
 	}
 
+	// claimTemplate is a volume claim template as the builders write it: no status.
+	claimTemplate := func(size string) corev1.PersistentVolumeClaim {
+		mode := corev1.PersistentVolumeFilesystem
+		return corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "data"},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse(size)},
+				},
+				VolumeMode: &mode,
+			},
+		}
+	}
+
 	tests := []struct {
-		name          string
+		name string
+		// modifyOld turns the old StatefulSet into what the API server returns,
+		// for fields the server fills in; nil leaves it as built.
+		modifyOld     func(sts *appsv1.StatefulSet)
 		modify        func(sts *appsv1.StatefulSet)
 		wantChanged   bool
 		wantImmutable bool
@@ -1565,11 +1583,50 @@ func TestIsStatefulsetChanged2(t *testing.T) {
 			wantChanged:   true,
 			wantImmutable: true,
 		},
+		{
+			name: "pod annotation change against the server-defaulted revisionHistoryLimit (mutable)",
+			modifyOld: func(sts *appsv1.StatefulSet) {
+				sts.Spec.RevisionHistoryLimit = ptr.To(int32(10))
+			},
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.Template.Annotations = map[string]string{"example.com/trigger": "1"}
+			},
+			wantChanged:   true,
+			wantImmutable: false,
+		},
+		{
+			name: "pod annotation change against the server-filled claim template status (mutable)",
+			modifyOld: func(sts *appsv1.StatefulSet) {
+				sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{claimTemplate("1Gi")}
+				sts.Spec.VolumeClaimTemplates[0].Status.Phase = corev1.ClaimPending
+			},
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{claimTemplate("1Gi")}
+				sts.Spec.Template.Annotations = map[string]string{"example.com/trigger": "1"}
+			},
+			wantChanged:   true,
+			wantImmutable: false,
+		},
+		{
+			name: "claim template size change against the server-filled claim template status (immutable)",
+			modifyOld: func(sts *appsv1.StatefulSet) {
+				sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{claimTemplate("1Gi")}
+				sts.Spec.VolumeClaimTemplates[0].Status.Phase = corev1.ClaimPending
+			},
+			modify: func(sts *appsv1.StatefulSet) {
+				sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{claimTemplate("2Gi")}
+			},
+			wantChanged:   true,
+			wantImmutable: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			old := base()
+			if tt.modifyOld != nil {
+				tt.modifyOld(old)
+			}
 			newSts := base()
 			tt.modify(newSts)
 			changed, immutableChanged := IsStatefulsetChanged2(newSts, old, logger)
