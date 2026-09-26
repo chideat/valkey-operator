@@ -33,13 +33,16 @@ import (
 	"github.com/chideat/valkey-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 )
 
 // ChecksumAnnotation is set on every object that has overwrites merged in, to
-// a hash of them. The actors compare the generated object's annotations with
-// the live one's, so adding, changing or removing an overwrite is noticed.
+// a hash of them. The actors compare it on the generated and the live object,
+// so adding, changing or removing an overwrite is noticed: for StatefulSets
+// through their full annotation comparison, for other kinds through
+// ChecksumChanged.
 var ChecksumAnnotation = builder.ChecksumKey("overwrites")
 
 // StatefulSet merges the StatefulSet overwrites into sts, a StatefulSet
@@ -48,6 +51,20 @@ var ChecksumAnnotation = builder.ChecksumKey("overwrites")
 // event. Without StatefulSet overwrites sts is returned as it is.
 func StatefulSet(sts *appsv1.StatefulSet, overwrites []core.Overwrite, component Component) (*appsv1.StatefulSet, []string, error) {
 	return apply(sts, overwrites, core.OverwriteKindStatefulSet, statefulSetGuards(component))
+}
+
+// PodDisruptionBudget merges the PodDisruptionBudget overwrites into pdb, as
+// StatefulSet does for StatefulSets. Without PodDisruptionBudget overwrites pdb
+// is returned as it is.
+func PodDisruptionBudget(pdb *policyv1.PodDisruptionBudget, overwrites []core.Overwrite) (*policyv1.PodDisruptionBudget, []string, error) {
+	return apply(pdb, overwrites, core.OverwriteKindPodDisruptionBudget, podDisruptionBudgetGuards())
+}
+
+// ChecksumChanged reports whether the overwrites merged into generated differ
+// from those in live: one was added, changed or removed. Objects with no
+// overwrites on either side are unchanged.
+func ChecksumChanged(generated, live metav1.Object) bool {
+	return generated.GetAnnotations()[ChecksumAnnotation] != live.GetAnnotations()[ChecksumAnnotation]
 }
 
 // Report sends the problems of a merge into obj as one Warning event.

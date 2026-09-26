@@ -26,9 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -232,4 +234,92 @@ func TestStatefulSetChecksum(t *testing.T) {
 	assert.NotEqual(t, a, sum(`{"spec":{"minReadySeconds":11,"template":{"spec":{"priorityClassName":"x"}}}}`))
 	assert.NotEqual(t, a, sum(`{"spec":{"minReadySeconds":10}}`, `{"spec":{"template":{"spec":{"priorityClassName":"x"}}}}`),
 		"splitting a patch in two is a different input")
+}
+
+// generatedPodDisruptionBudget is shaped like the failover builder's output.
+func generatedPodDisruptionBudget() *policyv1.PodDisruptionBudget {
+	labels := map[string]string{builder.AppNameLabelKey: "demo", builder.ManagedByLabelKey: "valkey-operator"}
+	return &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: "rfr-demo", Namespace: "default", Labels: labels},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MaxUnavailable: ptr.To(intstr.FromInt(1)),
+			Selector:       &metav1.LabelSelector{MatchLabels: labels},
+		},
+	}
+}
+
+func pdbOverwrites(patches ...string) []core.Overwrite {
+	var ret []core.Overwrite
+	for _, p := range patches {
+		ret = append(ret, core.Overwrite{Kind: core.OverwriteKindPodDisruptionBudget, Patch: apiextensionsv1.JSON{Raw: []byte(p)}})
+	}
+	return ret
+}
+
+func TestPodDisruptionBudget(t *testing.T) {
+	t.Run("without overwrites", func(t *testing.T) {
+		pdb := generatedPodDisruptionBudget()
+		got, problems, err := PodDisruptionBudget(pdb, overwrites(`{"spec":{"minReadySeconds":10}}`))
+		require.NoError(t, err)
+		assert.Same(t, pdb, got, "StatefulSet overwrites leave the PodDisruptionBudget untouched")
+		assert.Empty(t, problems)
+	})
+	t.Run("applies user values", func(t *testing.T) {
+		got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(
+			`{"metadata":{"labels":{"team":"cache"}},"spec":{"unhealthyPodEvictionPolicy":"AlwaysAllow","maxUnavailable":"50%"}}`))
+		require.NoError(t, err)
+		assert.Empty(t, problems)
+		assert.Equal(t, "cache", got.Labels["team"])
+		assert.Equal(t, ptr.To(policyv1.AlwaysAllow), got.Spec.UnhealthyPodEvictionPolicy)
+		assert.Equal(t, ptr.To(intstr.FromString("50%")), got.Spec.MaxUnavailable)
+		assert.NotEmpty(t, got.Annotations[ChecksumAnnotation])
+	})
+	t.Run("minAvailable replaces maxUnavailable", func(t *testing.T) {
+		// With or without the null, which merge patches drop before it arrives.
+		for _, patch := range []string{`{"spec":{"minAvailable":1}}`, `{"spec":{"minAvailable":1,"maxUnavailable":null}}`} {
+			got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(patch))
+			require.NoError(t, err)
+			assert.Empty(t, problems, patch)
+			assert.Equal(t, ptr.To(intstr.FromInt(1)), got.Spec.MinAvailable, patch)
+			assert.Nil(t, got.Spec.MaxUnavailable, patch)
+		}
+	})
+	t.Run("keeps the object valid and the selector generated", func(t *testing.T) {
+		got, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(), pdbOverwrites(
+			`{"metadata":{"labels":{"app.kubernetes.io/name":"other"}},"spec":{"minAvailable":1,"maxUnavailable":2,"selector":{"matchLabels":{"app":"other"}}}}`))
+		require.NoError(t, err)
+		want := generatedPodDisruptionBudget()
+		assert.Equal(t, want.Labels, got.Labels)
+		assert.Equal(t, want.Spec.Selector, got.Spec.Selector)
+		assert.Nil(t, got.Spec.MinAvailable, "a patch that sets both keeps maxUnavailable")
+		assert.Equal(t, ptr.To(intstr.FromInt(2)), got.Spec.MaxUnavailable)
+		assert.ElementsMatch(t, []string{
+			"metadata.labels[app.kubernetes.io/name] restored",
+			"spec.selector restored",
+			"spec.minAvailable removed, it cannot be set together with maxUnavailable",
+		}, problems)
+	})
+}
+
+func TestChecksumChanged(t *testing.T) {
+	with := func(sum string) *policyv1.PodDisruptionBudget {
+		pdb := generatedPodDisruptionBudget()
+		if sum != "" {
+			pdb.Annotations = map[string]string{ChecksumAnnotation: sum, "other": "x"}
+		}
+		return pdb
+	}
+	for _, tc := range []struct {
+		name            string
+		generated, live string
+		want            bool
+	}{
+		{"no overwrites on either side", "", "", false},
+		{"the same overwrites", "a", "a", false},
+		{"overwrites added", "a", "", true},
+		{"overwrites removed", "", "a", true},
+		{"overwrites changed", "b", "a", true},
+	} {
+		assert.Equal(t, tc.want, ChecksumChanged(with(tc.generated), with(tc.live)), tc.name)
+	}
 }

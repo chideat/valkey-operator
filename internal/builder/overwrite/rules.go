@@ -231,6 +231,15 @@ func statefulSetGuards(component Component) []guard {
 	)
 }
 
+// podDisruptionBudgetGuards protect a generated PodDisruptionBudget.
+func podDisruptionBudgetGuards() []guard {
+	return append(objectGuards(),
+		// The selector picks the pods the budget counts.
+		fixed{"spec", "selector"},
+		exclusive{path: []string{"spec"}, generated: "maxUnavailable", others: []string{"minAvailable"}},
+	)
+}
+
 // containerGuards protect one of the operator's containers.
 func containerGuards(name string) []guard {
 	guards := []guard{

@@ -17,21 +17,23 @@ limitations under the License.
 package failoverbuilder
 
 import (
-	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func NewPodDisruptionBudgetForCR(rf *v1alpha1.Failover) *policyv1.PodDisruptionBudget {
+func GeneratePodDisruptionBudget(inst types.FailoverInstance) (*policyv1.PodDisruptionBudget, error) {
+	rf := inst.Definition()
 	maxUnavailable := intstr.FromInt(int(rf.Spec.Replicas) - 1)
 	selectors := GenerateSelectorLabels(rf.Name)
 	labels := GenerateCommonLabels(rf.Name)
 
 	name := FailoverStatefulSetName(rf.Name)
-	return &policyv1.PodDisruptionBudget{
+	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:          labels,
 			Name:            name,
@@ -45,4 +47,11 @@ func NewPodDisruptionBudgetForCR(rf *v1alpha1.Failover) *policyv1.PodDisruptionB
 			},
 		},
 	}
+
+	pdb, problems, err := overwrite.PodDisruptionBudget(pdb, rf.Spec.Overwrites)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, pdb.Name, problems)
+	return pdb, nil
 }

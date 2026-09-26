@@ -22,6 +22,7 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	appsv1 "k8s.io/api/apps/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	kjson "sigs.k8s.io/json"
 )
@@ -44,8 +45,11 @@ func Validate(overwrites []core.Overwrite, component Component, fldPath *field.P
 		switch ow.Kind {
 		case core.OverwriteKindStatefulSet:
 			schema, guards = &appsv1.StatefulSet{}, statefulSetGuards(component)
+		case core.OverwriteKindPodDisruptionBudget:
+			schema, guards = &policyv1.PodDisruptionBudget{}, podDisruptionBudgetGuards()
 		default:
-			errs = append(errs, field.NotSupported(p.Child("kind"), ow.Kind, []core.OverwriteKind{core.OverwriteKindStatefulSet}))
+			errs = append(errs, field.NotSupported(p.Child("kind"), ow.Kind,
+				[]core.OverwriteKind{core.OverwriteKindStatefulSet, core.OverwriteKindPodDisruptionBudget}))
 			continue
 		}
 		if seen[ow.Kind] {

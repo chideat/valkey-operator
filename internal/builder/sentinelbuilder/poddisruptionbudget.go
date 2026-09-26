@@ -17,20 +17,22 @@ limitations under the License.
 package sentinelbuilder
 
 import (
-	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func NewPodDisruptionBudget(sen *v1alpha1.Sentinel) *policyv1.PodDisruptionBudget {
+func GeneratePodDisruptionBudget(inst types.SentinelInstance) (*policyv1.PodDisruptionBudget, error) {
+	sen := inst.Definition()
 	maxUnavailable := intstr.FromInt(int(sen.Spec.Replicas) / 2)
 	selectors := GenerateSelectorLabels(sen.Name)
 	labels := GenerateCommonLabels(sen.Name)
 
 	name := SentinelStatefulSetName(sen.Name)
-	return &policyv1.PodDisruptionBudget{
+	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:          labels,
 			Name:            name,
@@ -44,4 +46,11 @@ func NewPodDisruptionBudget(sen *v1alpha1.Sentinel) *policyv1.PodDisruptionBudge
 			},
 		},
 	}
+
+	pdb, problems, err := overwrite.PodDisruptionBudget(pdb, sen.Spec.Overwrites)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, pdb.Name, problems)
+	return pdb, nil
 }

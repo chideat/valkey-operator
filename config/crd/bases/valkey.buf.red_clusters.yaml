@@ -1377,6 +1377,7 @@ spec:
                       description: Kind of the generated objects to patch.
                       enum:
                       - StatefulSet
+                      - PodDisruptionBudget
                       type: string
                     patch:
                       description: |-

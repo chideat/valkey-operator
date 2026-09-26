@@ -38,6 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,8 +48,9 @@ import (
 
 // The rules name what the builders generate. These tests render the real
 // builders in their main configurations and check that everything the
-// operator puts into a StatefulSet is refused at admission and restored by the
-// builders, so a name added to a builder cannot slip past the rules.
+// operator puts into a StatefulSet or PodDisruptionBudget is refused at
+// admission and restored by the builders, so a name added to a builder cannot
+// slip past the rules.
 
 type sentinelMonitor struct{ types.FailoverMonitor }
 
@@ -150,19 +152,19 @@ func render(t *testing.T, component overwrite.Component, s setting) *appsv1.Stat
 	return sts
 }
 
-func patchOf(t *testing.T, doc string) []core.Overwrite {
+func patchOf(t *testing.T, kind core.OverwriteKind, doc string) []core.Overwrite {
 	t.Helper()
-	return []core.Overwrite{{Kind: core.OverwriteKindStatefulSet, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
+	return []core.Overwrite{{Kind: kind, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
 }
 
-// roundTrip passes sts through JSON, as applying overwrites does, so that
+// roundTrip passes obj through JSON, as applying overwrites does, so that
 // comparisons do not trip over representations JSON does not keep, such as
 // the cached string of a resource.Quantity.
-func roundTrip(t *testing.T, sts *appsv1.StatefulSet) *appsv1.StatefulSet {
+func roundTrip[T any](t *testing.T, obj *T) *T {
 	t.Helper()
-	data, err := json.Marshal(sts)
+	data, err := json.Marshal(obj)
 	require.NoError(t, err)
-	var ret appsv1.StatefulSet
+	var ret T
 	require.NoError(t, json.Unmarshal(data, &ret))
 	return &ret
 }
@@ -171,12 +173,12 @@ func roundTrip(t *testing.T, sts *appsv1.StatefulSet) *appsv1.StatefulSet {
 // builders restore the StatefulSet to sts.
 func refused(t *testing.T, component overwrite.Component, sts *appsv1.StatefulSet, doc, want string) {
 	t.Helper()
-	errs := overwrite.Validate(patchOf(t, doc), component, field.NewPath("spec", "overwrites"))
+	errs := overwrite.Validate(patchOf(t, core.OverwriteKindStatefulSet, doc), component, field.NewPath("spec", "overwrites"))
 	if assert.NotEmpty(t, errs, "admission accepted %s", doc) {
 		assert.Contains(t, errs.ToAggregate().Error(), want, doc)
 	}
 
-	got, problems, err := overwrite.StatefulSet(sts, patchOf(t, doc), component)
+	got, problems, err := overwrite.StatefulSet(sts, patchOf(t, core.OverwriteKindStatefulSet, doc), component)
 	require.NoError(t, err)
 	assert.NotEmpty(t, problems, "the builders did not report %s", doc)
 	expected := roundTrip(t, sts)
@@ -186,7 +188,7 @@ func refused(t *testing.T, component overwrite.Component, sts *appsv1.StatefulSe
 
 func accepted(t *testing.T, component overwrite.Component, doc string) {
 	t.Helper()
-	errs := overwrite.Validate(patchOf(t, doc), component, field.NewPath("spec", "overwrites"))
+	errs := overwrite.Validate(patchOf(t, core.OverwriteKindStatefulSet, doc), component, field.NewPath("spec", "overwrites"))
 	assert.Empty(t, errs, doc)
 }
 
@@ -269,5 +271,68 @@ func TestEveryComponentRunsItsListedContainers(t *testing.T) {
 			}
 		}
 		assert.ElementsMatch(t, names, generated, component)
+	}
+}
+
+func renderPodDisruptionBudget(t *testing.T, component overwrite.Component) *policyv1.PodDisruptionBudget {
+	t.Helper()
+	meta := metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"}
+	var (
+		pdb *policyv1.PodDisruptionBudget
+		err error
+	)
+	switch component {
+	case overwrite.ClusterNodes:
+		cluster := &v1alpha1.Cluster{ObjectMeta: meta, Spec: v1alpha1.ClusterSpec{Replicas: v1alpha1.ClusterReplicas{Shards: 3, ReplicasOfShard: 1}}}
+		pdb, err = clusterbuilder.GeneratePodDisruptionBudget(testutil.NewFakeClusterInstance(cluster), 0)
+	case overwrite.FailoverNodes:
+		failover := &v1alpha1.Failover{ObjectMeta: meta, Spec: v1alpha1.FailoverSpec{Replicas: 2}}
+		pdb, err = failoverbuilder.GeneratePodDisruptionBudget(testutil.NewFakeFailoverInstance(failover))
+	case overwrite.SentinelNodes:
+		sentinel := &v1alpha1.Sentinel{ObjectMeta: meta, Spec: v1alpha1.SentinelSpec{Replicas: 3}}
+		pdb, err = sentinelbuilder.GeneratePodDisruptionBudget(testutil.NewFakeSentinelInstance(sentinel))
+	}
+	require.NoError(t, err)
+	return pdb
+}
+
+func TestRulesCoverWhatThePodDisruptionBudgetBuildersGenerate(t *testing.T) {
+	for _, component := range []overwrite.Component{overwrite.ClusterNodes, overwrite.FailoverNodes, overwrite.SentinelNodes} {
+		t.Run(string(component), func(t *testing.T) {
+			pdb := renderPodDisruptionBudget(t, component)
+			require.NotNil(t, pdb.Spec.MaxUnavailable, "the rules expect the builders to set maxUnavailable")
+
+			refused := func(doc, want string) {
+				t.Helper()
+				errs := overwrite.Validate(patchOf(t, core.OverwriteKindPodDisruptionBudget, doc), component, field.NewPath("spec", "overwrites"))
+				if assert.NotEmpty(t, errs, "admission accepted %s", doc) {
+					assert.Contains(t, errs.ToAggregate().Error(), want, doc)
+				}
+
+				got, problems, err := overwrite.PodDisruptionBudget(pdb, patchOf(t, core.OverwriteKindPodDisruptionBudget, doc))
+				require.NoError(t, err)
+				assert.NotEmpty(t, problems, "the builders did not report %s", doc)
+				expected := roundTrip(t, pdb)
+				assert.Equal(t, expected.Spec, got.Spec, "the builders did not restore %s", doc)
+				assert.Equal(t, expected.Labels, got.Labels, "the builders did not restore %s", doc)
+			}
+			for key := range pdb.Labels {
+				refused(fmt.Sprintf(`{"metadata":{"labels":{%q:"x"}}}`, key), fmt.Sprintf("metadata.labels[%s] is protected", key))
+			}
+			refused(`{"spec":{"selector":{"matchLabels":{"x":"y"}}}}`, "spec.selector is protected")
+
+			// minAvailable replaces the generated maxUnavailable; a patch that
+			// sets both is refused, and the builders keep one of them.
+			errs := overwrite.Validate(patchOf(t, core.OverwriteKindPodDisruptionBudget, `{"spec":{"minAvailable":1,"maxUnavailable":2}}`),
+				component, field.NewPath("spec", "overwrites"))
+			if assert.NotEmpty(t, errs) {
+				assert.Contains(t, errs.ToAggregate().Error(), "spec.minAvailable cannot be set together with maxUnavailable")
+			}
+			for _, doc := range []string{`{"spec":{"minAvailable":1}}`, `{"spec":{"minAvailable":1,"maxUnavailable":2}}`} {
+				got, _, err := overwrite.PodDisruptionBudget(pdb, patchOf(t, core.OverwriteKindPodDisruptionBudget, doc))
+				require.NoError(t, err)
+				assert.True(t, (got.Spec.MinAvailable == nil) != (got.Spec.MaxUnavailable == nil), "%s leaves both or neither set", doc)
+			}
+		})
 	}
 }

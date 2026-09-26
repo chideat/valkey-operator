@@ -21,13 +21,16 @@ import (
 )
 
 // OverwriteKind is the kind of generated object an Overwrite patches.
-// +kubebuilder:validation:Enum=StatefulSet
+// +kubebuilder:validation:Enum=StatefulSet;PodDisruptionBudget
 type OverwriteKind string
 
 const (
 	// OverwriteKindStatefulSet patches the StatefulSets the operator generates,
 	// their pod template included.
 	OverwriteKindStatefulSet OverwriteKind = "StatefulSet"
+	// OverwriteKindPodDisruptionBudget patches the PodDisruptionBudgets the
+	// operator generates, one for each StatefulSet.
+	OverwriteKindPodDisruptionBudget OverwriteKind = "PodDisruptionBudget"
 )
 
 // Overwrite patches the objects of one kind that the operator generates.
