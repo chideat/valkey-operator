@@ -17,6 +17,7 @@ limitations under the License.
 package overwrite
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -322,4 +323,66 @@ func TestChecksumChanged(t *testing.T) {
 	} {
 		assert.Equal(t, tc.want, ChecksumChanged(with(tc.generated), with(tc.live)), tc.name)
 	}
+}
+
+// textOverwrites gives each patch as a string, the way YAML block text
+// arrives from `patch: |`.
+func textOverwrites(t *testing.T, kind core.OverwriteKind, texts ...string) []core.Overwrite {
+	t.Helper()
+	var ret []core.Overwrite
+	for _, text := range texts {
+		raw, err := json.Marshal(text)
+		require.NoError(t, err)
+		ret = append(ret, core.Overwrite{Kind: kind, Patch: apiextensionsv1.JSON{Raw: raw}})
+	}
+	return ret
+}
+
+func TestTextPatches(t *testing.T) {
+	const periodNull = `
+spec:
+  template:
+    spec:
+      containers:
+        - name: valkey
+          livenessProbe:
+            periodSeconds: null
+`
+	t.Run("a null in text deletes the field", func(t *testing.T) {
+		got, problems, err := StatefulSet(generated(), textOverwrites(t, core.OverwriteKindStatefulSet, periodNull), FailoverNodes)
+		require.NoError(t, err)
+		assert.Empty(t, problems)
+		valkey := container(t, got, builder.ServerContainerName)
+		assert.Zero(t, valkey.LivenessProbe.PeriodSeconds)
+		assert.Equal(t, generated().Spec.Template.Spec.Containers[0].LivenessProbe.Exec, valkey.LivenessProbe.Exec)
+
+		pdb, problems, err := PodDisruptionBudget(generatedPodDisruptionBudget(),
+			textOverwrites(t, core.OverwriteKindPodDisruptionBudget, "spec:\n  maxUnavailable: null\n"))
+		require.NoError(t, err)
+		assert.Empty(t, problems)
+		assert.Nil(t, pdb.Spec.MaxUnavailable)
+	})
+	t.Run("text and object give the same checksum", func(t *testing.T) {
+		sum := func(overwrites []core.Overwrite) string {
+			t.Helper()
+			got, _, err := StatefulSet(generated(), overwrites, FailoverNodes)
+			require.NoError(t, err)
+			return got.Annotations[ChecksumAnnotation]
+		}
+		text := sum(textOverwrites(t, core.OverwriteKindStatefulSet, periodNull))
+		assert.Equal(t, text, sum(overwrites(`{"spec":{"template":{"spec":{"containers":[{"name":"valkey","livenessProbe":{"periodSeconds":null}}]}}}}`)))
+		assert.Equal(t, text, sum(textOverwrites(t, core.OverwriteKindStatefulSet,
+			"# the probe period\nspec: {template: {spec: {containers: [{name: valkey, livenessProbe: {periodSeconds: null}}]}}}\n")),
+			"layout and comments must not change the checksum")
+	})
+	t.Run("text that is not an object is skipped", func(t *testing.T) {
+		got, problems, err := StatefulSet(generated(), append(
+			textOverwrites(t, core.OverwriteKindStatefulSet, "spec: [unclosed", "- a list"),
+			overwrites(`{"spec":{"minReadySeconds":10}}`)...), FailoverNodes)
+		require.NoError(t, err)
+		require.Len(t, problems, 2)
+		assert.True(t, strings.HasPrefix(problems[0], "overwrites[0] skipped: patch text is not valid YAML"), problems[0])
+		assert.Equal(t, "overwrites[1] skipped: patch must be an object, or a string that holds one in YAML or JSON", problems[1])
+		assert.Equal(t, int32(10), got.Spec.MinReadySeconds, "the patch that can be read still applies")
+	})
 }

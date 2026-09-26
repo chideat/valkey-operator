@@ -22,6 +22,7 @@ package overwrite
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -36,6 +37,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"sigs.k8s.io/yaml"
 )
 
 // ChecksumAnnotation is set on every object that has overwrites merged in, to
@@ -76,19 +78,46 @@ func Report(inst types.Instance, obj string, problems []string) {
 		"overwrites for %s: %s", obj, strings.Join(problems, "; "))
 }
 
+// patch is one overwrite of a kind: its position in spec.overwrites, and
+// its document as JSON, or the error that kept it from being read.
 type patch struct {
 	index int
 	raw   []byte
+	err   error
 }
 
 func patchesOf(overwrites []core.Overwrite, kind core.OverwriteKind) []patch {
 	var ret []patch
 	for i, ow := range overwrites {
 		if ow.Kind == kind {
-			ret = append(ret, patch{index: i, raw: ow.Patch.Raw})
+			raw, err := document(ow.Patch.Raw)
+			if err != nil {
+				raw = ow.Patch.Raw
+			}
+			ret = append(ret, patch{index: i, raw: raw, err: err})
 		}
 	}
 	return ret
+}
+
+// document returns the JSON object of a patch given as an object, or as a
+// string that holds one in YAML or JSON. The string form exists for null:
+// client-side kubectl apply and merge patches drop nulls from an object, but
+// cannot see into a string.
+func document(raw []byte) ([]byte, error) {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		doc, err := yaml.YAMLToJSON([]byte(text))
+		if err != nil {
+			return nil, fmt.Errorf("patch text is not valid YAML: %w", err)
+		}
+		raw = doc
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return nil, errors.New("patch must be an object, or a string that holds one in YAML or JSON")
+	}
+	return raw, nil
 }
 
 func apply[T any, PT interface {
@@ -111,6 +140,10 @@ func apply[T any, PT interface {
 		problems []string
 	)
 	for _, p := range patches {
+		if p.err != nil {
+			problems = append(problems, fmt.Sprintf("overwrites[%d] skipped: %v", p.index, p.err))
+			continue
+		}
 		if key := findDirective(p.raw); key != "" {
 			problems = append(problems, fmt.Sprintf("overwrites[%d] skipped: patch directive %s is not supported", p.index, key))
 			continue
@@ -165,7 +198,8 @@ func apply[T any, PT interface {
 }
 
 // checksum hashes the patches in a canonical form: decoded and encoded again,
-// which sorts map keys, so layout and key order do not change it.
+// which sorts map keys, so layout, key order, and giving a patch as text or as
+// an object do not change it.
 func checksum(patches []patch) (string, error) {
 	docs := make([]any, 0, len(patches))
 	for _, p := range patches {

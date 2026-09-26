@@ -47,9 +47,11 @@ type Overwrite struct {
 	Kind OverwriteKind `json:"kind"`
 
 	// Patch is a strategic merge patch applied to every generated object of
-	// that kind, metadata and spec. It is kept exactly as written.
+	// that kind, metadata and spec, kept exactly as written. It is an object,
+	// or a string that holds one in YAML or JSON. A null in it deletes a
+	// field; client-side kubectl apply and merge patches drop nulls from an
+	// object, but not from a string.
 	// +kubebuilder:validation:Schemaless
-	// +kubebuilder:validation:Type=object
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Patch apiextensionsv1.JSON `json:"patch"`
 }

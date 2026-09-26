@@ -63,9 +63,13 @@ func Validate(overwrites []core.Overwrite, component Component, fldPath *field.P
 }
 
 func validatePatch(raw []byte, schema any, guards []guard, fldPath *field.Path) field.ErrorList {
+	raw, err := document(raw)
+	if err != nil {
+		return field.ErrorList{field.Invalid(fldPath, field.OmitValueType{}, err.Error())}
+	}
 	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil || doc == nil {
-		return field.ErrorList{field.Invalid(fldPath, string(raw), "must be a JSON object")}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return field.ErrorList{field.Invalid(fldPath, field.OmitValueType{}, err.Error())}
 	}
 	if key := directiveIn(doc); key != "" {
 		return field.ErrorList{field.Forbidden(fldPath, fmt.Sprintf("patch directive %s is not supported", key))}
