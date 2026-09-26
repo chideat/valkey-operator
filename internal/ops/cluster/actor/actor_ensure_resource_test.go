@@ -140,3 +140,94 @@ func TestEnsureStatefulsetNoticesPodDisruptionBudgetOverwrites(t *testing.T) {
 		})
 	}
 }
+
+// TestEnsureServiceNoticesOverwrites: the headless and instance Services are
+// only created, so without overwrites a live one that differs stays as it is;
+// a change of their overwrites updates them. The node port Services keep the
+// ports the operator manages on the live objects.
+func TestEnsureServiceNoticesOverwrites(t *testing.T) {
+	label := func(target core.OverwriteTarget) core.Overwrite {
+		return core.Overwrite{Kind: core.OverwriteKindService, Target: target,
+			Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	}
+	headless, instance, pod := label(core.OverwriteTargetHeadless), label(core.OverwriteTargetInstance), label(core.OverwriteTargetPod)
+	clusterIP := core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP}
+	nodePort := core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001"}
+	newInst := func(access core.InstanceAccess, overwrites ...core.Overwrite) *testutil.FakeClusterInstance {
+		return testutil.NewFakeClusterInstance(&v1alpha1.Cluster{
+			// A kind and a UID give the Services an owner reference.
+			TypeMeta:   metav1.TypeMeta{Kind: "Cluster", APIVersion: v1alpha1.GroupVersion.String()},
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec: v1alpha1.ClusterSpec{
+				Replicas:   v1alpha1.ClusterReplicas{Shards: 1, ReplicasOfShard: 1},
+				Access:     access,
+				Overwrites: overwrites,
+			},
+		})
+	}
+	// live holds the Services as the operator wrote them for overwrites; a
+	// node port Service has the gossip port the actor adds later.
+	live := func(access core.InstanceAccess, overwrites ...core.Overwrite) (map[string]*corev1.Service, []corev1.Service) {
+		inst := newInst(access, overwrites...)
+		name := clusterbuilder.ClusterNodeServiceName("demo", 0, 0)
+		headless, err := clusterbuilder.GenerateHeadlessService(inst, 0)
+		require.NoError(t, err)
+		instance, err := clusterbuilder.GenerateInstanceService(inst)
+		require.NoError(t, err)
+		var pod *corev1.Service
+		if access.ServiceType == corev1.ServiceTypeNodePort {
+			pod, err = clusterbuilder.GenerateNodePortService(inst, name, clusterbuilder.GenerateClusterLabels("demo", nil), 30001)
+			pod.Spec.Ports = append(pod.Spec.Ports, corev1.ServicePort{Name: "gossip", Port: 16379, NodePort: 31000})
+		} else {
+			pod, err = clusterbuilder.GeneratePodService(inst, name, access.ServiceType, access.Annotations)
+		}
+		require.NoError(t, err)
+		return map[string]*corev1.Service{headless.Name: headless, instance.Name: instance, pod.Name: pod}, []corev1.Service{*pod}
+	}
+	for _, tc := range []struct {
+		name       string
+		access     core.InstanceAccess
+		live, inst []core.Overwrite
+		changeLive func(map[string]*corev1.Service)
+		updated    []string
+	}{
+		{"no overwrites", clusterIP, nil, nil, nil, nil},
+		{"no overwrites, and live Services that differ", clusterIP, nil, nil, func(services map[string]*corev1.Service) {
+			services["demo-0"].Spec.Ports = services["demo-0"].Spec.Ports[:1]
+			services["demo"].Labels["x"] = "y"
+		}, nil},
+		{"the same overwrites", clusterIP, []core.Overwrite{headless, instance, pod}, []core.Overwrite{headless, instance, pod}, nil, nil},
+		{"overwrites added", clusterIP, nil, []core.Overwrite{headless, instance, pod}, nil, []string{"demo-0", "demo", "drc-demo-0-0"}},
+		{"overwrites removed", clusterIP, []core.Overwrite{headless, instance, pod}, nil, nil, []string{"demo-0", "demo", "drc-demo-0-0"}},
+		{"node port overwrites added", nodePort, nil, []core.Overwrite{pod}, nil, []string{"drc-demo-0-0"}},
+		{"node port overwrites removed", nodePort, []core.Overwrite{pod}, nil, nil, []string{"drc-demo-0-0"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			services, pods := live(tc.access, tc.live...)
+			if tc.changeLive != nil {
+				tc.changeLive(services)
+			}
+			clientMock := &mocks.ClientSet{}
+			clientMock.On("GetServiceByLabels", ctx, "default", mock.Anything).Return(&corev1.ServiceList{Items: pods}, nil)
+			for name, svc := range services {
+				clientMock.On("GetService", ctx, "default", name).Return(svc, nil)
+			}
+			var updated []string
+			clientMock.On("UpdateService", ctx, "default", mock.Anything).Return(nil).
+				Run(func(args mock.Arguments) {
+					svc := args.Get(2).(*corev1.Service)
+					updated = append(updated, svc.Name)
+					if tc.access.ServiceType == corev1.ServiceTypeNodePort {
+						assert.Equal(t, services[svc.Name].Spec.Ports, svc.Spec.Ports, "the node ports and the gossip port stay")
+					}
+				}).Maybe()
+
+			a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+			assert.Nil(t, a.ensureService(ctx, newInst(tc.access, tc.inst...), logr.Discard()))
+			assert.Equal(t, tc.updated, updated)
+			clientMock.AssertNotCalled(t, "CreateService", ctx, "default", mock.Anything)
+			clientMock.AssertNotCalled(t, "DeletePod", ctx, "default", mock.Anything)
+		})
+	}
+}

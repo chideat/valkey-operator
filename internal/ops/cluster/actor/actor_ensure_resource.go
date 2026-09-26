@@ -354,15 +354,23 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 	for i := 0; i < int(cr.Spec.Replicas.Shards); i++ {
 		// init headless service
 		// use serviceName and selectors from statefulset
-		svc := clusterbuilder.GenerateHeadlessService(cr, i)
+		svc, err := clusterbuilder.GenerateHeadlessService(cluster, i)
+		if err != nil {
+			logger.Error(err, "generate headless service failed")
+			return actor.NewResultWithError(cops.CommandAbort, err)
+		}
 		// TODO: check if service changed
-		if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
+		if err := a.createServiceOrApplyOverwrites(ctx, svc); err != nil {
 			logger.Error(err, "create headless service failed", "target", client.ObjectKeyFromObject(svc))
 		}
 	}
 
-	svc := clusterbuilder.GenerateInstanceService(cr)
-	if err := a.client.CreateIfNotExistsService(ctx, cr.GetNamespace(), svc); err != nil {
+	svc, err := clusterbuilder.GenerateInstanceService(cluster)
+	if err != nil {
+		logger.Error(err, "generate service failed")
+		return actor.NewResultWithError(cops.CommandAbort, err)
+	}
+	if err := a.createServiceOrApplyOverwrites(ctx, svc); err != nil {
 		logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(svc))
 		return actor.RequeueWithError(err)
 	}
@@ -381,6 +389,22 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, cluster types.C
 		if ret := a.ensureValkeyPodService(ctx, cluster, logger); ret != nil {
 			return ret
 		}
+	}
+	return nil
+}
+
+// createServiceOrApplyOverwrites creates svc if it does not exist. The operator
+// leaves an existing one as it is, except when the overwrites merged into svc
+// differ from those in it.
+func (a *actorEnsureResource) createServiceOrApplyOverwrites(ctx context.Context, svc *corev1.Service) error {
+	oldSvc, err := a.client.GetService(ctx, svc.Namespace, svc.Name)
+	if errors.IsNotFound(err) {
+		return a.client.CreateService(ctx, svc.Namespace, svc)
+	} else if err != nil {
+		return err
+	}
+	if overwrite.ChecksumChanged(svc, oldSvc) {
+		return a.client.UpdateService(ctx, svc.Namespace, svc)
 	}
 	return nil
 }
@@ -484,7 +508,11 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 					continue
 				}
 				port := newPorts[0]
-				svc := clusterbuilder.GenerateNodePortService(cr, serviceName, labels, port)
+				svc, err := clusterbuilder.GenerateNodePortService(cluster, serviceName, labels, port)
+				if err != nil {
+					logger.Error(err, "generate nodeport service failed")
+					return actor.NewResultWithError(cops.CommandAbort, err)
+				}
 				if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 					a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 					return actor.NewResultWithValue(cops.CommandRequeue, err)
@@ -502,6 +530,21 @@ func (a *actorEnsureResource) ensureValkeyNodePortService(ctx context.Context, c
 					a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(oldService))
 					return actor.NewResultWithValue(cops.CommandRequeue, err)
 				}
+			}
+			// The steps below manage the ports of the live service, so a
+			// change of the overwrites keeps them.
+			svc, err := clusterbuilder.GenerateNodePortService(cluster, serviceName, labels, getClientPort(oldService))
+			if err != nil {
+				logger.Error(err, "generate nodeport service failed")
+				return actor.NewResultWithError(cops.CommandAbort, err)
+			}
+			if overwrite.ChecksumChanged(svc, oldService) {
+				svc.Spec.Ports = oldService.Spec.Ports
+				if err := a.client.UpdateService(ctx, oldService.Namespace, svc); err != nil {
+					a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(oldService))
+					return actor.NewResultWithValue(cops.CommandRequeue, err)
+				}
+				oldService = svc
 			}
 			if slices.Contains(configedPorts, getGossipPort(oldService)) {
 				needUpdateGossipServices = append(needUpdateGossipServices, oldService)
@@ -595,7 +638,11 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, cluste
 	for shard := 0; shard < int(cr.Spec.Replicas.Shards); shard++ {
 		for replica := 0; replica < int(cr.Spec.Replicas.ReplicasOfShard); replica++ {
 			serviceName := clusterbuilder.ClusterNodeServiceName(cr.Name, shard, replica)
-			newSvc := clusterbuilder.GeneratePodService(cr, serviceName, cr.Spec.Access.ServiceType, cr.Spec.Access.Annotations)
+			newSvc, err := clusterbuilder.GeneratePodService(cluster, serviceName, cr.Spec.Access.ServiceType, cr.Spec.Access.Annotations)
+			if err != nil {
+				logger.Error(err, "generate service failed")
+				return actor.NewResultWithError(cops.CommandAbort, err)
+			}
 			if svc, err := a.client.GetService(ctx, cr.Namespace, serviceName); errors.IsNotFound(err) {
 				if err = a.client.CreateService(ctx, cr.Namespace, newSvc); err != nil {
 					a.logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))

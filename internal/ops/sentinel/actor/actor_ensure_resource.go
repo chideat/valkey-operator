@@ -407,7 +407,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 			}
 		} else if err != nil {
 			return actor.NewResultWithError(ops.CommandRequeue, err)
-		} else if util.IsServiceChanged(senService, oldService, logger) {
+		} else if util.IsServiceChanged(senService, oldService, logger) || overwrite.ChecksumChanged(senService, oldService) {
 			if err := a.client.UpdateService(ctx, sen.GetNamespace(), senService); err != nil {
 				return actor.NewResultWithError(ops.CommandRequeue, err)
 			}
@@ -428,7 +428,12 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Sent
 		return ret
 	}
 
-	if ret := ensureService(sentinelbuilder.GenerateSentinelHeadlessService(sen)); ret != nil {
+	svc, err := sentinelbuilder.GenerateSentinelHeadlessService(inst)
+	if err != nil {
+		logger.Error(err, "generate service failed")
+		return actor.NewResultWithError(ops.CommandRequeue, err)
+	}
+	if ret := ensureService(svc); ret != nil {
 		return ret
 	}
 	return nil
@@ -521,7 +526,11 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 				continue
 			}
 			port := newPorts[0]
-			svc := sentinelbuilder.GeneratePodNodePortService(sen, i, port)
+			svc, err := sentinelbuilder.GeneratePodNodePortService(inst, i, port)
+			if err != nil {
+				logger.Error(err, "generate service failed")
+				return actor.NewResultWithError(ops.CommandRequeue, err)
+			}
 			if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 				a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -532,10 +541,19 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			return actor.NewResultWithError(ops.CommandRequeue, err)
 		}
 
-		svc := sentinelbuilder.GeneratePodNodePortService(sen, i, getClientPort(oldService))
+		svc, err := sentinelbuilder.GeneratePodNodePortService(inst, i, getClientPort(oldService))
+		if err != nil {
+			logger.Error(err, "generate service failed")
+			return actor.NewResultWithError(ops.CommandRequeue, err)
+		}
 		// check old service for compatibility
 		svc.Spec.Type = oldService.Spec.Type
-		if util.IsServiceChanged(oldService, svc, logger) {
+		// The overwrites were merged for the NodePort type, which step 3 sets.
+		if err := overwrite.FitServiceType(svc); err != nil {
+			logger.Error(err, "generate service failed")
+			return actor.NewResultWithError(ops.CommandRequeue, err)
+		}
+		if util.IsServiceChanged(oldService, svc, logger) || overwrite.ChecksumChanged(svc, oldService) {
 			if err := a.client.UpdateService(ctx, oldService.Namespace, svc); err != nil {
 				a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(oldService))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -611,7 +629,11 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 	)
 
 	for i := 0; i < int(sen.Spec.Replicas); i++ {
-		newSvc := sentinelbuilder.GeneratePodService(sen, i)
+		newSvc, err := sentinelbuilder.GeneratePodService(inst, i)
+		if err != nil {
+			logger.Error(err, "generate service failed")
+			return actor.NewResultWithError(ops.CommandRequeue, err)
+		}
 		if svc, err := a.client.GetService(ctx, sen.Namespace, newSvc.Name); errors.IsNotFound(err) {
 			if err = a.client.CreateService(ctx, sen.Namespace, newSvc); err != nil {
 				logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -620,7 +642,7 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 		} else if err != nil {
 			logger.Error(err, "get service failed", "target", client.ObjectKeyFromObject(newSvc))
 			return actor.NewResult(ops.CommandRequeue)
-		} else if util.IsServiceChanged(newSvc, svc, logger) {
+		} else if util.IsServiceChanged(newSvc, svc, logger) || overwrite.ChecksumChanged(newSvc, svc) {
 			needUpdateServices = append(needUpdateServices, newSvc)
 		} else if svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
 			len(svc.Status.LoadBalancer.Ingress) == 0 &&

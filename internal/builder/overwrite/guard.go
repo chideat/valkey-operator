@@ -701,3 +701,66 @@ func (g exclusive) check(patch map[string]any, at location, report reporter) {
 		}
 	}
 }
+
+// requires guards key, in the map under path, which the API server accepts
+// only when the field under on holds one of values, such as the Service fields
+// that apply to some Service types only. The builders remove key when the
+// merged object does not qualify, so the object they write stays valid.
+// Admission refuses a patch that sets key and does not qualify, unless
+// byOperator: the operator then sets on from the resource's settings, which
+// admission does not see, and the builders handle key alone, as they do a
+// container the current settings do not run.
+type requires struct {
+	path []string
+	key  string
+	// entry reports key as a map entry, such as an annotation.
+	entry      bool
+	on         []string
+	values     []string
+	byOperator bool
+}
+
+func (g requires) at(at location) location {
+	if g.entry {
+		return at.child(g.path...).entry(g.key)
+	}
+	return at.child(g.path...).child(g.key)
+}
+
+func (g requires) qualifies(v any, present bool) bool {
+	s, ok := v.(string)
+	return present && ok && slices.Contains(g.values, s)
+}
+
+func (g requires) why() string {
+	return fmt.Sprintf("applies only when %s is %s", strings.Join(g.on, "."), strings.Join(g.values, " or "))
+}
+
+func (g requires) restore(_, merged map[string]any, at location, report reporter) {
+	m, ok := lookupMap(merged, g.path)
+	if !ok {
+		return
+	}
+	if _, set := m[g.key]; !set || g.qualifies(lookup(merged, g.on)) {
+		return
+	}
+	delete(m, g.key)
+	report(g.at(at), "removed, it "+g.why())
+}
+
+func (g requires) check(patch map[string]any, at location, report reporter) {
+	if g.byOperator {
+		return
+	}
+	val, present, _ := walk(patch, g.path, at)
+	m, ok := val.(map[string]any)
+	if !present || !ok {
+		return
+	}
+	if v, set := m[g.key]; !set || v == nil {
+		return
+	}
+	if on, set, _ := walk(patch, g.on, at); !g.qualifies(on, set) {
+		report(g.at(at), g.why())
+	}
+}
