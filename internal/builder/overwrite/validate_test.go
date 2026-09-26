@@ -17,6 +17,7 @@ limitations under the License.
 package overwrite
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -143,4 +144,42 @@ func TestValidatePodDisruptionBudget(t *testing.T) {
 			assert.Equal(t, field.ErrorTypeDuplicate, errs[0].Type)
 		}
 	})
+}
+
+func TestValidateTextPatches(t *testing.T) {
+	path := field.NewPath("spec", "overwrites")
+	text := func(kind core.OverwriteKind, s string) []core.Overwrite {
+		raw, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []core.Overwrite{{Kind: kind, Patch: apiextensionsv1.JSON{Raw: raw}}}
+	}
+
+	for _, s := range []string{
+		"spec:\n  template:\n    spec:\n      priorityClassName: critical\n",
+		"spec:\n  template:\n    spec:\n      containers:\n        - name: agent\n          resources:\n            limits:\n              cpu: null\n",
+		`{"spec": {"minReadySeconds": 10}}`,
+	} {
+		assert.Empty(t, Validate(text(core.OverwriteKindStatefulSet, s), ClusterNodes, path), s)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		overwrites []core.Overwrite
+		want       string
+	}{
+		{"protected field", text(core.OverwriteKindStatefulSet, "spec:\n  replicas: 5\n"), "spec.replicas is protected"},
+		{"null on a protected field", text(core.OverwriteKindStatefulSet, "spec:\n  template:\n    spec:\n      containers: null\n"), "deletes protected items"},
+		{"invalid YAML", text(core.OverwriteKindStatefulSet, "spec: [unclosed"), "patch text is not valid YAML"},
+		{"a list", text(core.OverwriteKindPodDisruptionBudget, "- a\n- b\n"), "patch must be an object, or a string that holds one in YAML or JSON"},
+		{"a number", []core.Overwrite{{Kind: core.OverwriteKindStatefulSet, Patch: apiextensionsv1.JSON{Raw: []byte("5")}}}, "patch must be an object"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := Validate(tc.overwrites, FailoverNodes, path)
+			if assert.NotEmpty(t, errs) {
+				assert.Contains(t, errs.ToAggregate().Error(), tc.want)
+			}
+		})
+	}
 }
