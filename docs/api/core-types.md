@@ -36,7 +36,7 @@ Defines the architecture type for Valkey instances:
 | `serviceType` | corev1.ServiceType | Kubernetes service type (ClusterIP, NodePort, LoadBalancer) |
 | `annotations` | map[string]string | Service annotations |
 | `ipFamilyPrefer` | corev1.IPFamily | IP family preference (IPv4, IPv6) |
-| `ports` | string | NodePort sequence assignment (e.g., "30000:30000,30001:30001") |
+| `ports` | string | NodePort sequence assignment: ports and port ranges, comma-separated (e.g., "30000,30001" or "30000-30001") |
 | `enableTLS` | bool | Enable TLS for external access |
 | `certIssuer` | string | Certificate issuer for TLS |
 | `certIssuerType` | string | Certificate issuer type (ClusterIssuer or Issuer) |
@@ -115,7 +115,7 @@ storage:
 ```yaml
 access:
   serviceType: NodePort
-  ports: "30000:30000,30001:30001,30002:30002"
+  ports: "30000,30001,30002"
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
 ```
