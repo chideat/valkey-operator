@@ -73,8 +73,9 @@ type InstanceAccess struct {
 	// +kubebuilder:validation:Enum=IPv4;IPv6
 	IPFamilyPrefer corev1.IPFamily `json:"ipFamilyPrefer,omitempty"`
 
-	// Ports defines the nodeports of NodePort service
-	// +kubebuilder:validation:Pattern="^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$"
+	// Ports defines the nodeports of NodePort service, as a comma-separated list
+	// of ports and port ranges, such as 30000,30001 or 30000-30001.
+	// +kubebuilder:validation:Pattern="^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$"
 	Ports string `json:"ports,omitempty"`
 
 	// EnableTLS enable TLS for external access
