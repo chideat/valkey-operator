@@ -3,7 +3,7 @@ name: valkey-operator
 description: A Helm chart for deploying the Valkey Operator on Kubernetes
 type: application
 version: 2.0.1
-appVersion: "v2.0.2-rc.202609261120.26945cd"
+appVersion: "v2.0.2-rc.202609261436.c4e646e"
 keywords:
   - valkey
   - redis
