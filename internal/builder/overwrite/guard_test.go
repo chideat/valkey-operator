@@ -299,3 +299,49 @@ func TestExclusive(t *testing.T) {
 			runCheck(t, g, `{"spec":{"minAvailable":2,"maxUnavailable":1}}`))
 	})
 }
+
+func TestRequires(t *testing.T) {
+	byType := requires{path: []string{"spec"}, key: "loadBalancerSourceRanges",
+		on: []string{"spec", "type"}, values: []string{"LoadBalancer"}, byOperator: true}
+	byPatch := requires{path: []string{"spec"}, key: "sessionAffinityConfig",
+		on: []string{"spec", "sessionAffinity"}, values: []string{"ClientIP"}}
+
+	t.Run("removes the key when the object does not qualify", func(t *testing.T) {
+		m, reports := runRestore(t, byType, `{"spec":{"type":"ClusterIP"}}`,
+			`{"spec":{"type":"ClusterIP","loadBalancerSourceRanges":["10.0.0.0/8"]}}`)
+		assert.Equal(t, doc(t, `{"spec":{"type":"ClusterIP"}}`), m)
+		assert.Equal(t, []string{"spec.loadBalancerSourceRanges removed, it applies only when spec.type is LoadBalancer"}, reports)
+
+		m, reports = runRestore(t, byType, `{"spec":{}}`, `{"spec":{"loadBalancerSourceRanges":["10.0.0.0/8"]}}`)
+		assert.Equal(t, doc(t, `{"spec":{}}`), m, "an unset type is ClusterIP")
+		assert.Len(t, reports, 1)
+	})
+	t.Run("keeps the key when the object qualifies", func(t *testing.T) {
+		merged := `{"spec":{"type":"LoadBalancer","loadBalancerSourceRanges":["10.0.0.0/8"]}}`
+		m, reports := runRestore(t, byType, `{"spec":{"type":"LoadBalancer"}}`, merged)
+		assert.Equal(t, doc(t, merged), m)
+		assert.Empty(t, reports)
+
+		merged = `{"spec":{"sessionAffinity":"ClientIP","sessionAffinityConfig":{"clientIP":{"timeoutSeconds":60}}}}`
+		m, reports = runRestore(t, byPatch, `{"spec":{}}`, merged)
+		assert.Equal(t, doc(t, merged), m)
+		assert.Empty(t, reports)
+	})
+	t.Run("reports a map entry as an entry", func(t *testing.T) {
+		g := requires{path: []string{"metadata", "annotations"}, key: "example.com/ranges", entry: true,
+			on: []string{"spec", "type"}, values: []string{"LoadBalancer"}, byOperator: true}
+		m, reports := runRestore(t, g, `{"spec":{}}`, `{"metadata":{"annotations":{"example.com/ranges":"10.0.0.0/8","a":"b"}},"spec":{}}`)
+		assert.Equal(t, doc(t, `{"metadata":{"annotations":{"a":"b"}},"spec":{}}`), m)
+		assert.Equal(t, []string{"metadata.annotations[example.com/ranges] removed, it applies only when spec.type is LoadBalancer"}, reports)
+	})
+	t.Run("check", func(t *testing.T) {
+		assert.Empty(t, runCheck(t, byType, `{"spec":{"loadBalancerSourceRanges":["10.0.0.0/8"]}}`),
+			"the operator sets the type from settings admission does not see")
+		assert.Equal(t, []string{"spec.sessionAffinityConfig applies only when spec.sessionAffinity is ClientIP"},
+			runCheck(t, byPatch, `{"spec":{"sessionAffinityConfig":{"clientIP":{"timeoutSeconds":60}}}}`))
+		assert.Equal(t, []string{"spec.sessionAffinityConfig applies only when spec.sessionAffinity is ClientIP"},
+			runCheck(t, byPatch, `{"spec":{"sessionAffinity":"None","sessionAffinityConfig":{"clientIP":{"timeoutSeconds":60}}}}`))
+		assert.Empty(t, runCheck(t, byPatch, `{"spec":{"sessionAffinity":"ClientIP","sessionAffinityConfig":{"clientIP":{"timeoutSeconds":60}}}}`))
+		assert.Empty(t, runCheck(t, byPatch, `{"spec":{"sessionAffinityConfig":null}}`), "deleting the key needs nothing")
+	})
+}

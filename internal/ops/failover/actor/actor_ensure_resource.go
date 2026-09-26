@@ -401,11 +401,15 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Fail
 		return ret
 	}
 
-	for _, newSvc := range []*corev1.Service{
-		failoverbuilder.GenerateReadWriteService(cr),
-		failoverbuilder.GenerateReadonlyService(cr),
-		failoverbuilder.GenerateExporterService(cr),
+	for _, generate := range []func(types.FailoverInstance) (*corev1.Service, error){
+		failoverbuilder.GenerateReadWriteService,
+		failoverbuilder.GenerateReadonlyService,
+		failoverbuilder.GenerateExporterService,
 	} {
+		newSvc, err := generate(inst)
+		if err != nil {
+			return actor.RequeueWithError(err)
+		}
 		if oldSvc, err := a.client.GetService(ctx, inst.GetNamespace(), newSvc.Name); errors.IsNotFound(err) {
 			if err := a.client.CreateService(ctx, inst.GetNamespace(), newSvc); err != nil {
 				logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -414,7 +418,7 @@ func (a *actorEnsureResource) ensureService(ctx context.Context, inst types.Fail
 		} else if err != nil {
 			logger.Error(err, "get service failed", "target", client.ObjectKeyFromObject(newSvc))
 			return actor.RequeueWithError(err)
-		} else if util.IsServiceChanged(newSvc, oldSvc, logger) {
+		} else if util.IsServiceChanged(newSvc, oldSvc, logger) || overwrite.ChecksumChanged(newSvc, oldSvc) {
 			if err := a.client.UpdateService(ctx, inst.GetNamespace(), newSvc); err != nil {
 				logger.Error(err, "update service failed", "target", client.ObjectKeyFromObject(newSvc))
 				return actor.RequeueWithError(err)
@@ -531,7 +535,10 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 				continue
 			}
 			port := newPorts[0]
-			svc := failoverbuilder.GeneratePodNodePortService(cr, i, port)
+			svc, err := failoverbuilder.GeneratePodNodePortService(inst, i, port)
+			if err != nil {
+				return actor.RequeueWithError(err)
+			}
 			if err = a.client.CreateService(ctx, svc.Namespace, svc); err != nil {
 				a.logger.Error(err, "create nodeport service failed", "target", client.ObjectKeyFromObject(svc))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -542,9 +549,12 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 			return actor.RequeueWithError(err)
 		}
 
-		svc := failoverbuilder.GeneratePodNodePortService(cr, i, getClientPort(oldService))
+		svc, err := failoverbuilder.GeneratePodNodePortService(inst, i, getClientPort(oldService))
+		if err != nil {
+			return actor.RequeueWithError(err)
+		}
 		// check old service for compatibility
-		if util.IsServiceChanged(svc, oldService, logger) {
+		if util.IsServiceChanged(svc, oldService, logger) || overwrite.ChecksumChanged(svc, oldService) {
 			if err := a.client.UpdateService(ctx, oldService.Namespace, svc); err != nil {
 				a.logger.Error(err, "update nodeport service failed", "target", client.ObjectKeyFromObject(oldService))
 				return actor.NewResultWithValue(ops.CommandRequeue, err)
@@ -621,7 +631,10 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 	)
 
 	for i := 0; i < int(rf.Spec.Replicas); i++ {
-		newSvc := failoverbuilder.GeneratePodService(rf, i)
+		newSvc, err := failoverbuilder.GeneratePodService(inst, i)
+		if err != nil {
+			return actor.RequeueWithError(err)
+		}
 		if svc, err := a.client.GetService(ctx, rf.Namespace, newSvc.Name); errors.IsNotFound(err) {
 			if err = a.client.CreateService(ctx, rf.Namespace, newSvc); err != nil {
 				logger.Error(err, "create service failed", "target", client.ObjectKeyFromObject(newSvc))
@@ -630,7 +643,7 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 		} else if err != nil {
 			logger.Error(err, "get service failed", "target", client.ObjectKeyFromObject(newSvc))
 			return actor.NewResult(ops.CommandRequeue)
-		} else if util.IsServiceChanged(newSvc, svc, logger) {
+		} else if util.IsServiceChanged(newSvc, svc, logger) || overwrite.ChecksumChanged(newSvc, svc) {
 			needUpdateServices = append(needUpdateServices, newSvc)
 		} else if svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
 			len(svc.Status.LoadBalancer.Ingress) == 0 &&

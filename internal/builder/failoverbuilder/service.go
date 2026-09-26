@@ -23,7 +23,9 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,14 +45,15 @@ func ROServiceName(failoverName string) string {
 	return fmt.Sprintf("rfr-%s-readonly", failoverName)
 }
 
-func GenerateReadWriteService(rf *v1alpha1.Failover) *corev1.Service {
+func GenerateReadWriteService(inst types.FailoverInstance) (*corev1.Service, error) {
+	rf := inst.Definition()
 	selectors := GenerateSelectorLabels(rf.Name)
 	selectors[builder.RoleLabelKey] = string(core.NodeRoleMaster)
 	labels := GenerateCommonLabels(rf.Name)
 
 	svcName := RWServiceName(rf.Name)
 	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            svcName,
 			Namespace:       rf.Namespace,
@@ -73,16 +76,24 @@ func GenerateReadWriteService(rf *v1alpha1.Failover) *corev1.Service {
 			Selector: selectors,
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, rf.Spec.Overwrites, core.OverwriteTargetReadWrite)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
-func GenerateReadonlyService(rf *v1alpha1.Failover) *corev1.Service {
+func GenerateReadonlyService(inst types.FailoverInstance) (*corev1.Service, error) {
+	rf := inst.Definition()
 	selectors := GenerateSelectorLabels(rf.Name)
 	selectors[builder.RoleLabelKey] = string(core.NodeRoleReplica)
 	labels := GenerateCommonLabels(rf.Name, selectors)
 
 	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            ROServiceName(rf.Name),
 			Namespace:       rf.Namespace,
@@ -105,9 +116,17 @@ func GenerateReadonlyService(rf *v1alpha1.Failover) *corev1.Service {
 			Selector: selectors,
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, rf.Spec.Overwrites, core.OverwriteTargetReadOnly)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
-func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
+func GenerateExporterService(inst types.FailoverInstance) (*corev1.Service, error) {
+	rf := inst.Definition()
 	name := FailoverStatefulSetName(rf.Name)
 	namespace := rf.Namespace
 	selectors := GenerateSelectorLabels(rf.Name)
@@ -122,7 +141,7 @@ func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
 	annotations := lo.Assign(defaultAnnotations, rf.Spec.Access.Annotations)
 	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       namespace,
@@ -146,20 +165,28 @@ func GenerateExporterService(rf *v1alpha1.Failover) *corev1.Service {
 			},
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, rf.Spec.Overwrites, core.OverwriteTargetExporter)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
 // GeneratePodService returns a new Service for the given ValkeyFailover and index, with the configed service type
-func GeneratePodService(rf *v1alpha1.Failover, index int) *corev1.Service {
-	return GeneratePodNodePortService(rf, index, 0)
+func GeneratePodService(inst types.FailoverInstance, index int) (*corev1.Service, error) {
+	return GeneratePodNodePortService(inst, index, 0)
 }
 
-func GeneratePodNodePortService(rf *v1alpha1.Failover, index int, nodePort int32) *corev1.Service {
+func GeneratePodNodePortService(inst types.FailoverInstance, index int, nodePort int32) (*corev1.Service, error) {
+	rf := inst.Definition()
 	protocol, ptype := builder.IPFamilySpec(rf.Spec.Access.IPFamilyPrefer)
 	selectors := GenerateSelectorLabels(rf.Name)
 	labels := lo.Assign(GenerateCommonLabels(rf.Name))
 	selectors[builder.PodNameLabelKey] = FailoverStatefulSetName(rf.Name) + "-" + strconv.Itoa(index)
 
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            NodePortServiceName(rf, index),
 			Namespace:       rf.GetNamespace(),
@@ -183,4 +210,11 @@ func GeneratePodNodePortService(rf *v1alpha1.Failover, index int, nodePort int32
 			Selector: selectors,
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, rf.Spec.Overwrites, core.OverwriteTargetPod)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }

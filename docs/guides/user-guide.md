@@ -313,7 +313,7 @@ spec:
 
 ## Customizing Generated Resources
 
-The operator generates a StatefulSet and a PodDisruptionBudget for the Valkey nodes (one of each per shard on the cluster architecture) and for the sentinel nodes. `spec.overwrites` patches them, for settings the Valkey spec has no field for: a priority class, topology spread constraints, extra volumes, exporter flags, probe timing, a budget's eviction policy. Each entry names the `kind` it patches, `StatefulSet` or `PodDisruptionBudget`, and holds the patch for every object of that kind; a kind appears at most once.
+The operator generates a StatefulSet and a PodDisruptionBudget for the Valkey nodes (one of each per shard on the cluster architecture) and for the sentinel nodes, and the Services that reach them. `spec.overwrites` patches them, for settings the Valkey spec has no field for: a priority class, topology spread constraints, extra volumes, exporter flags, probe timing, a budget's eviction policy, a Service's annotations or traffic policy. Each entry names the `kind` it patches, `StatefulSet`, `PodDisruptionBudget` or `Service`, and holds the patch for every object of that kind. A `Service` entry also names a `target`, the group of Services it patches (see [Service Targets](#service-targets)). A kind, or a kind and target, appears at most once.
 
 ```yaml
 apiVersion: rds.valkey.buf.red/v1alpha1
@@ -346,6 +346,12 @@ spec:
       patch:
         spec:
           unhealthyPodEvictionPolicy: AlwaysAllow
+    - kind: Service
+      target: readwrite
+      patch:
+        metadata:
+          annotations:
+            external-dns.alpha.kubernetes.io/hostname: cache.example.com
   sentinel:
     replicas: 3
     overwrites:
@@ -376,9 +382,9 @@ spec:
                       cpu: null
 ```
 
-`spec.sentinel.overwrites` patches the sentinel StatefulSet and PodDisruptionBudget. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
+`spec.sentinel.overwrites` patches the sentinel StatefulSet, PodDisruptionBudget and Services. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
 
-The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each object it patches, so a change to the overwrites always updates those objects. Pods roll when a StatefulSet change reaches the pod template; a PodDisruptionBudget changes in place.
+The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each object it patches, so a change to the overwrites always updates those objects. Pods roll when a StatefulSet change reaches the pod template; a PodDisruptionBudget or a Service changes in place. The exception is a `pod` Service of the failover and replica architectures or of the sentinel nodes: each pod reads the address it announces from its Service when it starts, so after updating one the operator restarts its pod, and waits until that pod is ready again before it moves on to the next pod of the same StatefulSet, as it does when the access settings change. That does not apply when `access.ports` assigns the node ports.
 
 ### What a StatefulSet Patch Cannot Change
 
@@ -414,11 +420,39 @@ overwrites:
         minAvailable: 1
 ```
 
+### Service Targets
+
+A `Service` entry patches every Service of its target:
+
+| Target | Cluster architecture | Failover and replica architectures | Sentinel nodes |
+|--------|----------------------|------------------------------------|----------------|
+| `headless` | the headless Service of each shard, `<name>-<shard>` | | the headless Service, `rfs-<name>` |
+| `instance` | the Service of all the nodes, `<name>` | | |
+| `readwrite` | | the Service of the primary, `rfr-<name>-readwrite` | |
+| `readonly` | | the Service of the replicas, `rfr-<name>-readonly` | |
+| `exporter` | | the headless Service of the nodes, which serves the exporter port, `rfr-<name>` | |
+| `pod` | the Service of each node, `drc-<name>-<shard>-<index>` | the Service of each node, `rfr-<name>-<index>` | the Service of each sentinel, `rfs-<name>-<index>` |
+
+`spec.overwrites` takes the targets of the architecture, and `spec.sentinel.overwrites` those of the sentinel nodes.
+
+### What a Service Patch Cannot Change
+
+The Service's identity and status, the operator's labels, and annotations that start with `valkey.buf.red/checksum` are protected, and so are these fields:
+
+- `selector`, `ports` and `type`, through which the operator reaches its pods and each pod announces its address;
+- `ipFamilies` and `ipFamilyPolicy`, which follow `access.ipFamilyPrefer`;
+- `clusterIP`, `clusterIPs`, `healthCheckNodePort` and `loadBalancerClass`, which the API server assigns or keeps once set;
+- `externalIPs`, which would take over traffic to any address, and `externalName`.
+
+Other labels and annotations can change, and so can `externalTrafficPolicy`, `internalTrafficPolicy`, `trafficDistribution`, `sessionAffinity`, `sessionAffinityConfig`, `publishNotReadyAddresses`, `loadBalancerIP`, `loadBalancerSourceRanges` and `allocateLoadBalancerNodePorts`. `sessionAffinityConfig` needs `sessionAffinity: ClientIP` in the same patch.
+
+Some fields apply only to some Service types. `loadBalancerSourceRanges`, the `service.beta.kubernetes.io/load-balancer-source-ranges` annotation and `allocateLoadBalancerNodePorts` apply to `LoadBalancer` Services, and `externalTrafficPolicy` to `NodePort` and `LoadBalancer` Services. The `readwrite`, `readonly` and `pod` Services take their type from `access.serviceType` (`spec.sentinel.access.serviceType` for the sentinel nodes), and the others are `ClusterIP`. The operator leaves these fields out of a Service whose type does not take them, so a patch keeps working when `access.serviceType` changes.
+
 ### Rejected and Restored Patches
 
-The admission webhook of the Valkey resource rejects a patch that is neither an object nor text that holds one, changes a protected field, adds a container, sets both `minAvailable` and `maxUnavailable`, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the object does not have, or gives a field a value of the wrong type.
+The admission webhook of the Valkey resource rejects a patch that is neither an object nor text that holds one, changes a protected field, adds a container, sets both `minAvailable` and `maxUnavailable`, sets `sessionAffinityConfig` without `sessionAffinity: ClientIP`, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the object does not have, or gives a field a value of the wrong type. It also rejects a `Service` entry without a target or with a target the architecture does not have, and a target on any other kind.
 
-The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator skips a patch that is neither an object nor text that holds one, uses a patch directive, or gives a field a value of the wrong type. From the other patches it keeps protected fields as generated, drops containers it does not run and a `minAvailable` set together with `maxUnavailable`, and applies the rest. It reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
+The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts what the current settings do not use, such as a patch for the `exporter` container with the exporter disabled, or `loadBalancerSourceRanges` for a `ClusterIP` Service. The operator skips a patch that is neither an object nor text that holds one, uses a patch directive, or gives a field a value of the wrong type. From the other patches it keeps protected fields as generated; drops containers it does not run, a `minAvailable` set together with `maxUnavailable`, and fields the Service type does not take; and applies the rest. It reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
 
 ## Security
 

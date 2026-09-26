@@ -471,12 +471,16 @@ func TestValidateOverwrites(t *testing.T) {
 	budget := func(doc string) []core.Overwrite {
 		return []core.Overwrite{{Kind: core.OverwriteKindPodDisruptionBudget, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
 	}
+	services := func(target core.OverwriteTarget, doc string) []core.Overwrite {
+		return []core.Overwrite{{Kind: core.OverwriteKindService, Target: target, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
+	}
 	sentinel := func(doc string) *v1alpha1.SentinelSettings {
 		return &v1alpha1.SentinelSettings{SentinelSpec: v1alpha1.SentinelSpec{Replicas: 3, Overwrites: patches(doc)}}
 	}
 	const (
 		exporterArgs = `{"spec":{"template":{"spec":{"containers":[{"name":"exporter","args":["--include-system-metrics=true"]}]}}}}`
 		agentEnv     = `{"spec":{"template":{"spec":{"containers":[{"name":"agent","env":[{"name":"LOG_LEVEL","value":"debug"}]}]}}}}`
+		serviceLabel = `{"metadata":{"labels":{"team":"cache"}}}`
 	)
 
 	tests := []struct {
@@ -504,7 +508,31 @@ func TestValidateOverwrites(t *testing.T) {
 			name: "budget minAvailable and maxUnavailable", arch: core.ValkeyCluster, overwrites: budget(`{"spec":{"minAvailable":1,"maxUnavailable":1}}`),
 			wantErr: []string{"spec.overwrites[0].patch", "spec.minAvailable cannot be set together with maxUnavailable"},
 		},
+		{name: "readwrite Service on failover", arch: core.ValkeyFailover, overwrites: services(core.OverwriteTargetReadWrite, serviceLabel)},
+		{name: "readwrite Service on replica", arch: core.ValkeyReplica, overwrites: services(core.OverwriteTargetReadWrite, serviceLabel)},
+		{name: "instance Service on cluster", arch: core.ValkeyCluster, overwrites: services(core.OverwriteTargetInstance, serviceLabel)},
+		{
+			name: "readwrite Service on cluster", arch: core.ValkeyCluster, overwrites: services(core.OverwriteTargetReadWrite, serviceLabel),
+			wantErr: []string{"spec.overwrites[0].target", `Unsupported value: "readwrite"`},
+		},
+		{
+			name: "Service without a target", arch: core.ValkeyFailover, overwrites: services("", serviceLabel),
+			wantErr: []string{"spec.overwrites[0].target", "kind Service needs one of readwrite, readonly, exporter, pod"},
+		},
+		{
+			name: "Service selector", arch: core.ValkeyCluster, overwrites: services(core.OverwriteTargetPod, `{"spec":{"selector":{"app":"other"}}}`),
+			wantErr: []string{"spec.overwrites[0].patch", "spec.selector is protected"},
+		},
 		{name: "agent on the sentinel nodes", arch: core.ValkeyFailover, sentinel: sentinel(agentEnv)},
+		{
+			name: "pod Service on the sentinel nodes", arch: core.ValkeyFailover,
+			sentinel: &v1alpha1.SentinelSettings{SentinelSpec: v1alpha1.SentinelSpec{Replicas: 3, Overwrites: services(core.OverwriteTargetPod, serviceLabel)}},
+		},
+		{
+			name: "readwrite Service on the sentinel nodes", arch: core.ValkeyFailover,
+			sentinel: &v1alpha1.SentinelSettings{SentinelSpec: v1alpha1.SentinelSpec{Replicas: 3, Overwrites: services(core.OverwriteTargetReadWrite, serviceLabel)}},
+			wantErr:  []string{"spec.sentinel.overwrites[0].target", `Unsupported value: "readwrite"`},
+		},
 		{
 			name: "valkey on the sentinel nodes", arch: core.ValkeyFailover,
 			sentinel: sentinel(`{"spec":{"template":{"spec":{"containers":[{"name":"valkey","args":["x"]}]}}}}`),

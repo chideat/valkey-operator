@@ -20,9 +20,10 @@ import (
 	"fmt"
 
 	"github.com/chideat/valkey-operator/api/core"
-	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -36,21 +37,22 @@ func SentinelPodServiceName(sentinelName string, i int) string {
 	return fmt.Sprintf("%s-%d", SentinelStatefulSetName(sentinelName), i)
 }
 
-func GenerateSentinelHeadlessService(inst *v1alpha1.Sentinel) *corev1.Service {
-	name := SentinelHeadlessServiceName(inst.Name)
-	namespace := inst.Namespace
+func GenerateSentinelHeadlessService(inst types.SentinelInstance) (*corev1.Service, error) {
+	sen := inst.Definition()
+	name := SentinelHeadlessServiceName(sen.Name)
+	namespace := sen.Namespace
 
-	selectors := GenerateSelectorLabels(inst.Name)
-	labels := GenerateCommonLabels(inst.Name)
-	protocol, ptype := builder.IPFamilySpec(inst.Spec.Access.IPFamilyPrefer)
+	selectors := GenerateSelectorLabels(sen.Name)
+	labels := GenerateCommonLabels(sen.Name)
+	protocol, ptype := builder.IPFamilySpec(sen.Spec.Access.IPFamilyPrefer)
 
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       namespace,
 			Labels:          labels,
-			Annotations:     inst.Spec.Access.Annotations,
-			OwnerReferences: util.BuildOwnerReferences(inst),
+			Annotations:     sen.Spec.Access.Annotations,
+			OwnerReferences: util.BuildOwnerReferences(sen),
 		},
 		Spec: corev1.ServiceSpec{
 			IPFamilies:     protocol,
@@ -68,15 +70,23 @@ func GenerateSentinelHeadlessService(inst *v1alpha1.Sentinel) *corev1.Service {
 			},
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, sen.Spec.Overwrites, core.OverwriteTargetHeadless)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
 // GeneratePodService returns a new Service for the given ValkeyFailover and index, with the configed service type
-func GeneratePodService(sen *v1alpha1.Sentinel, index int) *corev1.Service {
-	return GeneratePodNodePortService(sen, index, 0)
+func GeneratePodService(inst types.SentinelInstance, index int) (*corev1.Service, error) {
+	return GeneratePodNodePortService(inst, index, 0)
 }
 
-func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int32) *corev1.Service {
+func GeneratePodNodePortService(inst types.SentinelInstance, index int, nodePort int32) (*corev1.Service, error) {
 	var (
+		sen             = inst.Definition()
 		name            = SentinelPodServiceName(sen.Name, index)
 		protocol, ptype = builder.IPFamilySpec(sen.Spec.Access.IPFamilyPrefer)
 	)
@@ -85,7 +95,7 @@ func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int3
 		builder.PodNameLabelKey: name,
 	}
 
-	return &corev1.Service{
+	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       sen.GetNamespace(),
@@ -109,4 +119,11 @@ func GeneratePodNodePortService(sen *v1alpha1.Sentinel, index int, nodePort int3
 			Selector: selectors,
 		},
 	}
+
+	svc, problems, err := overwrite.Service(svc, sen.Spec.Overwrites, core.OverwriteTargetPod)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }

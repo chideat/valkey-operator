@@ -42,9 +42,9 @@ import (
 
 // ChecksumAnnotation is set on every object that has overwrites merged in, to
 // a hash of them. The actors compare it on the generated and the live object,
-// so adding, changing or removing an overwrite is noticed: for StatefulSets
-// through their full annotation comparison, for other kinds through
-// ChecksumChanged.
+// so adding, changing or removing an overwrite is noticed: for StatefulSets and
+// the pod Services of a cluster through their full annotation comparison, for
+// the other objects through ChecksumChanged.
 var ChecksumAnnotation = builder.ChecksumKey("overwrites")
 
 // StatefulSet merges the StatefulSet overwrites into sts, a StatefulSet
@@ -52,14 +52,52 @@ var ChecksumAnnotation = builder.ChecksumKey("overwrites")
 // patch that cannot be merged is skipped; problems lists both, for a Warning
 // event. Without StatefulSet overwrites sts is returned as it is.
 func StatefulSet(sts *appsv1.StatefulSet, overwrites []core.Overwrite, component Component) (*appsv1.StatefulSet, []string, error) {
-	return apply(sts, overwrites, core.OverwriteKindStatefulSet, statefulSetGuards(component))
+	return apply(sts, overwrites, core.OverwriteKindStatefulSet, "", statefulSetGuards(component))
 }
 
 // PodDisruptionBudget merges the PodDisruptionBudget overwrites into pdb, as
 // StatefulSet does for StatefulSets. Without PodDisruptionBudget overwrites pdb
 // is returned as it is.
 func PodDisruptionBudget(pdb *policyv1.PodDisruptionBudget, overwrites []core.Overwrite) (*policyv1.PodDisruptionBudget, []string, error) {
-	return apply(pdb, overwrites, core.OverwriteKindPodDisruptionBudget, podDisruptionBudgetGuards())
+	return apply(pdb, overwrites, core.OverwriteKindPodDisruptionBudget, "", podDisruptionBudgetGuards())
+}
+
+// Service merges the Service overwrites of target into svc, a Service
+// generated for that target, as StatefulSet does for StatefulSets. A field
+// that svc's type does not accept is removed, so the Service stays valid.
+// Without Service overwrites for target svc is returned as it is.
+func Service(svc *corev1.Service, overwrites []core.Overwrite, target core.OverwriteTarget) (*corev1.Service, []string, error) {
+	return apply(svc, overwrites, core.OverwriteKindService, target, serviceGuards())
+}
+
+// FitServiceType removes from svc the fields that its type does not take, as
+// Service does when it merges the overwrites. An actor that writes a generated
+// Service with another type than it was generated with calls it first.
+func FitServiceType(svc *corev1.Service) error {
+	data, err := json.Marshal(svc)
+	if err != nil {
+		return err
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	changed := false
+	for _, g := range serviceTypeGuards() {
+		g.restore(nil, obj, nil, func(location, string) { changed = true })
+	}
+	if !changed {
+		return nil
+	}
+	if data, err = json.Marshal(obj); err != nil {
+		return err
+	}
+	fitted := &corev1.Service{}
+	if err := json.Unmarshal(data, fitted); err != nil {
+		return err
+	}
+	*svc = *fitted
+	return nil
 }
 
 // ChecksumChanged reports whether the overwrites merged into generated differ
@@ -78,18 +116,19 @@ func Report(inst types.Instance, obj string, problems []string) {
 		"overwrites for %s: %s", obj, strings.Join(problems, "; "))
 }
 
-// patch is one overwrite of a kind: its position in spec.overwrites, and
-// its document as JSON, or the error that kept it from being read.
+// patch is one overwrite of a kind and target: its position in
+// spec.overwrites, and its document as JSON, or the error that kept it from
+// being read.
 type patch struct {
 	index int
 	raw   []byte
 	err   error
 }
 
-func patchesOf(overwrites []core.Overwrite, kind core.OverwriteKind) []patch {
+func patchesOf(overwrites []core.Overwrite, kind core.OverwriteKind, target core.OverwriteTarget) []patch {
 	var ret []patch
 	for i, ow := range overwrites {
-		if ow.Kind == kind {
+		if ow.Kind == kind && ow.Target == target {
 			raw, err := document(ow.Patch.Raw)
 			if err != nil {
 				raw = ow.Patch.Raw
@@ -123,8 +162,8 @@ func document(raw []byte) ([]byte, error) {
 func apply[T any, PT interface {
 	*T
 	metav1.Object
-}](obj PT, overwrites []core.Overwrite, kind core.OverwriteKind, guards []guard) (PT, []string, error) {
-	patches := patchesOf(overwrites, kind)
+}](obj PT, overwrites []core.Overwrite, kind core.OverwriteKind, target core.OverwriteTarget, guards []guard) (PT, []string, error) {
+	patches := patchesOf(overwrites, kind, target)
 	if len(patches) == 0 {
 		return obj, nil, nil
 	}

@@ -302,6 +302,145 @@ func TestPodDisruptionBudget(t *testing.T) {
 	})
 }
 
+// generatedService is shaped like the failover builder's readwrite Service.
+func generatedService(typ corev1.ServiceType) *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rfr-demo-readwrite",
+			Namespace: "default",
+			Labels:    map[string]string{builder.AppNameLabelKey: "demo", builder.ManagedByLabelKey: "valkey-operator"},
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     typ,
+			Ports:    []corev1.ServicePort{{Name: "server", Port: 6379, TargetPort: intstr.FromInt(6379), Protocol: corev1.ProtocolTCP}},
+			Selector: map[string]string{builder.AppNameLabelKey: "demo", builder.RoleLabelKey: "master"},
+		},
+	}
+}
+
+func serviceOverwrites(target core.OverwriteTarget, patches ...string) []core.Overwrite {
+	var ret []core.Overwrite
+	for _, p := range patches {
+		ret = append(ret, core.Overwrite{Kind: core.OverwriteKindService, Target: target, Patch: apiextensionsv1.JSON{Raw: []byte(p)}})
+	}
+	return ret
+}
+
+func TestService(t *testing.T) {
+	t.Run("without overwrites for the target", func(t *testing.T) {
+		svc := generatedService(corev1.ServiceTypeClusterIP)
+		others := append(pdbOverwrites(`{"metadata":{"labels":{"team":"cache"}}}`),
+			serviceOverwrites(core.OverwriteTargetReadOnly, `{"metadata":{"labels":{"team":"cache"}}}`)...)
+		got, problems, err := Service(svc, others, core.OverwriteTargetReadWrite)
+		require.NoError(t, err)
+		assert.Same(t, svc, got, "overwrites of other kinds and targets leave the Service untouched")
+		assert.Empty(t, problems)
+	})
+	t.Run("applies user values", func(t *testing.T) {
+		got, problems, err := Service(generatedService(corev1.ServiceTypeLoadBalancer), serviceOverwrites(core.OverwriteTargetReadWrite, `{
+			"metadata": {"labels": {"team": "cache"}, "annotations": {"service.beta.kubernetes.io/load-balancer-source-ranges": "10.0.0.0/8"}},
+			"spec": {
+				"externalTrafficPolicy": "Local", "loadBalancerSourceRanges": ["10.0.0.0/8"], "allocateLoadBalancerNodePorts": false,
+				"sessionAffinity": "ClientIP", "sessionAffinityConfig": {"clientIP": {"timeoutSeconds": 60}},
+				"internalTrafficPolicy": "Local", "publishNotReadyAddresses": true
+			}}`), core.OverwriteTargetReadWrite)
+		require.NoError(t, err)
+		assert.Empty(t, problems)
+		assert.Equal(t, "cache", got.Labels["team"])
+		assert.Equal(t, "10.0.0.0/8", got.Annotations[corev1.AnnotationLoadBalancerSourceRangesKey])
+		assert.Equal(t, corev1.ServiceExternalTrafficPolicyLocal, got.Spec.ExternalTrafficPolicy)
+		assert.Equal(t, []string{"10.0.0.0/8"}, got.Spec.LoadBalancerSourceRanges)
+		assert.Equal(t, ptr.To(false), got.Spec.AllocateLoadBalancerNodePorts)
+		assert.Equal(t, corev1.ServiceAffinityClientIP, got.Spec.SessionAffinity)
+		assert.Equal(t, ptr.To(int32(60)), got.Spec.SessionAffinityConfig.ClientIP.TimeoutSeconds)
+		assert.Equal(t, ptr.To(corev1.ServiceInternalTrafficPolicyLocal), got.Spec.InternalTrafficPolicy)
+		assert.True(t, got.Spec.PublishNotReadyAddresses)
+		assert.NotEmpty(t, got.Annotations[ChecksumAnnotation])
+	})
+	t.Run("restores what the operator routes and announces through", func(t *testing.T) {
+		got, problems, err := Service(generatedService(corev1.ServiceTypeClusterIP), serviceOverwrites(core.OverwriteTargetReadWrite, `{
+			"metadata": {"labels": {"app.kubernetes.io/name": "other"}},
+			"spec": {
+				"type": "LoadBalancer", "selector": {"app": "other"}, "ports": [{"name": "other", "port": 7000}],
+				"clusterIP": "None", "ipFamilyPolicy": "PreferDualStack", "externalIPs": ["192.0.2.1"],
+				"loadBalancerClass": "example.com/lb", "loadBalancerSourceRanges": ["10.0.0.0/8"]
+			}}`), core.OverwriteTargetReadWrite)
+		require.NoError(t, err)
+		want := generatedService(corev1.ServiceTypeClusterIP)
+		assert.Equal(t, want.Labels, got.Labels)
+		assert.Equal(t, want.Spec, got.Spec)
+		assert.ElementsMatch(t, []string{
+			"metadata.labels[app.kubernetes.io/name] restored",
+			"spec.type restored",
+			"spec.selector restored",
+			"spec.ports restored",
+			"spec.clusterIP removed",
+			"spec.ipFamilyPolicy removed",
+			"spec.externalIPs removed",
+			"spec.loadBalancerClass removed",
+			// The type stays ClusterIP, so the ranges go too.
+			"spec.loadBalancerSourceRanges removed, it applies only when spec.type is LoadBalancer",
+		}, problems)
+	})
+	t.Run("removes what the Service type does not accept", func(t *testing.T) {
+		patch := `{
+			"metadata": {"annotations": {"service.beta.kubernetes.io/load-balancer-source-ranges": "10.0.0.0/8"}},
+			"spec": {
+				"externalTrafficPolicy": "Local", "loadBalancerSourceRanges": ["10.0.0.0/8"], "allocateLoadBalancerNodePorts": false,
+				"sessionAffinityConfig": {"clientIP": {"timeoutSeconds": 60}}, "internalTrafficPolicy": "Local"
+			}}`
+		got, problems, err := Service(generatedService(corev1.ServiceTypeClusterIP), serviceOverwrites(core.OverwriteTargetReadWrite, patch),
+			core.OverwriteTargetReadWrite)
+		require.NoError(t, err)
+		want := generatedService(corev1.ServiceTypeClusterIP)
+		want.Spec.InternalTrafficPolicy = ptr.To(corev1.ServiceInternalTrafficPolicyLocal)
+		assert.Equal(t, want.Spec, got.Spec, "internalTrafficPolicy applies to every type")
+		assert.NotContains(t, got.Annotations, corev1.AnnotationLoadBalancerSourceRangesKey)
+		assert.ElementsMatch(t, []string{
+			"metadata.annotations[service.beta.kubernetes.io/load-balancer-source-ranges] removed, it applies only when spec.type is LoadBalancer",
+			"spec.loadBalancerSourceRanges removed, it applies only when spec.type is LoadBalancer",
+			"spec.allocateLoadBalancerNodePorts removed, it applies only when spec.type is LoadBalancer",
+			"spec.externalTrafficPolicy removed, it applies only when spec.type is NodePort or LoadBalancer",
+			"spec.sessionAffinityConfig removed, it applies only when spec.sessionAffinity is ClientIP",
+		}, problems)
+
+		got, problems, err = Service(generatedService(corev1.ServiceTypeNodePort), serviceOverwrites(core.OverwriteTargetReadWrite, patch),
+			core.OverwriteTargetReadWrite)
+		require.NoError(t, err)
+		assert.Equal(t, corev1.ServiceExternalTrafficPolicyLocal, got.Spec.ExternalTrafficPolicy, "a NodePort Service takes externalTrafficPolicy")
+		assert.Nil(t, got.Spec.LoadBalancerSourceRanges)
+		assert.Len(t, problems, 4)
+	})
+}
+
+func TestFitServiceType(t *testing.T) {
+	merged := func(typ corev1.ServiceType) *corev1.Service {
+		svc := generatedService(typ)
+		svc.Annotations = map[string]string{corev1.AnnotationLoadBalancerSourceRangesKey: "10.0.0.0/8", "note": "x"}
+		svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
+		svc.Spec.LoadBalancerSourceRanges = []string{"10.0.0.0/8"}
+		svc.Spec.InternalTrafficPolicy = ptr.To(corev1.ServiceInternalTrafficPolicyLocal)
+		return svc
+	}
+
+	svc := merged(corev1.ServiceTypeLoadBalancer)
+	require.NoError(t, FitServiceType(svc))
+	assert.Equal(t, merged(corev1.ServiceTypeLoadBalancer), svc, "a LoadBalancer Service takes them all")
+
+	svc = merged(corev1.ServiceTypeNodePort)
+	require.NoError(t, FitServiceType(svc))
+	assert.Equal(t, corev1.ServiceExternalTrafficPolicyLocal, svc.Spec.ExternalTrafficPolicy)
+	assert.Nil(t, svc.Spec.LoadBalancerSourceRanges)
+	assert.Equal(t, map[string]string{"note": "x"}, svc.Annotations)
+
+	svc = merged(corev1.ServiceTypeClusterIP)
+	require.NoError(t, FitServiceType(svc))
+	want := generatedService(corev1.ServiceTypeClusterIP)
+	want.Annotations = map[string]string{"note": "x"}
+	want.Spec.InternalTrafficPolicy = ptr.To(corev1.ServiceInternalTrafficPolicyLocal)
+	assert.Equal(t, want, svc)
+}
+
 func TestChecksumChanged(t *testing.T) {
 	with := func(sum string) *policyv1.PodDisruptionBudget {
 		pdb := generatedPodDisruptionBudget()

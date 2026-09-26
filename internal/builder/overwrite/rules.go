@@ -19,8 +19,10 @@ package overwrite
 import (
 	"slices"
 
+	"github.com/chideat/valkey-operator/api/core"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Component is a group of pods that one overwrites list applies to. Each has
@@ -48,6 +50,13 @@ var (
 		SentinelNodes: {builder.SentinelContainerName, builder.AgentContainerName},
 	}
 	initContainers = []string{builder.InitContainerName}
+
+	// serviceTargets are the groups each component's Services fall into.
+	serviceTargets = map[Component][]core.OverwriteTarget{
+		ClusterNodes:  {core.OverwriteTargetHeadless, core.OverwriteTargetInstance, core.OverwriteTargetPod},
+		FailoverNodes: {core.OverwriteTargetReadWrite, core.OverwriteTargetReadOnly, core.OverwriteTargetExporter, core.OverwriteTargetPod},
+		SentinelNodes: {core.OverwriteTargetHeadless, core.OverwriteTargetPod},
+	}
 
 	// probes the operator sets on its main containers.
 	operatorProbes = map[string][]string{
@@ -238,6 +247,49 @@ func podDisruptionBudgetGuards() []guard {
 		fixed{"spec", "selector"},
 		exclusive{path: []string{"spec"}, generated: "maxUnavailable", others: []string{"minAvailable"}},
 	)
+}
+
+// serviceGuards protect a generated Service.
+func serviceGuards() []guard {
+	guards := objectGuards()
+	for _, f := range []string{
+		// The operator routes to its pods and announces their addresses
+		// through these.
+		"selector", "ports", "type",
+		// spec.access.ipFamilyPrefer.
+		"ipFamilies", "ipFamilyPolicy",
+		// Allocated by the API server, or fixed once set.
+		"clusterIP", "clusterIPs", "healthCheckNodePort", "loadBalancerClass",
+		// externalIPs would take over traffic to any address; externalName
+		// serves ExternalName Services only.
+		"externalIPs", "externalName",
+	} {
+		guards = append(guards, fixed{"spec", f})
+	}
+
+	// Last, once the type is back.
+	return append(append(guards, serviceTypeGuards()...),
+		requires{path: []string{"spec"}, key: "sessionAffinityConfig", on: []string{"spec", "sessionAffinity"},
+			values: []string{string(corev1.ServiceAffinityClientIP)}},
+	)
+}
+
+// serviceTypeGuards remove the Service fields that the API server accepts for
+// some Service types only.
+func serviceTypeGuards() []guard {
+	var (
+		spec           = []string{"spec"}
+		serviceType    = []string{"spec", "type"}
+		loadBalancer   = []string{string(corev1.ServiceTypeLoadBalancer)}
+		externalAccess = []string{string(corev1.ServiceTypeNodePort), string(corev1.ServiceTypeLoadBalancer)}
+	)
+	return []guard{
+		requires{path: spec, key: "loadBalancerSourceRanges", on: serviceType, values: loadBalancer, byOperator: true},
+		requires{path: []string{"metadata", "annotations"}, key: corev1.AnnotationLoadBalancerSourceRangesKey, entry: true,
+			on: serviceType, values: loadBalancer, byOperator: true},
+		requires{path: spec, key: "allocateLoadBalancerNodePorts", on: serviceType, values: loadBalancer, byOperator: true},
+		requires{path: spec, key: "externalTrafficPolicy", on: serviceType, values: externalAccess, byOperator: true},
+	}
 }
 
 // containerGuards protect one of the operator's containers.

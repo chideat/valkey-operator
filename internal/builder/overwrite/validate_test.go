@@ -18,6 +18,7 @@ package overwrite
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/chideat/valkey-operator/api/core"
@@ -142,6 +143,89 @@ func TestValidatePodDisruptionBudget(t *testing.T) {
 		errs := Validate(pdbOverwrites(`{}`, `{}`), FailoverNodes, path)
 		if assert.Len(t, errs, 1) {
 			assert.Equal(t, field.ErrorTypeDuplicate, errs[0].Type)
+		}
+	})
+}
+
+func TestValidateService(t *testing.T) {
+	path := field.NewPath("spec", "overwrites")
+	for _, patch := range []string{
+		`{"metadata": {"labels": {"team": "cache"}, "annotations": {"external-dns.alpha.kubernetes.io/hostname": "cache.example.com"}}}`,
+		`{"spec": {"sessionAffinity": "ClientIP", "sessionAffinityConfig": {"clientIP": {"timeoutSeconds": 60}}}}`,
+		`{"spec": {"internalTrafficPolicy": "Local", "trafficDistribution": "PreferClose", "publishNotReadyAddresses": true}}`,
+		// Whether the type takes these depends on spec.access.serviceType;
+		// the builders remove them where it does not.
+		`{"spec": {"externalTrafficPolicy": "Local", "loadBalancerSourceRanges": ["10.0.0.0/8"], "allocateLoadBalancerNodePorts": false}}`,
+	} {
+		assert.Empty(t, Validate(serviceOverwrites(core.OverwriteTargetReadWrite, patch), FailoverNodes, path), patch)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		patch string
+		want  string
+	}{
+		{"selector", `{"spec": {"selector": {"app": "other"}}}`, "spec.selector is protected"},
+		{"ports", `{"spec": {"ports": [{"port": 7000}]}}`, "spec.ports is protected"},
+		{"type", `{"spec": {"type": "LoadBalancer"}}`, "spec.type is protected"},
+		{"cluster IP", `{"spec": {"clusterIP": "None"}}`, "spec.clusterIP is protected"},
+		{"external IPs", `{"spec": {"externalIPs": ["192.0.2.1"]}}`, "spec.externalIPs is protected"},
+		{"load balancer class", `{"spec": {"loadBalancerClass": "example.com/lb"}}`, "spec.loadBalancerClass is protected"},
+		{"operator label", `{"metadata": {"labels": {"app.kubernetes.io/name": "x"}}}`, "metadata.labels[app.kubernetes.io/name] is protected"},
+		{"session affinity config alone", `{"spec": {"sessionAffinityConfig": {"clientIP": {"timeoutSeconds": 60}}}}`,
+			"spec.sessionAffinityConfig applies only when spec.sessionAffinity is ClientIP"},
+		{"unknown field", `{"spec": {"replicas": 1}}`, `unknown field "spec.replicas"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := Validate(serviceOverwrites(core.OverwriteTargetReadWrite, tc.patch), FailoverNodes, path)
+			if assert.NotEmpty(t, errs) {
+				assert.Contains(t, errs.ToAggregate().Error(), tc.want)
+			}
+		})
+	}
+
+	t.Run("targets", func(t *testing.T) {
+		for component, targets := range map[Component][]core.OverwriteTarget{
+			ClusterNodes:  {core.OverwriteTargetHeadless, core.OverwriteTargetInstance, core.OverwriteTargetPod},
+			FailoverNodes: {core.OverwriteTargetReadWrite, core.OverwriteTargetReadOnly, core.OverwriteTargetExporter, core.OverwriteTargetPod},
+			SentinelNodes: {core.OverwriteTargetHeadless, core.OverwriteTargetPod},
+		} {
+			for _, target := range []core.OverwriteTarget{
+				core.OverwriteTargetHeadless, core.OverwriteTargetInstance, core.OverwriteTargetReadWrite,
+				core.OverwriteTargetReadOnly, core.OverwriteTargetExporter, core.OverwriteTargetPod,
+			} {
+				errs := Validate(serviceOverwrites(target, `{}`), component, path)
+				if slices.Contains(targets, target) {
+					assert.Empty(t, errs, "%s %s", component, target)
+				} else if assert.Len(t, errs, 1, "%s %s", component, target) {
+					assert.Equal(t, field.ErrorTypeNotSupported, errs[0].Type)
+					assert.Equal(t, "spec.overwrites[0].target", errs[0].Field)
+				}
+			}
+		}
+
+		errs := Validate(serviceOverwrites("", `{}`), FailoverNodes, path)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, field.ErrorTypeRequired, errs[0].Type)
+			assert.Equal(t, "spec.overwrites[0].target", errs[0].Field)
+			assert.Contains(t, errs[0].Detail, "readwrite, readonly, exporter, pod")
+		}
+
+		withTarget := pdbOverwrites(`{}`)
+		withTarget[0].Target = core.OverwriteTargetPod
+		errs = Validate(withTarget, FailoverNodes, path)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, field.ErrorTypeForbidden, errs[0].Type)
+			assert.Equal(t, "spec.overwrites[0].target", errs[0].Field)
+		}
+	})
+	t.Run("one entry per target", func(t *testing.T) {
+		assert.Empty(t, Validate(append(serviceOverwrites(core.OverwriteTargetReadWrite, `{}`),
+			serviceOverwrites(core.OverwriteTargetReadOnly, `{}`)...), FailoverNodes, path))
+		errs := Validate(serviceOverwrites(core.OverwriteTargetPod, `{}`, `{}`), FailoverNodes, path)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, field.ErrorTypeDuplicate, errs[0].Type)
+			assert.Equal(t, "spec.overwrites[1].target", errs[0].Field)
 		}
 	})
 }

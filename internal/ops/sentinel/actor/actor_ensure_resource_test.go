@@ -316,6 +316,11 @@ func withSentinelPods(inst *testutil.FakeSentinelInstance, deleting string) repl
 // down, so without waiting for it to go the next reconcile would delete
 // another sentinel before the first is back.
 func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
+	must := func(svc *corev1.Service, err error) *corev1.Service {
+		t.Helper()
+		require.NoError(t, err)
+		return svc
+	}
 	newSentinel := func(access core.InstanceAccess) *v1alpha1.Sentinel {
 		return &v1alpha1.Sentinel{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
@@ -331,9 +336,9 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 		access := core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP, Annotations: map[string]string{"note": "new"}}
 		old, updated := newSentinel(core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP}), newSentinel(access)
 		live := map[string]*corev1.Service{
-			"rfs-demo-0": sentinelbuilder.GeneratePodService(old, 0),
-			"rfs-demo-1": sentinelbuilder.GeneratePodService(old, 1),
-			"rfs-demo-2": sentinelbuilder.GeneratePodService(updated, 2),
+			"rfs-demo-0": must(sentinelbuilder.GeneratePodService(testutil.NewFakeSentinelInstance(old), 0)),
+			"rfs-demo-1": must(sentinelbuilder.GeneratePodService(testutil.NewFakeSentinelInstance(old), 1)),
+			"rfs-demo-2": must(sentinelbuilder.GeneratePodService(testutil.NewFakeSentinelInstance(updated), 2)),
 		}
 		for _, tc := range []struct {
 			name     string
@@ -371,9 +376,9 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 		access := core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001,30002,30003"}
 		sen := newSentinel(access)
 		live := map[string]*corev1.Service{
-			"rfs-demo-0": sentinelbuilder.GeneratePodNodePortService(sen, 0, 30001),
-			"rfs-demo-1": sentinelbuilder.GeneratePodNodePortService(sen, 1, 30002),
-			"rfs-demo-2": sentinelbuilder.GeneratePodNodePortService(sen, 2, 31000),
+			"rfs-demo-0": must(sentinelbuilder.GeneratePodNodePortService(testutil.NewFakeSentinelInstance(sen), 0, 30001)),
+			"rfs-demo-1": must(sentinelbuilder.GeneratePodNodePortService(testutil.NewFakeSentinelInstance(sen), 1, 30002)),
+			"rfs-demo-2": must(sentinelbuilder.GeneratePodNodePortService(testutil.NewFakeSentinelInstance(sen), 2, 31000)),
 		}
 		for _, tc := range []struct {
 			name     string
@@ -409,4 +414,147 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestEnsureServiceNoticesOverwrites: IsServiceChanged misses overwrites that
+// are removed; the checksum catches them. A changed pod Service restarts its
+// pod, unless the node ports come from spec.access.ports.
+func TestEnsureServiceNoticesOverwrites(t *testing.T) {
+	label := func(target core.OverwriteTarget) core.Overwrite {
+		return core.Overwrite{Kind: core.OverwriteKindService, Target: target,
+			Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	}
+	headless, pod := label(core.OverwriteTargetHeadless), label(core.OverwriteTargetPod)
+	clusterIP := core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP}
+	nodePort := core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001,30002,30003"}
+	newInst := func(access core.InstanceAccess, overwrites ...core.Overwrite) *testutil.FakeSentinelInstance {
+		return testutil.NewFakeSentinelInstance(&v1alpha1.Sentinel{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: v1alpha1.SentinelSpec{
+				Replicas:   3,
+				Access:     v1alpha1.SentinelInstanceAccess{InstanceAccess: access},
+				Overwrites: overwrites,
+			},
+		})
+	}
+	// live holds the Services as the operator wrote them for overwrites.
+	live := func(access core.InstanceAccess, overwrites ...core.Overwrite) (map[string]*corev1.Service, []corev1.Service) {
+		inst := newInst(access, overwrites...)
+		svc, err := sentinelbuilder.GenerateSentinelHeadlessService(inst)
+		require.NoError(t, err)
+		ret := map[string]*corev1.Service{svc.Name: svc}
+		var pods []corev1.Service
+		for i := range 3 {
+			var port int32
+			if access.Ports != "" {
+				port = int32(30001 + i)
+			}
+			svc, err := sentinelbuilder.GeneratePodNodePortService(inst, i, port)
+			require.NoError(t, err)
+			ret[svc.Name] = svc
+			pods = append(pods, *svc)
+		}
+		return ret, pods
+	}
+	for _, tc := range []struct {
+		name       string
+		access     core.InstanceAccess
+		live, inst []core.Overwrite
+		updated    []string
+		restarted  string
+	}{
+		{"no overwrites", clusterIP, nil, nil, nil, ""},
+		{"the same overwrites", clusterIP, []core.Overwrite{headless, pod}, []core.Overwrite{headless, pod}, nil, ""},
+		{"headless overwrites removed", clusterIP, []core.Overwrite{headless}, nil, []string{"rfs-demo"}, ""},
+		// One pod per reconcile, starting with the last.
+		{"pod overwrites removed", clusterIP, []core.Overwrite{pod}, nil, []string{"rfs-demo-2"}, "rfs-demo-2"},
+		// This path compares with the live Service first, so an added label
+		// is what only the checksum catches.
+		{"node port overwrites added", nodePort, nil, []core.Overwrite{pod}, []string{"rfs-demo-0", "rfs-demo-1", "rfs-demo-2"}, ""},
+		{"node port overwrites removed", nodePort, []core.Overwrite{pod}, nil, []string{"rfs-demo-0", "rfs-demo-1", "rfs-demo-2"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			services, pods := live(tc.access, tc.live...)
+			clientMock := &mocks.ClientSet{}
+			clientMock.On("GetServiceByLabels", ctx, "default", mock.Anything).Return(&corev1.ServiceList{Items: pods}, nil)
+			for name, svc := range services {
+				clientMock.On("GetService", ctx, "default", name).Return(svc, nil)
+			}
+			var updated []string
+			clientMock.On("UpdateService", ctx, "default", mock.Anything).Return(nil).
+				Run(func(args mock.Arguments) { updated = append(updated, args.Get(2).(*corev1.Service).Name) }).Maybe()
+			clientMock.On("GetPod", ctx, "default", mock.Anything).Return(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: tc.restarted}}, nil).Maybe()
+			clientMock.On("DeletePod", ctx, "default", tc.restarted).Return(nil).Maybe()
+
+			a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+			ret := a.ensureService(ctx, newInst(tc.access, tc.inst...), logr.Discard())
+			assert.Equal(t, tc.updated, updated)
+			if tc.restarted != "" {
+				assert.NotNil(t, ret)
+				clientMock.AssertCalled(t, "DeletePod", ctx, "default", tc.restarted)
+			} else {
+				assert.Nil(t, ret)
+				clientMock.AssertNotCalled(t, "DeletePod", ctx, "default", mock.Anything)
+			}
+		})
+	}
+}
+
+// TestEnsureNodePortServiceFitsTheOldType: when spec.access.ports turns the
+// pod Services from ClusterIP into NodePort, the actor first updates them with
+// their old type. An externalTrafficPolicy from the overwrites, which only the
+// NodePort type takes, must wait for that, or the API server rejects the update
+// on every reconcile.
+func TestEnsureNodePortServiceFitsTheOldType(t *testing.T) {
+	newInst := func(access core.InstanceAccess, overwrites ...core.Overwrite) *testutil.FakeSentinelInstance {
+		return testutil.NewFakeSentinelInstance(&v1alpha1.Sentinel{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: v1alpha1.SentinelSpec{
+				Replicas:   3,
+				Access:     v1alpha1.SentinelInstanceAccess{InstanceAccess: access},
+				Overwrites: overwrites,
+			},
+		})
+	}
+	live := newInst(core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP})
+	pods := []corev1.Service{}
+	services := map[string]*corev1.Service{}
+	for i := range 3 {
+		svc, err := sentinelbuilder.GeneratePodService(live, i)
+		require.NoError(t, err)
+		svc.Spec.Type = corev1.ServiceTypeClusterIP
+		pods = append(pods, *svc)
+		services[svc.Name] = svc
+	}
+	headless, err := sentinelbuilder.GenerateSentinelHeadlessService(live)
+	require.NoError(t, err)
+	services[headless.Name] = headless
+
+	ctx := context.Background()
+	clientMock := &mocks.ClientSet{}
+	clientMock.On("GetServiceByLabels", ctx, "default", mock.Anything).Return(&corev1.ServiceList{Items: pods}, nil)
+	for name, svc := range services {
+		clientMock.On("GetService", ctx, "default", name).Return(svc, nil)
+	}
+	// The pods exist; without a pod to restart, step 3 goes on to the next Service.
+	clientMock.On("GetPod", ctx, "default", mock.Anything).Return(nil, nil)
+	var types []corev1.ServiceType
+	clientMock.On("UpdateService", ctx, "default", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		svc := args.Get(2).(*corev1.Service)
+		types = append(types, svc.Spec.Type)
+		if svc.Spec.Type == corev1.ServiceTypeClusterIP {
+			assert.Empty(t, svc.Spec.ExternalTrafficPolicy, "the API server rejects it on a ClusterIP Service")
+		}
+	})
+
+	inst := newInst(core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001,30002,30003"}, core.Overwrite{
+		Kind:   core.OverwriteKindService,
+		Target: core.OverwriteTargetPod,
+		Patch:  apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}},"spec":{"externalTrafficPolicy":"Local"}}`)},
+	})
+	a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+	assert.Nil(t, a.ensureService(ctx, inst, logr.Discard()))
+	assert.Contains(t, types, corev1.ServiceTypeClusterIP, "the overwrites changed, so the Services are updated with their old type first")
+	assert.Contains(t, types, corev1.ServiceTypeNodePort)
 }

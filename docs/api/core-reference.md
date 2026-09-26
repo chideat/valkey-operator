@@ -116,16 +116,25 @@ type Overwrite struct {
 	// Kind of the generated objects to patch.
 	Kind OverwriteKind `json:"kind"`
 
+	// Target names the Services to patch. It is required for kind Service and
+	// not allowed for the other kinds: headless, instance or pod on the
+	// cluster architecture; readwrite, readonly, exporter or pod on the
+	// failover and replica architectures; headless or pod for the sentinel
+	// nodes.
+	// +optional
+	Target OverwriteTarget `json:"target,omitempty"`
+
 	// Patch is a strategic merge patch applied to every generated object of
-	// that kind, metadata and spec, kept exactly as written. It is an object,
-	// or a string that holds one in YAML or JSON. A null in it deletes a
-	// field; client-side kubectl apply and merge patches drop nulls from an
-	// object, but not from a string.
+	// that kind and target, metadata and spec, kept exactly as written. It is
+	// an object, or a string that holds one in YAML or JSON. A null in it
+	// deletes a field; client-side kubectl apply and merge patches drop nulls
+	// from an object, but not from a string.
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Patch apiextensionsv1.JSON `json:"patch"`
 }
-    Overwrite patches the objects of one kind that the operator generates.
+    Overwrite patches the objects of one kind that the operator generates;
+    for Services, those of one target.
 
     Values in the patch win over the generated ones, except for the fields the
     operator protects: the ones its own logic reads or depends on, such as the
@@ -145,7 +154,7 @@ func (in *Overwrite) DeepCopyInto(out *Overwrite)
 
 type OverwriteKind string
     OverwriteKind is the kind of generated object an Overwrite patches.
-    +kubebuilder:validation:Enum=StatefulSet;PodDisruptionBudget
+    +kubebuilder:validation:Enum=StatefulSet;PodDisruptionBudget;Service
 
 const (
 	// OverwriteKindStatefulSet patches the StatefulSets the operator generates,
@@ -154,6 +163,33 @@ const (
 	// OverwriteKindPodDisruptionBudget patches the PodDisruptionBudgets the
 	// operator generates, one for each StatefulSet.
 	OverwriteKindPodDisruptionBudget OverwriteKind = "PodDisruptionBudget"
+	// OverwriteKindService patches the Services the operator generates, those
+	// of one target.
+	OverwriteKindService OverwriteKind = "Service"
+)
+type OverwriteTarget string
+    OverwriteTarget names a group of the Services the operator generates.
+    +kubebuilder:validation:Enum=headless;instance;readwrite;readonly;exporter;pod
+
+const (
+	// OverwriteTargetHeadless is the headless Service of each cluster shard,
+	// or of the sentinel nodes.
+	OverwriteTargetHeadless OverwriteTarget = "headless"
+	// OverwriteTargetInstance is the Service in front of all the nodes of a
+	// cluster.
+	OverwriteTargetInstance OverwriteTarget = "instance"
+	// OverwriteTargetReadWrite is the Service in front of the primary of a
+	// failover or replica instance.
+	OverwriteTargetReadWrite OverwriteTarget = "readwrite"
+	// OverwriteTargetReadOnly is the Service in front of the replicas of a
+	// failover or replica instance.
+	OverwriteTargetReadOnly OverwriteTarget = "readonly"
+	// OverwriteTargetExporter is the headless Service of the Valkey nodes of a
+	// failover or replica instance, which also serves the exporter's port.
+	OverwriteTargetExporter OverwriteTarget = "exporter"
+	// OverwriteTargetPod is the Service of each pod, through which the pod
+	// announces its address.
+	OverwriteTargetPod OverwriteTarget = "pod"
 )
 type Storage struct {
 	// The annnotations of the service which will be attached to services

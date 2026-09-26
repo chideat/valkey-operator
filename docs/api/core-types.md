@@ -93,12 +93,13 @@ Predefined affinity policies for pod scheduling:
 
 ### Overwrite
 
-Patches the objects of one kind that the operator generates. See [Customizing Generated Resources](../guides/user-guide.md#customizing-generated-resources) for what a patch may change.
+Patches the objects of one kind that the operator generates; for Services, those of one target. See [Customizing Generated Resources](../guides/user-guide.md#customizing-generated-resources) for what a patch may change.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `kind` | OverwriteKind | Kind of the generated objects to patch: `StatefulSet` or `PodDisruptionBudget`, each at most once |
-| `patch` | object or string | Strategic merge patch applied to every generated object of that kind, kept exactly as written: an object, or a string that holds one in YAML or JSON |
+| `kind` | OverwriteKind | Kind of the generated objects to patch: `StatefulSet`, `PodDisruptionBudget` or `Service`; each kind, or kind and target, at most once |
+| `target` | OverwriteTarget | Required for kind `Service`, and not allowed for the others: the Services to patch, `headless`, `instance`, `readwrite`, `readonly`, `exporter` or `pod` (see [Service Targets](../guides/user-guide.md#service-targets)) |
+| `patch` | object or string | Strategic merge patch applied to every generated object of that kind and target, kept exactly as written: an object, or a string that holds one in YAML or JSON |
 
 ## Examples
 
@@ -156,4 +157,10 @@ overwrites:
     patch:
       spec:
         unhealthyPodEvictionPolicy: AlwaysAllow
+  - kind: Service
+    target: readwrite
+    patch:
+      metadata:
+        annotations:
+          external-dns.alpha.kubernetes.io/hostname: cache.example.com
 ```

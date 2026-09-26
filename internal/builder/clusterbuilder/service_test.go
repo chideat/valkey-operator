@@ -22,9 +22,13 @@ import (
 	"github.com/chideat/valkey-operator/api/core"
 	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
+	"github.com/chideat/valkey-operator/internal/testutil"
+	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 )
@@ -148,9 +152,10 @@ func TestGenerateHeadlessService(t *testing.T) {
 			}
 
 			// Generate the headless service
-			svc := GenerateHeadlessService(cluster, tt.index)
+			svc, err := GenerateHeadlessService(testutil.NewFakeClusterInstance(cluster), tt.index)
 
 			// Verify the service
+			require.NoError(t, err)
 			require.NotNil(t, svc)
 
 			// Check basic properties
@@ -250,9 +255,10 @@ func TestGenerateInstanceService(t *testing.T) {
 			}
 
 			// Generate the instance service
-			svc := GenerateInstanceService(cluster)
+			svc, err := GenerateInstanceService(testutil.NewFakeClusterInstance(cluster))
 
 			// Verify the service
+			require.NoError(t, err)
 			require.NotNil(t, svc)
 
 			// Check basic properties
@@ -360,7 +366,8 @@ func TestGenerateNodePortService(t *testing.T) {
 			}
 
 			// Generate the NodePort service
-			svc := GenerateNodePortService(cluster, tt.nodeName, labels, tt.nodePort)
+			svc, err := GenerateNodePortService(testutil.NewFakeClusterInstance(cluster), tt.nodeName, labels, tt.nodePort)
+			require.NoError(t, err)
 
 			// Verify the service
 			require.NotNil(t, svc)
@@ -450,7 +457,8 @@ func TestGeneratePodService(t *testing.T) {
 			}
 
 			// Generate the Pod service
-			svc := GeneratePodService(cluster, tt.podName, tt.serviceType, tt.annotations)
+			svc, err := GeneratePodService(testutil.NewFakeClusterInstance(cluster), tt.podName, tt.serviceType, tt.annotations)
+			require.NoError(t, err)
 
 			// Verify the service
 			require.NotNil(t, svc)
@@ -523,22 +531,24 @@ func TestServiceIPFamilies(t *testing.T) {
 		}
 	}
 
-	generators := map[string]func(*v1alpha1.Cluster) *corev1.Service{
-		"GenerateHeadlessService": func(c *v1alpha1.Cluster) *corev1.Service {
+	generators := map[string]func(types.ClusterInstance) (*corev1.Service, error){
+		"GenerateHeadlessService": func(c types.ClusterInstance) (*corev1.Service, error) {
 			return GenerateHeadlessService(c, 0)
 		},
 		"GenerateInstanceService": GenerateInstanceService,
-		"GenerateNodePortService": func(c *v1alpha1.Cluster) *corev1.Service {
+		"GenerateNodePortService": func(c types.ClusterInstance) (*corev1.Service, error) {
 			return GenerateNodePortService(c, "test-nodeport", map[string]string{}, 30000)
 		},
-		"GeneratePodService": func(c *v1alpha1.Cluster) *corev1.Service {
+		"GeneratePodService": func(c types.ClusterInstance) (*corev1.Service, error) {
 			return GeneratePodService(c, "test-pod-svc", corev1.ServiceTypeClusterIP, nil)
 		},
 	}
 	for name, generate := range generators {
 		t.Run(name, func(t *testing.T) {
 			assertIPFamilyStates(t, func(family corev1.IPFamily) *corev1.Service {
-				return generate(newCluster(family))
+				svc, err := generate(testutil.NewFakeClusterInstance(newCluster(family)))
+				require.NoError(t, err)
+				return svc
 			})
 		})
 	}
@@ -566,4 +576,41 @@ func assertIPFamilyStates(t *testing.T, generate func(corev1.IPFamily) *corev1.S
 			assert.Equal(t, corev1.IPFamilyPolicySingleStack, *svc.Spec.IPFamilyPolicy)
 		})
 	}
+}
+
+// TestServiceAppliesOverwrites: a Service generator merges the overwrites of
+// its target, and a protected field they touch stays as generated, with a
+// Warning event that names it.
+func TestServiceAppliesOverwrites(t *testing.T) {
+	newCluster := func(overwrites ...core.Overwrite) *v1alpha1.Cluster {
+		return &v1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec: v1alpha1.ClusterSpec{
+				Replicas:   v1alpha1.ClusterReplicas{Shards: 3, ReplicasOfShard: 1},
+				Overwrites: overwrites,
+			},
+		}
+	}
+
+	plain := testutil.NewFakeClusterInstance(newCluster())
+	generated, err := GenerateInstanceService(plain)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Events())
+	assert.NotContains(t, generated.Annotations, overwrite.ChecksumAnnotation)
+
+	inst := testutil.NewFakeClusterInstance(newCluster(core.Overwrite{
+		Kind:   core.OverwriteKindService,
+		Target: core.OverwriteTargetInstance,
+		Patch:  apiextensionsv1.JSON{Raw: []byte(`{"metadata": {"labels": {"team": "cache"}}, "spec": {"selector": {"app": "other"}}}`)},
+	}))
+	svc, err := GenerateInstanceService(inst)
+	require.NoError(t, err)
+	assert.Equal(t, "cache", svc.Labels["team"])
+	assert.Equal(t, generated.Spec.Selector, svc.Spec.Selector, "the selector picks the operator's pods")
+	assert.NotEmpty(t, svc.Annotations[overwrite.ChecksumAnnotation])
+	assert.Equal(t, []string{"Warning Overwrites overwrites for " + svc.Name + ": spec.selector restored"}, inst.Events())
+
+	headless, err := GenerateHeadlessService(inst, 0)
+	require.NoError(t, err)
+	assert.NotContains(t, headless.Labels, "team", "the overwrites of another target")
 }
