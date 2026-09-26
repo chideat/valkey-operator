@@ -553,9 +553,10 @@ func (a *actorEnsureResource) ensureValkeySpecifiedNodePortService(ctx context.C
 		if inst.Replication() != nil && !(inst.Replication().Definition().Status.ReadyReplicas == 0 || (inst.Replication().IsReady() && func() bool {
 			ts := time.Now()
 			for _, node := range inst.Replication().Nodes() {
+				// A deleted pod stays Ready until its containers stop.
 				if cond, exists := lo.Find(node.Definition().Status.Conditions, func(item corev1.PodCondition) bool {
 					return item.Type == corev1.PodReady && item.Status == corev1.ConditionTrue
-				}); !exists || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
+				}); !exists || node.IsTerminating() || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
 					return false
 				}
 			}
@@ -633,9 +634,10 @@ func (a *actorEnsureResource) ensureValkeyPodService(ctx context.Context, inst t
 		if inst.Replication() != nil && !(inst.Replication().Definition().Status.ReadyReplicas == 0 || (inst.Replication().IsReady() && func() bool {
 			ts := time.Now()
 			for _, node := range inst.Replication().Nodes() {
+				// A deleted pod stays Ready until its containers stop.
 				if cond, exists := lo.Find(node.Definition().Status.Conditions, func(item corev1.PodCondition) bool {
 					return item.Type == corev1.PodReady && item.Status == corev1.ConditionTrue
-				}); !exists || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
+				}); !exists || node.IsTerminating() || cond.LastTransitionTime.Time.Add(time.Second*30).After(ts) {
 					return false
 				}
 			}
