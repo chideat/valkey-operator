@@ -241,6 +241,11 @@ func withPods(inst *testutil.FakeFailoverInstance, deleting string) replicatedFa
 // down, so without waiting for it to go the next reconcile would delete
 // another pod, and the primary and its replica would be down together.
 func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
+	must := func(svc *corev1.Service, err error) *corev1.Service {
+		t.Helper()
+		require.NoError(t, err)
+		return svc
+	}
 	newFailover := func(access core.InstanceAccess) *v1alpha1.Failover {
 		return &v1alpha1.Failover{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
@@ -253,8 +258,8 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 		access := core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP, Annotations: map[string]string{"note": "new"}}
 		old, updated := newFailover(core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP}), newFailover(access)
 		live := map[string]*corev1.Service{
-			"rfr-demo-0": failoverbuilder.GeneratePodService(old, 0),
-			"rfr-demo-1": failoverbuilder.GeneratePodService(updated, 1),
+			"rfr-demo-0": must(failoverbuilder.GeneratePodService(testutil.NewFakeFailoverInstance(old), 0)),
+			"rfr-demo-1": must(failoverbuilder.GeneratePodService(testutil.NewFakeFailoverInstance(updated), 1)),
 		}
 		for _, tc := range []struct {
 			name     string
@@ -292,8 +297,8 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 		access := core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001,30002"}
 		rf := newFailover(access)
 		live := map[string]*corev1.Service{
-			"rfr-demo-0": failoverbuilder.GeneratePodNodePortService(rf, 0, 30001),
-			"rfr-demo-1": failoverbuilder.GeneratePodNodePortService(rf, 1, 31000),
+			"rfr-demo-0": must(failoverbuilder.GeneratePodNodePortService(testutil.NewFakeFailoverInstance(rf), 0, 30001)),
+			"rfr-demo-1": must(failoverbuilder.GeneratePodNodePortService(testutil.NewFakeFailoverInstance(rf), 1, 31000)),
 		}
 		for _, tc := range []struct {
 			name     string
@@ -332,4 +337,157 @@ func TestPodRestartsWaitForTheDeletedPod(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestEnsureServiceNoticesOverwrites: IsServiceChanged misses overwrites that
+// are removed, because it only checks that the generated labels and
+// annotations are among the live ones; the checksum catches them. A changed
+// pod Service restarts its pod, which reads its announce address from it.
+func TestEnsureServiceNoticesOverwrites(t *testing.T) {
+	readwrite := core.Overwrite{Kind: core.OverwriteKindService, Target: core.OverwriteTargetReadWrite,
+		Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	pod := core.Overwrite{Kind: core.OverwriteKindService, Target: core.OverwriteTargetPod,
+		Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	newInst := func(overwrites ...core.Overwrite) *testutil.FakeFailoverInstance {
+		return testutil.NewFakeFailoverInstance(&v1alpha1.Failover{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: v1alpha1.FailoverSpec{
+				Replicas:   2,
+				Access:     core.InstanceAccess{ServiceType: corev1.ServiceTypeClusterIP},
+				Overwrites: overwrites,
+			},
+		})
+	}
+	// live holds the Services as the operator wrote them for overwrites.
+	live := func(overwrites ...core.Overwrite) map[string]*corev1.Service {
+		inst := newInst(overwrites...)
+		ret := map[string]*corev1.Service{}
+		for _, generate := range []func(types.FailoverInstance) (*corev1.Service, error){
+			failoverbuilder.GenerateReadWriteService,
+			failoverbuilder.GenerateReadonlyService,
+			failoverbuilder.GenerateExporterService,
+			func(inst types.FailoverInstance) (*corev1.Service, error) {
+				return failoverbuilder.GeneratePodService(inst, 0)
+			},
+			func(inst types.FailoverInstance) (*corev1.Service, error) {
+				return failoverbuilder.GeneratePodService(inst, 1)
+			},
+		} {
+			svc, err := generate(inst)
+			require.NoError(t, err)
+			ret[svc.Name] = svc
+		}
+		return ret
+	}
+	for _, tc := range []struct {
+		name      string
+		live      map[string]*corev1.Service
+		inst      *testutil.FakeFailoverInstance
+		updated   []string
+		restarted string
+	}{
+		{"no overwrites", live(), newInst(), nil, ""},
+		{"the same overwrites", live(readwrite, pod), newInst(readwrite, pod), nil, ""},
+		{"overwrites added", live(), newInst(readwrite), []string{"rfr-demo-readwrite"}, ""},
+		{"overwrites removed", live(readwrite), newInst(), []string{"rfr-demo-readwrite"}, ""},
+		// One pod per reconcile, starting with the last.
+		{"pod overwrites removed", live(pod), newInst(), []string{"rfr-demo-1"}, "rfr-demo-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			clientMock := &mocks.ClientSet{}
+			clientMock.On("GetServiceByLabels", ctx, "default", mock.Anything).Return(&corev1.ServiceList{}, nil)
+			for name, svc := range tc.live {
+				clientMock.On("GetService", ctx, "default", name).Return(svc, nil)
+			}
+			var updated []string
+			clientMock.On("UpdateService", ctx, "default", mock.Anything).Return(nil).
+				Run(func(args mock.Arguments) { updated = append(updated, args.Get(2).(*corev1.Service).Name) }).Maybe()
+			clientMock.On("GetPod", ctx, "default", mock.Anything).Return(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: tc.restarted}}, nil).Maybe()
+			clientMock.On("DeletePod", ctx, "default", tc.restarted).Return(nil).Maybe()
+
+			a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+			ret := a.ensureService(ctx, tc.inst, logr.Discard())
+			assert.Equal(t, tc.updated, updated)
+			if tc.restarted != "" {
+				assert.NotNil(t, ret)
+				clientMock.AssertCalled(t, "DeletePod", ctx, "default", tc.restarted)
+			} else {
+				assert.Nil(t, ret)
+				clientMock.AssertNotCalled(t, "DeletePod", ctx, "default", mock.Anything)
+			}
+		})
+	}
+}
+
+// TestEnsureNodePortServiceNoticesOverwrites: with spec.access.ports, the pod
+// Services keep their node ports, and a change of their overwrites updates them
+// without restarting a pod.
+func TestEnsureNodePortServiceNoticesOverwrites(t *testing.T) {
+	pod := core.Overwrite{Kind: core.OverwriteKindService, Target: core.OverwriteTargetPod,
+		Patch: apiextensionsv1.JSON{Raw: []byte(`{"metadata":{"labels":{"team":"cache"}}}`)}}
+	newInst := func(overwrites ...core.Overwrite) *testutil.FakeFailoverInstance {
+		return testutil.NewFakeFailoverInstance(&v1alpha1.Failover{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: v1alpha1.FailoverSpec{
+				Replicas:   2,
+				Access:     core.InstanceAccess{ServiceType: corev1.ServiceTypeNodePort, Ports: "30001,30002"},
+				Overwrites: overwrites,
+			},
+		})
+	}
+	live := func(overwrites ...core.Overwrite) (map[string]*corev1.Service, []corev1.Service) {
+		inst := newInst(overwrites...)
+		ret := map[string]*corev1.Service{}
+		var pods []corev1.Service
+		for i, port := range []int32{30001, 30002} {
+			svc, err := failoverbuilder.GeneratePodNodePortService(inst, i, port)
+			require.NoError(t, err)
+			ret[svc.Name] = svc
+			pods = append(pods, *svc)
+		}
+		for _, generate := range []func(types.FailoverInstance) (*corev1.Service, error){
+			failoverbuilder.GenerateReadWriteService,
+			failoverbuilder.GenerateReadonlyService,
+			failoverbuilder.GenerateExporterService,
+		} {
+			svc, err := generate(inst)
+			require.NoError(t, err)
+			ret[svc.Name] = svc
+		}
+		return ret, pods
+	}
+	for _, tc := range []struct {
+		name    string
+		live    []core.Overwrite
+		inst    []core.Overwrite
+		updated []string
+	}{
+		{"no overwrites", nil, nil, nil},
+		{"the same overwrites", []core.Overwrite{pod}, []core.Overwrite{pod}, nil},
+		{"overwrites added", nil, []core.Overwrite{pod}, []string{"rfr-demo-0", "rfr-demo-1"}},
+		{"overwrites removed", []core.Overwrite{pod}, nil, []string{"rfr-demo-0", "rfr-demo-1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			services, pods := live(tc.live...)
+			clientMock := &mocks.ClientSet{}
+			clientMock.On("GetServiceByLabels", ctx, "default", mock.Anything).Return(&corev1.ServiceList{Items: pods}, nil)
+			for name, svc := range services {
+				clientMock.On("GetService", ctx, "default", name).Return(svc, nil)
+			}
+			var updated []string
+			clientMock.On("UpdateService", ctx, "default", mock.Anything).Return(nil).
+				Run(func(args mock.Arguments) {
+					svc := args.Get(2).(*corev1.Service)
+					updated = append(updated, svc.Name)
+					assert.Equal(t, services[svc.Name].Spec.Ports, svc.Spec.Ports, "the node ports stay")
+				}).Maybe()
+
+			a := &actorEnsureResource{client: clientMock, logger: logr.Discard()}
+			assert.Nil(t, a.ensureService(ctx, newInst(tc.inst...), logr.Discard()))
+			assert.Equal(t, tc.updated, updated)
+			clientMock.AssertNotCalled(t, "DeletePod", ctx, "default", mock.Anything)
+		})
+	}
 }

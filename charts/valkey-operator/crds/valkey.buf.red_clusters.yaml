@@ -1363,7 +1363,8 @@ spec:
                   for this cluster.
                 items:
                   description: |-
-                    Overwrite patches the objects of one kind that the operator generates.
+                    Overwrite patches the objects of one kind that the operator generates; for
+                    Services, those of one target.
 
                     Values in the patch win over the generated ones, except for the fields the
                     operator protects: the ones its own logic reads or depends on, such as the
@@ -1378,15 +1379,31 @@ spec:
                       enum:
                       - StatefulSet
                       - PodDisruptionBudget
+                      - Service
                       type: string
                     patch:
                       description: |-
                         Patch is a strategic merge patch applied to every generated object of
-                        that kind, metadata and spec, kept exactly as written. It is an object,
-                        or a string that holds one in YAML or JSON. A null in it deletes a
-                        field; client-side kubectl apply and merge patches drop nulls from an
-                        object, but not from a string.
+                        that kind and target, metadata and spec, kept exactly as written. It is
+                        an object, or a string that holds one in YAML or JSON. A null in it
+                        deletes a field; client-side kubectl apply and merge patches drop nulls
+                        from an object, but not from a string.
                       x-kubernetes-preserve-unknown-fields: true
+                    target:
+                      description: |-
+                        Target names the Services to patch. It is required for kind Service and
+                        not allowed for the other kinds: headless, instance or pod on the
+                        cluster architecture; readwrite, readonly, exporter or pod on the
+                        failover and replica architectures; headless or pod for the sentinel
+                        nodes.
+                      enum:
+                      - headless
+                      - instance
+                      - readwrite
+                      - readonly
+                      - exporter
+                      - pod
+                      type: string
                   required:
                   - kind
                   - patch

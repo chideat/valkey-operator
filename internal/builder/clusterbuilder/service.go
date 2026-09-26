@@ -20,9 +20,10 @@ import (
 	"fmt"
 
 	"github.com/chideat/valkey-operator/api/core"
-	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
+	"github.com/chideat/valkey-operator/pkg/types"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,8 +38,9 @@ func ClusterNodeServiceName(clusterName string, shard, repl int) string {
 }
 
 // GenerateHeadlessService creates a new headless service for the given Cluster.
-func GenerateHeadlessService(cluster *v1alpha1.Cluster, index int) *corev1.Service {
+func GenerateHeadlessService(inst types.ClusterInstance, index int) (*corev1.Service, error) {
 	var (
+		cluster   = inst.Definition()
 		name      = ClusterHeadlessSvcName(cluster.GetName(), index)
 		selectors = GenerateClusterStatefulSetSelectors(cluster.Name, index)
 		labels    = GenerateClusterStatefulSetLabels(cluster.Name, index)
@@ -62,10 +64,17 @@ func GenerateHeadlessService(cluster *v1alpha1.Cluster, index int) *corev1.Servi
 			ClusterIP:      corev1.ClusterIPNone,
 		},
 	}
-	return svc
+
+	svc, problems, err := overwrite.Service(svc, cluster.Spec.Overwrites, core.OverwriteTargetHeadless)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
-func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
+func GenerateInstanceService(inst types.ClusterInstance) (*corev1.Service, error) {
+	cluster := inst.Definition()
 	selectors := GenerateClusterStatefulSetSelectors(cluster.Name, -1)
 	labels := GenerateClusterStatefulSetLabels(cluster.Name, -1)
 	// Set arch label, for identifying arch in prometheus, so wo can find metrics data for cluster only.
@@ -94,10 +103,17 @@ func GenerateInstanceService(cluster *v1alpha1.Cluster) *corev1.Service {
 			Selector:       selectors,
 		},
 	}
-	return svc
+
+	svc, problems, err := overwrite.Service(svc, cluster.Spec.Overwrites, core.OverwriteTargetInstance)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
-func GenerateNodePortService(cluster *v1alpha1.Cluster, name string, labels map[string]string, port int32) *corev1.Service {
+func GenerateNodePortService(inst types.ClusterInstance, name string, labels map[string]string, port int32) (*corev1.Service, error) {
+	cluster := inst.Definition()
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379, NodePort: port}
 	selectorLabels := map[string]string{
 		builder.PodNameLabelKey: name,
@@ -118,10 +134,17 @@ func GenerateNodePortService(cluster *v1alpha1.Cluster, name string, labels map[
 			Type:           corev1.ServiceTypeNodePort,
 		},
 	}
-	return svc
+
+	svc, problems, err := overwrite.Service(svc, cluster.Spec.Overwrites, core.OverwriteTargetPod)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }
 
-func GeneratePodService(cluster *v1alpha1.Cluster, name string, typ corev1.ServiceType, annotations map[string]string) *corev1.Service {
+func GeneratePodService(inst types.ClusterInstance, name string, typ corev1.ServiceType, annotations map[string]string) (*corev1.Service, error) {
+	cluster := inst.Definition()
 	clientPort := corev1.ServicePort{Name: "client", Port: 6379}
 	gossipPort := corev1.ServicePort{Name: "gossip", Port: 16379}
 	selectors := map[string]string{
@@ -146,5 +169,11 @@ func GeneratePodService(cluster *v1alpha1.Cluster, name string, typ corev1.Servi
 			Type:           typ,
 		},
 	}
-	return svc
+
+	svc, problems, err := overwrite.Service(svc, cluster.Spec.Overwrites, core.OverwriteTargetPod)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(inst, svc.Name, problems)
+	return svc, nil
 }

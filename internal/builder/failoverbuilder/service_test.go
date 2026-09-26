@@ -21,9 +21,13 @@ import (
 
 	"github.com/chideat/valkey-operator/api/core"
 	v1alpha1 "github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
+	"github.com/chideat/valkey-operator/internal/testutil"
+	"github.com/chideat/valkey-operator/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 )
@@ -45,18 +49,20 @@ func TestServiceIPFamilies(t *testing.T) {
 		}
 	}
 
-	generators := map[string]func(*v1alpha1.Failover) *corev1.Service{
+	generators := map[string]func(types.FailoverInstance) (*corev1.Service, error){
 		"GenerateReadWriteService": GenerateReadWriteService,
 		"GenerateReadonlyService":  GenerateReadonlyService,
 		"GenerateExporterService":  GenerateExporterService,
-		"GeneratePodNodePortService": func(rf *v1alpha1.Failover) *corev1.Service {
-			return GeneratePodNodePortService(rf, 0, 0)
+		"GeneratePodNodePortService": func(inst types.FailoverInstance) (*corev1.Service, error) {
+			return GeneratePodNodePortService(inst, 0, 0)
 		},
 	}
 	for name, generate := range generators {
 		t.Run(name, func(t *testing.T) {
 			assertIPFamilyStates(t, func(family corev1.IPFamily) *corev1.Service {
-				return generate(newFailover(family))
+				svc, err := generate(testutil.NewFakeFailoverInstance(newFailover(family)))
+				require.NoError(t, err)
+				return svc
 			})
 		})
 	}
@@ -84,4 +90,38 @@ func assertIPFamilyStates(t *testing.T, generate func(corev1.IPFamily) *corev1.S
 			assert.Equal(t, corev1.IPFamilyPolicySingleStack, *svc.Spec.IPFamilyPolicy)
 		})
 	}
+}
+
+// TestServiceAppliesOverwrites: a Service generator merges the overwrites of
+// its target, and a protected field they touch stays as generated, with a
+// Warning event that names it.
+func TestServiceAppliesOverwrites(t *testing.T) {
+	newFailover := func(overwrites ...core.Overwrite) *v1alpha1.Failover {
+		return &v1alpha1.Failover{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec:       v1alpha1.FailoverSpec{Replicas: 2, Overwrites: overwrites},
+		}
+	}
+
+	plain := testutil.NewFakeFailoverInstance(newFailover())
+	generated, err := GenerateReadWriteService(plain)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Events())
+	assert.NotContains(t, generated.Annotations, overwrite.ChecksumAnnotation)
+
+	inst := testutil.NewFakeFailoverInstance(newFailover(core.Overwrite{
+		Kind:   core.OverwriteKindService,
+		Target: core.OverwriteTargetReadWrite,
+		Patch:  apiextensionsv1.JSON{Raw: []byte(`{"metadata": {"labels": {"team": "cache"}}, "spec": {"selector": {"app": "other"}}}`)},
+	}))
+	svc, err := GenerateReadWriteService(inst)
+	require.NoError(t, err)
+	assert.Equal(t, "cache", svc.Labels["team"])
+	assert.Equal(t, generated.Spec.Selector, svc.Spec.Selector, "the selector picks the primary")
+	assert.NotEmpty(t, svc.Annotations[overwrite.ChecksumAnnotation])
+	assert.Equal(t, []string{"Warning Overwrites overwrites for " + svc.Name + ": spec.selector restored"}, inst.Events())
+
+	readonly, err := GenerateReadonlyService(inst)
+	require.NoError(t, err)
+	assert.NotContains(t, readonly.Labels, "team", "the overwrites of another target")
 }

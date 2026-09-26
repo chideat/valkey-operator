@@ -19,22 +19,30 @@ package overwrite
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/chideat/valkey-operator/api/core"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	kjson "sigs.k8s.io/json"
 )
 
 // Validate checks the overwrites of component the way admission does: a
-// supported kind, one entry per kind, and a patch that decodes strictly into
-// that kind, uses no patch directive, names only containers the operator runs
-// and sets no protected field.
+// supported kind, a target for kind Service only, one of those component has,
+// one entry per kind and target, and a patch that decodes strictly into that
+// kind, uses no patch directive, names only containers the operator runs and
+// sets no protected field.
 func Validate(overwrites []core.Overwrite, component Component, fldPath *field.Path) field.ErrorList {
+	type key struct {
+		kind   core.OverwriteKind
+		target core.OverwriteTarget
+	}
 	var (
 		errs field.ErrorList
-		seen = map[core.OverwriteKind]bool{}
+		seen = map[key]bool{}
 	)
 	for i, ow := range overwrites {
 		p := fldPath.Index(i)
@@ -47,19 +55,51 @@ func Validate(overwrites []core.Overwrite, component Component, fldPath *field.P
 			schema, guards = &appsv1.StatefulSet{}, statefulSetGuards(component)
 		case core.OverwriteKindPodDisruptionBudget:
 			schema, guards = &policyv1.PodDisruptionBudget{}, podDisruptionBudgetGuards()
+		case core.OverwriteKindService:
+			schema, guards = &corev1.Service{}, serviceGuards()
 		default:
 			errs = append(errs, field.NotSupported(p.Child("kind"), ow.Kind,
-				[]core.OverwriteKind{core.OverwriteKindStatefulSet, core.OverwriteKindPodDisruptionBudget}))
+				[]core.OverwriteKind{core.OverwriteKindStatefulSet, core.OverwriteKindPodDisruptionBudget, core.OverwriteKindService}))
 			continue
 		}
-		if seen[ow.Kind] {
-			errs = append(errs, field.Duplicate(p.Child("kind"), ow.Kind))
+		if err := validateTarget(ow, component, p.Child("target")); err != nil {
+			errs = append(errs, err)
 			continue
 		}
-		seen[ow.Kind] = true
+		k := key{ow.Kind, ow.Target}
+		if seen[k] {
+			if ow.Target != "" {
+				errs = append(errs, field.Duplicate(p.Child("target"), ow.Target))
+			} else {
+				errs = append(errs, field.Duplicate(p.Child("kind"), ow.Kind))
+			}
+			continue
+		}
+		seen[k] = true
 		errs = append(errs, validatePatch(ow.Patch.Raw, schema, guards, p.Child("patch"))...)
 	}
 	return errs
+}
+
+// validateTarget checks that an entry of kind Service names a target that
+// component has, and that an entry of any other kind names none.
+func validateTarget(ow core.Overwrite, component Component, fldPath *field.Path) *field.Error {
+	targets := serviceTargets[component]
+	switch {
+	case ow.Kind != core.OverwriteKindService:
+		if ow.Target != "" {
+			return field.Forbidden(fldPath, "is allowed for kind Service only")
+		}
+	case ow.Target == "":
+		names := make([]string, 0, len(targets))
+		for _, t := range targets {
+			names = append(names, string(t))
+		}
+		return field.Required(fldPath, "kind Service needs one of "+strings.Join(names, ", "))
+	case !slices.Contains(targets, ow.Target):
+		return field.NotSupported(fldPath, ow.Target, targets)
+	}
+	return nil
 }
 
 func validatePatch(raw []byte, schema any, guards []guard, fldPath *field.Path) field.ErrorList {

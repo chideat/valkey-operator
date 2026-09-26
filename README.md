@@ -14,7 +14,7 @@
 * Online scale up/down.
 * Graceful version upgrade.
 * Nodeselector, toleration and affinity supported.
-* Generated StatefulSets and PodDisruptionBudgets can be patched through `spec.overwrites`.
+* Generated StatefulSets, PodDisruptionBudgets and Services can be patched through `spec.overwrites`.
 * High available in production environment.
 
 ## Quickstart

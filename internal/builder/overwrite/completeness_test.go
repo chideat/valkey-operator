@@ -336,3 +336,149 @@ func TestRulesCoverWhatThePodDisruptionBudgetBuildersGenerate(t *testing.T) {
 		})
 	}
 }
+
+var serviceTargets = []core.OverwriteTarget{
+	core.OverwriteTargetHeadless, core.OverwriteTargetInstance, core.OverwriteTargetReadWrite,
+	core.OverwriteTargetReadOnly, core.OverwriteTargetExporter, core.OverwriteTargetPod,
+}
+
+// renderServices renders every Service the builders generate for component,
+// with the access type typ and overwrites, by the target the builder merges.
+func renderServices(t *testing.T, component overwrite.Component, typ corev1.ServiceType, overwrites []core.Overwrite) map[core.OverwriteTarget][]*corev1.Service {
+	t.Helper()
+	meta := metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"}
+	access := core.InstanceAccess{ServiceType: typ, IPFamilyPrefer: corev1.IPv4Protocol, Annotations: map[string]string{"note": "x"}}
+	ret := map[core.OverwriteTarget][]*corev1.Service{}
+	add := func(target core.OverwriteTarget, svc *corev1.Service, err error) {
+		t.Helper()
+		require.NoError(t, err)
+		ret[target] = append(ret[target], svc)
+	}
+	switch component {
+	case overwrite.ClusterNodes:
+		cluster := &v1alpha1.Cluster{ObjectMeta: meta, Spec: v1alpha1.ClusterSpec{
+			Replicas:   v1alpha1.ClusterReplicas{Shards: 3, ReplicasOfShard: 1},
+			Access:     access,
+			Exporter:   &core.Exporter{Image: "oliver006/redis_exporter:v1.67.0-alpine"},
+			Overwrites: overwrites,
+		}}
+		inst := testutil.NewFakeClusterInstance(cluster)
+		name := clusterbuilder.ClusterNodeServiceName(meta.Name, 0, 0)
+		svc, err := clusterbuilder.GenerateHeadlessService(inst, 0)
+		add(core.OverwriteTargetHeadless, svc, err)
+		svc, err = clusterbuilder.GenerateInstanceService(inst)
+		add(core.OverwriteTargetInstance, svc, err)
+		svc, err = clusterbuilder.GeneratePodService(inst, name, typ, access.Annotations)
+		add(core.OverwriteTargetPod, svc, err)
+		if typ == corev1.ServiceTypeNodePort {
+			svc, err = clusterbuilder.GenerateNodePortService(inst, name, clusterbuilder.GenerateClusterLabels(meta.Name, nil), 30000)
+			add(core.OverwriteTargetPod, svc, err)
+		}
+	case overwrite.FailoverNodes:
+		failover := &v1alpha1.Failover{ObjectMeta: meta, Spec: v1alpha1.FailoverSpec{
+			Replicas:   2,
+			Access:     access,
+			Exporter:   &core.Exporter{Image: "oliver006/redis_exporter:v1.67.0-alpine"},
+			Overwrites: overwrites,
+		}}
+		inst := testutil.NewFakeFailoverInstance(failover)
+		svc, err := failoverbuilder.GenerateReadWriteService(inst)
+		add(core.OverwriteTargetReadWrite, svc, err)
+		svc, err = failoverbuilder.GenerateReadonlyService(inst)
+		add(core.OverwriteTargetReadOnly, svc, err)
+		svc, err = failoverbuilder.GenerateExporterService(inst)
+		add(core.OverwriteTargetExporter, svc, err)
+		svc, err = failoverbuilder.GeneratePodService(inst, 0)
+		add(core.OverwriteTargetPod, svc, err)
+		if typ == corev1.ServiceTypeNodePort {
+			svc, err = failoverbuilder.GeneratePodNodePortService(inst, 1, 30000)
+			add(core.OverwriteTargetPod, svc, err)
+		}
+	case overwrite.SentinelNodes:
+		sentinel := &v1alpha1.Sentinel{ObjectMeta: meta, Spec: v1alpha1.SentinelSpec{
+			Replicas:   3,
+			Access:     v1alpha1.SentinelInstanceAccess{InstanceAccess: access},
+			Overwrites: overwrites,
+		}}
+		inst := testutil.NewFakeSentinelInstance(sentinel)
+		svc, err := sentinelbuilder.GenerateSentinelHeadlessService(inst)
+		add(core.OverwriteTargetHeadless, svc, err)
+		svc, err = sentinelbuilder.GeneratePodService(inst, 0)
+		add(core.OverwriteTargetPod, svc, err)
+		if typ == corev1.ServiceTypeNodePort {
+			svc, err = sentinelbuilder.GeneratePodNodePortService(inst, 1, 30000)
+			add(core.OverwriteTargetPod, svc, err)
+		}
+	}
+	return ret
+}
+
+func serviceOverwrite(target core.OverwriteTarget, doc string) []core.Overwrite {
+	return []core.Overwrite{{Kind: core.OverwriteKindService, Target: target, Patch: apiextensionsv1.JSON{Raw: []byte(doc)}}}
+}
+
+func TestRulesCoverWhatTheServiceBuildersGenerate(t *testing.T) {
+	for _, component := range []overwrite.Component{overwrite.ClusterNodes, overwrite.FailoverNodes, overwrite.SentinelNodes} {
+		for _, typ := range []corev1.ServiceType{corev1.ServiceTypeClusterIP, corev1.ServiceTypeNodePort, corev1.ServiceTypeLoadBalancer} {
+			t.Run(fmt.Sprintf("%s/%s", component, typ), func(t *testing.T) {
+				for target, services := range renderServices(t, component, typ, nil) {
+					for _, svc := range services {
+						refused := func(doc, want string) {
+							t.Helper()
+							errs := overwrite.Validate(serviceOverwrite(target, doc), component, field.NewPath("spec", "overwrites"))
+							if assert.NotEmpty(t, errs, "admission accepted %s for %s", doc, svc.Name) {
+								assert.Contains(t, errs.ToAggregate().Error(), want, doc)
+							}
+
+							got, problems, err := overwrite.Service(svc, serviceOverwrite(target, doc), target)
+							require.NoError(t, err)
+							assert.NotEmpty(t, problems, "the builders did not report %s for %s", doc, svc.Name)
+							expected := roundTrip(t, svc)
+							assert.Equal(t, expected.Spec, got.Spec, "the builders did not restore %s for %s", doc, svc.Name)
+							assert.Equal(t, expected.Labels, got.Labels, "the builders did not restore %s for %s", doc, svc.Name)
+						}
+						for key := range svc.Labels {
+							refused(fmt.Sprintf(`{"metadata":{"labels":{%q:"x"}}}`, key), fmt.Sprintf("metadata.labels[%s] is protected", key))
+						}
+						refused(`{"spec":{"selector":{"x":"y"}}}`, "spec.selector is protected")
+						refused(`{"spec":{"ports":[{"name":"other","port":7000}]}}`, "spec.ports is protected")
+						refused(`{"spec":{"type":"ExternalName"}}`, "spec.type is protected")
+
+						// Fields the type decides on: admission leaves them to the
+						// builders, which keep them only where the type takes them.
+						doc := `{"spec":{"externalTrafficPolicy":"Local","loadBalancerSourceRanges":["10.0.0.0/8"]}}`
+						assert.Empty(t, overwrite.Validate(serviceOverwrite(target, doc), component, field.NewPath("spec", "overwrites")))
+						got, _, err := overwrite.Service(svc, serviceOverwrite(target, doc), target)
+						require.NoError(t, err)
+						external := svc.Spec.Type == corev1.ServiceTypeNodePort || svc.Spec.Type == corev1.ServiceTypeLoadBalancer
+						assert.Equal(t, external, got.Spec.ExternalTrafficPolicy != "", "externalTrafficPolicy on %s of type %q", svc.Name, svc.Spec.Type)
+						assert.Equal(t, svc.Spec.Type == corev1.ServiceTypeLoadBalancer, got.Spec.LoadBalancerSourceRanges != nil,
+							"loadBalancerSourceRanges on %s of type %q", svc.Name, svc.Spec.Type)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestEveryServiceBuilderMergesItsTarget(t *testing.T) {
+	// Each builder merges the overwrites of its own target and no other, and
+	// admission accepts exactly the targets a component's builders merge.
+	var overwrites []core.Overwrite
+	for _, target := range serviceTargets {
+		overwrites = append(overwrites, serviceOverwrite(target, fmt.Sprintf(`{"metadata":{"labels":{"target":%q}}}`, target))...)
+	}
+	for _, component := range []overwrite.Component{overwrite.ClusterNodes, overwrite.FailoverNodes, overwrite.SentinelNodes} {
+		rendered := renderServices(t, component, corev1.ServiceTypeNodePort, overwrites)
+		for target, services := range rendered {
+			for _, svc := range services {
+				assert.Equal(t, string(target), svc.Labels["target"], "%s %s", component, svc.Name)
+			}
+		}
+		for _, target := range serviceTargets {
+			_, generated := rendered[target]
+			errs := overwrite.Validate(serviceOverwrite(target, `{}`), component, field.NewPath("spec", "overwrites"))
+			assert.Equal(t, generated, len(errs) == 0, "%s: admission and the builders disagree on target %s", component, target)
+		}
+	}
+}
