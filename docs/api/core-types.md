@@ -98,7 +98,7 @@ Patches the objects of one kind that the operator generates. See [Customizing Ge
 | Field | Type | Description |
 |-------|------|-------------|
 | `kind` | OverwriteKind | Kind of the generated objects to patch: `StatefulSet` or `PodDisruptionBudget`, each at most once |
-| `patch` | object | Strategic merge patch applied to every generated object of that kind, kept exactly as written |
+| `patch` | object or string | Strategic merge patch applied to every generated object of that kind, kept exactly as written: an object, or a string that holds one in YAML or JSON |
 
 ## Examples
 

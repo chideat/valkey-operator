@@ -1365,8 +1365,10 @@ spec:
                     patch:
                       description: |-
                         Patch is a strategic merge patch applied to every generated object of
-                        that kind, metadata and spec. It is kept exactly as written.
-                      type: object
+                        that kind, metadata and spec, kept exactly as written. It is an object,
+                        or a string that holds one in YAML or JSON. A null in it deletes a
+                        field; client-side kubectl apply and merge patches drop nulls from an
+                        object, but not from a string.
                       x-kubernetes-preserve-unknown-fields: true
                   required:
                   - kind
@@ -2978,8 +2980,10 @@ spec:
                         patch:
                           description: |-
                             Patch is a strategic merge patch applied to every generated object of
-                            that kind, metadata and spec. It is kept exactly as written.
-                          type: object
+                            that kind, metadata and spec, kept exactly as written. It is an object,
+                            or a string that holds one in YAML or JSON. A null in it deletes a
+                            field; client-side kubectl apply and merge patches drop nulls from an
+                            object, but not from a string.
                           x-kubernetes-preserve-unknown-fields: true
                       required:
                       - kind
