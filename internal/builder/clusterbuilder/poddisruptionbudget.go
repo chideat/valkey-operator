@@ -22,18 +22,19 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/util"
 	"github.com/chideat/valkey-operator/pkg/types"
 )
 
-func GeneratePodDisruptionBudget(cluster types.ClusterInstance, index int) *policyv1.PodDisruptionBudget {
+func GeneratePodDisruptionBudget(cluster types.ClusterInstance, index int) (*policyv1.PodDisruptionBudget, error) {
 	var (
 		name      = ClusterStatefulSetName(cluster.GetName(), index)
 		selectors = GenerateClusterStatefulSetSelectors(cluster.GetName(), index)
 		labels    = GenerateClusterStatefulSetLabels(cluster.GetName(), index)
 	)
 
-	return &policyv1.PodDisruptionBudget{
+	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:          labels,
 			Name:            name,
@@ -47,4 +48,11 @@ func GeneratePodDisruptionBudget(cluster types.ClusterInstance, index int) *poli
 			},
 		},
 	}
+
+	pdb, problems, err := overwrite.PodDisruptionBudget(pdb, cluster.Definition().Spec.Overwrites)
+	if err != nil {
+		return nil, err
+	}
+	overwrite.Report(cluster, pdb.Name, problems)
+	return pdb, nil
 }

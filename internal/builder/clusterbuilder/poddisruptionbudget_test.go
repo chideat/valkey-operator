@@ -19,9 +19,16 @@ package clusterbuilder
 import (
 	"testing"
 
+	"github.com/chideat/valkey-operator/api/core"
+	"github.com/chideat/valkey-operator/api/v1alpha1"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
+	"github.com/chideat/valkey-operator/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
@@ -69,9 +76,10 @@ func TestGeneratePodDisruptionBudget(t *testing.T) {
 			mockCluster := NewMockClusterInstance(tt.clusterName, tt.namespace, nil, corev1.ResourceRequirements{}, "8.0")
 
 			// Generate the PDB
-			pdb := GeneratePodDisruptionBudget(mockCluster, tt.index)
+			pdb, err := GeneratePodDisruptionBudget(mockCluster, tt.index)
 
 			// Verify the PDB
+			require.NoError(t, err)
 			require.NotNil(t, pdb)
 
 			// Check basic properties
@@ -115,4 +123,41 @@ func TestGeneratePodDisruptionBudget(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGeneratePodDisruptionBudgetAppliesOverwrites: PodDisruptionBudget
+// overwrites land on the generated budget, and a protected field they touch
+// stays as generated, with a Warning event that names it.
+func TestGeneratePodDisruptionBudgetAppliesOverwrites(t *testing.T) {
+	newCluster := func(overwrites ...core.Overwrite) *v1alpha1.Cluster {
+		return &v1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default", UID: "uid"},
+			Spec: v1alpha1.ClusterSpec{
+				Replicas:   v1alpha1.ClusterReplicas{Shards: 3, ReplicasOfShard: 2},
+				Overwrites: overwrites,
+			},
+		}
+	}
+
+	plain := testutil.NewFakeClusterInstance(newCluster())
+	generated, err := GeneratePodDisruptionBudget(plain, 0)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Events())
+	assert.NotContains(t, generated.Annotations, overwrite.ChecksumAnnotation)
+
+	inst := testutil.NewFakeClusterInstance(newCluster(core.Overwrite{
+		Kind: core.OverwriteKindPodDisruptionBudget,
+		Patch: apiextensionsv1.JSON{Raw: []byte(`{
+			"metadata": {"labels": {"team": "cache"}},
+			"spec": {"unhealthyPodEvictionPolicy": "AlwaysAllow", "selector": {"matchLabels": {"app": "other"}}}
+		}`)},
+	}))
+	pdb, err := GeneratePodDisruptionBudget(inst, 0)
+	require.NoError(t, err)
+
+	assert.Equal(t, "cache", pdb.Labels["team"])
+	assert.Equal(t, ptr.To(policyv1.AlwaysAllow), pdb.Spec.UnhealthyPodEvictionPolicy)
+	assert.Equal(t, generated.Spec.Selector, pdb.Spec.Selector, "the selector picks the operator's pods")
+	assert.NotEmpty(t, pdb.Annotations[overwrite.ChecksumAnnotation])
+	assert.Equal(t, []string{"Warning Overwrites overwrites for " + pdb.Name + ": spec.selector restored"}, inst.Events())
 }

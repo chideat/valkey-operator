@@ -30,6 +30,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/actor"
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/builder/certbuilder"
+	"github.com/chideat/valkey-operator/internal/builder/overwrite"
 	"github.com/chideat/valkey-operator/internal/builder/sabuilder"
 	"github.com/chideat/valkey-operator/internal/builder/sentinelbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
@@ -211,7 +212,11 @@ func (a *actorEnsureResource) ensureStatefulSet(ctx context.Context, inst types.
 func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, inst types.SentinelInstance, logger logr.Logger) *actor.ActorResult {
 	sen := inst.Definition()
 
-	pdb := sentinelbuilder.NewPodDisruptionBudget(sen)
+	pdb, err := sentinelbuilder.GeneratePodDisruptionBudget(inst)
+	if err != nil {
+		logger.Error(err, "generate poddisruptionbudget failed")
+		return actor.NewResultWithError(ops.CommandRequeue, err)
+	}
 	if oldPdb, err := a.client.GetPodDisruptionBudget(ctx, sen.Namespace, pdb.Name); errors.IsNotFound(err) {
 		if err := a.client.CreatePodDisruptionBudget(ctx, sen.Namespace, pdb); err != nil {
 			return actor.NewResultWithError(ops.CommandRequeue, err)
@@ -219,7 +224,7 @@ func (a *actorEnsureResource) ensurePodDisruptionBudget(ctx context.Context, ins
 	} else if err != nil {
 		logger.Error(err, "get poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))
 		return actor.NewResultWithError(ops.CommandRequeue, err)
-	} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) {
+	} else if !cmp.Equal(oldPdb.Spec, pdb.Spec, cmpopts.EquateEmpty()) || overwrite.ChecksumChanged(pdb, oldPdb) {
 		pdb.ResourceVersion = oldPdb.ResourceVersion
 		if err := a.client.UpdatePodDisruptionBudget(ctx, sen.Namespace, pdb); err != nil {
 			logger.Error(err, "update poddisruptionbudget failed", "target", client.ObjectKeyFromObject(pdb))

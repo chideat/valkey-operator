@@ -271,3 +271,31 @@ func TestOrdered(t *testing.T) {
 	assert.Empty(t, reports)
 	assert.Empty(t, runCheck(t, g, `{"env":[{"name":"A"}]}`))
 }
+
+func TestExclusive(t *testing.T) {
+	g := exclusive{path: []string{"spec"}, generated: "maxUnavailable", others: []string{"minAvailable"}}
+	generated := `{"spec":{"maxUnavailable":1}}`
+
+	t.Run("the other key replaces the generated one", func(t *testing.T) {
+		m, reports := runRestore(t, g, generated, `{"spec":{"maxUnavailable":1,"minAvailable":2}}`)
+		assert.Equal(t, doc(t, `{"spec":{"minAvailable":2}}`), m)
+		assert.Empty(t, reports)
+	})
+	t.Run("a patch that changes both keeps the generated one", func(t *testing.T) {
+		m, reports := runRestore(t, g, generated, `{"spec":{"maxUnavailable":3,"minAvailable":2}}`)
+		assert.Equal(t, doc(t, `{"spec":{"maxUnavailable":3}}`), m)
+		assert.Equal(t, []string{"spec.minAvailable removed, it cannot be set together with maxUnavailable"}, reports)
+	})
+	t.Run("leaves one key alone", func(t *testing.T) {
+		m, reports := runRestore(t, g, generated, `{"spec":{"minAvailable":2}}`)
+		assert.Equal(t, doc(t, `{"spec":{"minAvailable":2}}`), m)
+		assert.Empty(t, reports)
+	})
+	t.Run("check", func(t *testing.T) {
+		assert.Empty(t, runCheck(t, g, `{"spec":{"minAvailable":2}}`))
+		assert.Empty(t, runCheck(t, g, `{"spec":{"minAvailable":2,"maxUnavailable":null}}`))
+		assert.Empty(t, runCheck(t, g, `{"spec":{"maxUnavailable":"50%"}}`))
+		assert.Equal(t, []string{"spec.minAvailable cannot be set together with maxUnavailable"},
+			runCheck(t, g, `{"spec":{"minAvailable":2,"maxUnavailable":1}}`))
+	})
+}

@@ -37,8 +37,8 @@ status:
 | `tolerations` | []corev1.Toleration | Pod tolerations |
 | `securityContext` | *corev1.PodSecurityContext | Pod security context |
 | `exporter` | *ValkeyExporter | Monitoring exporter configuration |
-| `sentinel` | *SentinelSettings | Sentinel configuration (for failover arch); `sentinel.overwrites` patches the sentinel StatefulSet |
-| `overwrites` | []core.Overwrite | Patches for the StatefulSets the operator generates for the Valkey nodes |
+| `sentinel` | *SentinelSettings | Sentinel configuration (for failover arch); `sentinel.overwrites` patches the sentinel StatefulSet and PodDisruptionBudget |
+| `overwrites` | []core.Overwrite | Patches for the StatefulSets and PodDisruptionBudgets the operator generates for the Valkey nodes |
 
 ## ValkeyReplicas
 

@@ -102,3 +102,45 @@ func TestValidateKinds(t *testing.T) {
 		assert.Equal(t, "spec.overwrites[1].kind", errs[0].Field)
 	}
 }
+
+func TestValidatePodDisruptionBudget(t *testing.T) {
+	path := field.NewPath("spec", "overwrites")
+	for _, patch := range []string{
+		`{"metadata": {"labels": {"team": "cache"}, "annotations": {"note": "x"}}}`,
+		`{"spec": {"unhealthyPodEvictionPolicy": "AlwaysAllow"}}`,
+		`{"spec": {"maxUnavailable": "50%"}}`,
+		`{"spec": {"minAvailable": 1}}`,
+		`{"spec": {"minAvailable": 1, "maxUnavailable": null}}`,
+	} {
+		assert.Empty(t, Validate(pdbOverwrites(patch), FailoverNodes, path), patch)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		patch string
+		want  string
+	}{
+		{"selector", `{"spec": {"selector": {"matchLabels": {"app": "other"}}}}`, "spec.selector is protected"},
+		{"operator label", `{"metadata": {"labels": {"app.kubernetes.io/name": "x"}}}`, "metadata.labels[app.kubernetes.io/name] is protected"},
+		{"minAvailable and maxUnavailable", `{"spec": {"minAvailable": 1, "maxUnavailable": 1}}`, "spec.minAvailable cannot be set together with maxUnavailable"},
+		{"deleting the spec", `{"spec": null}`, "spec deletes protected fields"},
+		{"unknown field", `{"spec": {"minReadySeconds": 10}}`, `unknown field "spec.minReadySeconds"`},
+		{"directive", `{"spec": {"$retainKeys": ["selector"]}}`, "patch directive $retainKeys is not supported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := Validate(pdbOverwrites(tc.patch), FailoverNodes, path)
+			if assert.NotEmpty(t, errs) {
+				assert.Contains(t, errs.ToAggregate().Error(), tc.want)
+			}
+		})
+	}
+
+	t.Run("one entry per kind", func(t *testing.T) {
+		both := append(overwrites(`{}`), pdbOverwrites(`{}`)...)
+		assert.Empty(t, Validate(both, FailoverNodes, path))
+		errs := Validate(pdbOverwrites(`{}`, `{}`), FailoverNodes, path)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, field.ErrorTypeDuplicate, errs[0].Type)
+		}
+	})
+}

@@ -8,7 +8,7 @@
 4. [Architecture Overview](#architecture-overview)
 5. [Configuration Examples](#configuration-examples)
 6. [Monitoring](#monitoring)
-7. [Customizing Generated StatefulSets](#customizing-generated-statefulsets)
+7. [Customizing Generated Resources](#customizing-generated-resources)
 8. [Security](#security)
 9. [Troubleshooting](#troubleshooting)
 
@@ -290,7 +290,7 @@ spec:
 
 ### Exporter Flags and Environment Variables
 
-The exporter runs with the flags the operator needs. To pass more, such as `--include-system-metrics` or `REDIS_EXPORTER_CHECK_KEYS`, patch the `exporter` container through `spec.overwrites`; see [Customizing Generated StatefulSets](#customizing-generated-statefulsets).
+The exporter runs with the flags the operator needs. To pass more, such as `--include-system-metrics` or `REDIS_EXPORTER_CHECK_KEYS`, patch the `exporter` container through `spec.overwrites`; see [Customizing Generated Resources](#customizing-generated-resources).
 
 ### ServiceMonitor for Prometheus Operator
 
@@ -311,9 +311,9 @@ spec:
       path: /metrics
 ```
 
-## Customizing Generated StatefulSets
+## Customizing Generated Resources
 
-The operator generates the StatefulSets that run the Valkey nodes (one per shard on the cluster architecture) and the sentinel nodes. `spec.overwrites` patches them, for settings the Valkey spec has no field for: a priority class, topology spread constraints, extra volumes, exporter flags, probe timing.
+The operator generates a StatefulSet and a PodDisruptionBudget for the Valkey nodes (one of each per shard on the cluster architecture) and for the sentinel nodes. `spec.overwrites` patches them, for settings the Valkey spec has no field for: a priority class, topology spread constraints, extra volumes, exporter flags, probe timing, a budget's eviction policy. Each entry names the `kind` it patches, `StatefulSet` or `PodDisruptionBudget`, and holds the patch for every object of that kind; a kind appears at most once.
 
 ```yaml
 apiVersion: rds.valkey.buf.red/v1alpha1
@@ -342,6 +342,10 @@ spec:
                 - name: valkey
                   livenessProbe:
                     periodSeconds: 30
+    - kind: PodDisruptionBudget
+      patch:
+        spec:
+          unhealthyPodEvictionPolicy: AlwaysAllow
   sentinel:
     replicas: 3
     overwrites:
@@ -355,11 +359,13 @@ spec:
 
 Each patch is a [strategic merge patch](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/), so it lists only what it adds or changes. Containers, environment variables and volumes merge by name, and volume mounts by `mountPath`; lists without a merge key, such as `args`, are replaced whole. Where a patch sets a field the operator also sets, and the field is not protected, the patch wins.
 
-`spec.sentinel.overwrites` patches the sentinel StatefulSet. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
+A `null` in a patch deletes that field, but some clients drop it before it reaches the operator: client-side `kubectl apply` and `kubectl patch --type merge` remove `null` values inside `spec.overwrites`, while `kubectl apply --server-side` and a JSON patch (`kubectl patch --type json`) keep them.
 
-The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each StatefulSet, so a change to the overwrites always updates the StatefulSets. The pods roll when the change reaches the pod template.
+`spec.sentinel.overwrites` patches the sentinel StatefulSet and PodDisruptionBudget. It applies only on the failover architecture, and only when the operator runs the sentinel nodes, that is, when `spec.sentinel.sentinelReference` is not set; elsewhere it is rejected.
 
-### What a Patch Cannot Change
+The operator records a checksum of the patches in the `valkey.buf.red/checksum-overwrites` annotation of each object it patches, so a change to the overwrites always updates those objects. Pods roll when a StatefulSet change reaches the pod template; a PodDisruptionBudget changes in place.
+
+### What a StatefulSet Patch Cannot Change
 
 The operator relies on parts of the StatefulSets it generates, so these are protected:
 
@@ -379,9 +385,25 @@ A patch cannot add containers; it can only change the ones the operator runs:
 | Valkey nodes, failover and replica architectures | `valkey`, `exporter` | `init` |
 | Sentinel nodes | `sentinel`, `agent` | `init` |
 
-The admission webhook of the Valkey resource rejects a patch that changes a protected field, adds a container, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the StatefulSet does not have, or gives a field a value of the wrong type.
+### What a PodDisruptionBudget Patch Cannot Change
 
-The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator applies the rest of the patch, keeps protected fields as generated, drops containers it does not run, and reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
+The budget's identity and status, the operator's labels, annotations that start with `valkey.buf.red/checksum`, and `selector`, which picks the pods the budget counts, are protected. Other labels and annotations, `maxUnavailable`, `minAvailable` and `unhealthyPodEvictionPolicy` can change.
+
+The operator sets `maxUnavailable`, and a budget cannot have both `maxUnavailable` and `minAvailable`, so a patch that sets `minAvailable` replaces the operator's `maxUnavailable`:
+
+```yaml
+overwrites:
+  - kind: PodDisruptionBudget
+    patch:
+      spec:
+        minAvailable: 1
+```
+
+### Rejected and Restored Patches
+
+The admission webhook of the Valkey resource rejects a patch that changes a protected field, adds a container, sets both `minAvailable` and `maxUnavailable`, uses a patch directive (a key starting with `$`), deletes a protected field with `null`, names a field the object does not have, or gives a field a value of the wrong type.
+
+The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts a container that the current settings do not run, such as `exporter` with the exporter disabled. The operator applies the rest of the patch, keeps protected fields as generated, drops containers it does not run and a `minAvailable` set together with `maxUnavailable`, and reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
 
 ## Security
 
