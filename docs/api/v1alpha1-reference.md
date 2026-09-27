@@ -117,7 +117,8 @@ type ClusterReplicas struct {
 	// +optional
 	ShardsConfig []*ShardConfig `json:"shardsConfig,omitempty"`
 
-	// ReplicasOfShard is the number of replicas for each master node
+	// ReplicasOfShard is the number of pods in each shard, the primary included:
+	// 1 runs the primary alone, 2 adds one replica.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=5
 	ReplicasOfShard int32 `json:"replicasOfShard"`

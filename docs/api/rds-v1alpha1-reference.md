@@ -101,7 +101,8 @@ type ValkeyReplicas struct {
 	// +optional
 	ShardsConfig []*v1alpha1.ShardConfig `json:"shardsConfig,omitempty"`
 
-	// ReplicasOfShard is the number of replicas for each master node
+	// ReplicasOfShard is the number of pods in each shard, the primary included:
+	// 1 runs the primary alone, 2 adds one replica.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=5
 	ReplicasOfShard int32 `json:"replicasOfShard"`

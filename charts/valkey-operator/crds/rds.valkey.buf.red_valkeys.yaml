@@ -1410,8 +1410,9 @@ spec:
                 description: Replicas defines desired number of replicas for Valkey
                 properties:
                   replicasOfShard:
-                    description: ReplicasOfShard is the number of replicas for each
-                      master node
+                    description: |-
+                      ReplicasOfShard is the number of pods in each shard, the primary included:
+                      1 runs the primary alone, 2 adds one replica.
                     format: int32
                     maximum: 5
                     minimum: 1

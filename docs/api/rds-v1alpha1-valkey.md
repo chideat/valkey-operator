@@ -46,7 +46,7 @@ status:
 |-------|------|-------------|
 | `shards` | int32 | Number of cluster shards (for cluster arch) |
 | `shardsConfig` | []*v1alpha1.ShardConfig | Configuration for each shard |
-| `replicasOfShard` | int32 | Number of replicas for each master node |
+| `replicasOfShard` | int32 | Number of pods in each shard, the primary included: 1 runs the primary alone, 2 adds one replica |
 
 ## ValkeyStatus
 
