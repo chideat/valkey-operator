@@ -12,7 +12,7 @@ spec:
   # Production cluster sizing
   replicas:
     shards: 6                    # 6 shards for better distribution
-    replicasOfShard: 2          # 2 replicas per shard for HA
+    replicasOfShard: 2          # A primary and a replica per shard for HA
   
   # Production resource allocation
   resources:

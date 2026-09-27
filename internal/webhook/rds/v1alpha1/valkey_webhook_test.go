@@ -240,7 +240,7 @@ var _ = Describe("Valkey Webhook", func() {
 			obj.Spec.Access.Ports = "30001,30002,30003"
 			obj.Spec.Replicas = &rdsv1alpha1.ValkeyReplicas{
 				Shards:          3,
-				ReplicasOfShard: 1,
+				ReplicasOfShard: 2,
 			}
 
 			By("Validating creation")
@@ -276,7 +276,7 @@ var _ = Describe("Valkey Webhook", func() {
 			obj.Spec.Access.Ports = "30001,30002,30003,30004,30005,30006-30008"
 			obj.Spec.Replicas = &rdsv1alpha1.ValkeyReplicas{
 				Shards:          4,
-				ReplicasOfShard: 1,
+				ReplicasOfShard: 2,
 			}
 
 			By("Validating creation")
@@ -567,7 +567,7 @@ var _ = Describe("Valkey Webhook", func() {
 			By("Creating a Valkey object with NodePort service type and duplicate ports")
 			obj.Spec.Arch = core.ValkeyFailover
 			obj.Spec.Access.ServiceType = corev1.ServiceTypeNodePort
-			obj.Spec.Access.Ports = "30001,30002,30003"
+			obj.Spec.Access.Ports = "30001,30002"
 			obj.Spec.Replicas = &rdsv1alpha1.ValkeyReplicas{
 				Shards:          1,
 				ReplicasOfShard: 2,
@@ -578,7 +578,7 @@ var _ = Describe("Valkey Webhook", func() {
 					Access: v1alpha1.SentinelInstanceAccess{
 						InstanceAccess: core.InstanceAccess{
 							ServiceType: corev1.ServiceTypeNodePort,
-							Ports:       "30001,30002,30003", // Same as obj.Spec.Access.Ports
+							Ports:       "30001,30002,30003", // Overlaps obj.Spec.Access.Ports
 						},
 					},
 				},
@@ -596,7 +596,7 @@ var _ = Describe("Valkey Webhook", func() {
 			By("Creating a Valkey object with NodePort service type and duplicate sentinel ports")
 			obj.Spec.Arch = core.ValkeyFailover
 			obj.Spec.Access.ServiceType = corev1.ServiceTypeNodePort
-			obj.Spec.Access.Ports = "30001,30002,30003"
+			obj.Spec.Access.Ports = "30001,30002"
 			obj.Spec.Replicas = &rdsv1alpha1.ValkeyReplicas{
 				Shards:          1,
 				ReplicasOfShard: 2,
