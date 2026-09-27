@@ -18,10 +18,15 @@ package helper
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 func TestParseSequencePorts(t *testing.T) {
@@ -161,5 +166,81 @@ func TestParsePortsAcceptsBoundaryPorts(t *testing.T) {
 				assert.Assert(t, p > 0 && p <= 65535, "port %d out of range", p)
 			}
 		})
+	}
+}
+
+// TestPortsPatternMatchesParsePorts guards the contract between the CRDs and
+// ParsePorts: the pattern of every access.ports field must accept the formats
+// ParsePorts reads, and reject what it cannot read.
+//
+// The pattern used to require "a:b" pairs, which ParsePorts rejects, while it
+// rejected the ports and ranges ParsePorts reads. No value passed both, so
+// access.ports could not be set. The patterns are read out of the generated
+// CRDs and the Helm chart's copy of them, so they cannot drift from the parser.
+func TestPortsPatternMatchesParsePorts(t *testing.T) {
+	cases := []struct {
+		ports string
+		want  bool
+	}{
+		{"30000", true},
+		{"30000,30001", true},
+		{"30000-30001", true},
+		{"30000,30002-30004", true},
+		{"3,4-6,7,9-10", true},
+		{"30000:30000", false},
+		{"30000:30000,30001:30001", false},
+		{"30000,", false},
+		{",30000", false},
+		{"30000-", false},
+		{"30000--30001", false},
+		{"30000-30001-30002", false},
+		{"30000, 30001", false},
+	}
+	for _, tc := range cases {
+		_, err := ParsePorts(tc.ports)
+		assert.Equal(t, err == nil, tc.want, "ParsePorts(%q) returned %v", tc.ports, err)
+	}
+
+	patterns := map[string]string{}
+	for _, dir := range []string{"../../../config/crd/bases", "../../../charts/valkey-operator/crds"} {
+		files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+		assert.NilError(t, err)
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			assert.NilError(t, err)
+			var crd apiextensionsv1.CustomResourceDefinition
+			assert.NilError(t, yaml.Unmarshal(data, &crd), file)
+			for _, version := range crd.Spec.Versions {
+				collectPortsPatterns(version.Schema.OpenAPIV3Schema, file+" "+version.Name, patterns)
+			}
+		}
+	}
+	// spec.access and spec.sentinel.access of the Valkey and Failover CRDs, and
+	// spec.access of the Cluster and Sentinel CRDs, in both copies.
+	assert.Equal(t, len(patterns), 12, "access.ports fields found: %v", patterns)
+
+	for field, pattern := range patterns {
+		re, err := regexp.Compile(pattern)
+		assert.NilError(t, err, field)
+		for _, tc := range cases {
+			assert.Equal(t, re.MatchString(tc.ports), tc.want, "%s: pattern %q on %q", field, pattern, tc.ports)
+		}
+	}
+}
+
+// collectPortsPatterns records the pattern of every string property named
+// ports under schema, keyed by where it was found.
+func collectPortsPatterns(schema *apiextensionsv1.JSONSchemaProps, path string, found map[string]string) {
+	if schema == nil {
+		return
+	}
+	for name, prop := range schema.Properties {
+		if name == "ports" && prop.Type == "string" {
+			found[path+".ports"] = prop.Pattern
+		}
+		collectPortsPatterns(&prop, path+"."+name, found)
+	}
+	if schema.Items != nil {
+		collectPortsPatterns(schema.Items.Schema, path+"[]", found)
 	}
 }
