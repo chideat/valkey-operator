@@ -158,7 +158,7 @@ For production clusters:
 ```yaml
 replicas:
   shards: 6                    # Even number of shards
-  replicasOfShard: 2          # At least 2 replicas per shard
+  replicasOfShard: 2          # At least a primary and a replica per shard
 ```
 
 ### Anti-Affinity Rules

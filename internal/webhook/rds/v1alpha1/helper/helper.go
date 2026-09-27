@@ -38,14 +38,15 @@ func parseShardIndex(name string) int {
 	return 0
 }
 
-func CalculateNodeCount(arch core.Arch, masterCount int32, replicaCount int32) int {
+// CalculateNodeCount returns the number of Valkey pods the operator runs for an
+// instance: replicasOfShard pods in each shard. The failover and replica
+// architectures have a single shard.
+func CalculateNodeCount(arch core.Arch, shards int32, replicasOfShard int32) int {
 	switch arch {
 	case core.ValkeyCluster:
-		return int(masterCount) * int(replicaCount+1)
-	case core.ValkeyFailover:
-		return int(masterCount) + int(replicaCount)
-	case core.ValkeyReplica:
-		return 1
+		return int(shards) * int(replicasOfShard)
+	case core.ValkeyFailover, core.ValkeyReplica:
+		return int(replicasOfShard)
 	default:
 		return 0
 	}

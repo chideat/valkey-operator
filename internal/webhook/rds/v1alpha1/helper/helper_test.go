@@ -62,11 +62,16 @@ func Test_parseShardIndex(t *testing.T) {
 	}
 }
 
+// TestCalculateNodeCount pins the count to the pods the operator runs:
+// replicasOfShard pods in each shard, because the cluster StatefulSets and the
+// Failover of the failover and replica architectures get replicasOfShard
+// replicas. Admission asks for one node port per pod, and the count used to add
+// a master to every shard, so it refused every access.ports that fit.
 func TestCalculateNodeCount(t *testing.T) {
 	type args struct {
-		arch         core.Arch
-		masterCount  int32
-		replicaCount int32
+		arch            core.Arch
+		shards          int32
+		replicasOfShard int32
 	}
 	tests := []struct {
 		name string
@@ -74,43 +79,54 @@ func TestCalculateNodeCount(t *testing.T) {
 		want int
 	}{
 		{
-			name: "cluster with replicas",
+			name: "cluster, 3 shards of 2 pods",
 			args: args{
-				arch:         core.ValkeyCluster,
-				masterCount:  (int32(3)),
-				replicaCount: (int32(1)),
+				arch:            core.ValkeyCluster,
+				shards:          (int32(3)),
+				replicasOfShard: (int32(2)),
 			},
 			want: 6,
 		},
 		{
-			name: "cluster without replicas",
+			name: "cluster, 3 shards of 1 pod",
 			args: args{
-				arch:        core.ValkeyCluster,
-				masterCount: (int32(3)),
+				arch:            core.ValkeyCluster,
+				shards:          (int32(3)),
+				replicasOfShard: (int32(1)),
 			},
 			want: 3,
 		},
 		{
-			name: "sentinel/standalone with replicas",
+			name: "failover, 2 pods",
 			args: args{
-				arch:         core.ValkeyFailover,
-				masterCount:  (int32(1)),
-				replicaCount: (int32(2)),
+				arch:            core.ValkeyFailover,
+				shards:          (int32(1)),
+				replicasOfShard: (int32(2)),
 			},
-			want: 3,
+			want: 2,
 		},
 		{
-			name: "sentinel/standalone without replicas",
+			name: "replica, 1 pod",
 			args: args{
-				arch:        core.ValkeyReplica,
-				masterCount: (int32(1)),
+				arch:            core.ValkeyReplica,
+				shards:          (int32(1)),
+				replicasOfShard: (int32(1)),
 			},
 			want: 1,
+		},
+		{
+			name: "replica, 3 pods",
+			args: args{
+				arch:            core.ValkeyReplica,
+				shards:          (int32(1)),
+				replicasOfShard: (int32(3)),
+			},
+			want: 3,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := CalculateNodeCount(tt.args.arch, tt.args.masterCount, tt.args.replicaCount); got != tt.want {
+			if got := CalculateNodeCount(tt.args.arch, tt.args.shards, tt.args.replicasOfShard); got != tt.want {
 				t.Errorf("CalculateNodeCount() = %v, want %v", got, tt.want)
 			}
 		})
