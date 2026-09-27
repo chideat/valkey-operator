@@ -10,14 +10,14 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/gomodule/redigo v1.9.3
 	github.com/google/go-cmp v0.7.0
-	github.com/onsi/ginkgo/v2 v2.32.2
-	github.com/onsi/gomega v1.43.0
+	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/gomega v1.43.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.0
 	github.com/rafaeljusto/redigomock/v3 v3.1.3
 	github.com/samber/lo v1.53.0
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v2 v2.27.7
-	github.com/valkey-io/valkey-go v1.0.77
+	github.com/valkey-io/valkey-go v1.0.78
 	go.uber.org/zap v1.28.0
 	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.37.0
@@ -25,8 +25,9 @@ require (
 	k8s.io/apimachinery v0.37.0
 	k8s.io/client-go v0.37.0
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
-	sigs.k8s.io/controller-runtime v0.25.0
+	sigs.k8s.io/controller-runtime v0.25.1
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -121,5 +122,4 @@ require (
 	sigs.k8s.io/gateway-api v1.6.0 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
