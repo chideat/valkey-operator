@@ -1009,8 +1009,10 @@ spec:
                     - IPv6
                     type: string
                   ports:
-                    description: Ports defines the nodeports of NodePort service
-                    pattern: ^([0-9]+:[0-9]+)(,[0-9]+:[0-9]+)*$
+                    description: |-
+                      Ports defines the nodeports of NodePort service, as a comma-separated list
+                      of ports and port ranges, such as 30000,30001 or 30000-30001.
+                    pattern: ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$
                     type: string
                   serviceType:
                     default: ClusterIP
