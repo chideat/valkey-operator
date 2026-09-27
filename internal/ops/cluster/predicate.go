@@ -63,6 +63,24 @@ func ShardHasMaster(shard types.ClusterShard) bool {
 	return false
 }
 
+// ShardNeedsScaling reports whether the StatefulSet of the shard still has to
+// scale to replicasOfShard pods, the primary included: its last pod is not the
+// one with index replicasOfShard-1. A pod missing in the middle is not reported;
+// a StatefulSet does not leave such a gap.
+func ShardNeedsScaling(shard types.ClusterShard, replicasOfShard int) bool {
+	if shard == nil {
+		return false
+	}
+	nodes := shard.Nodes()
+	if len(nodes) == replicasOfShard {
+		return false
+	}
+	if len(nodes) == 0 {
+		return true
+	}
+	return nodes[len(nodes)-1].Index() != replicasOfShard-1
+}
+
 // IsDisconnectedButIntact reports whether the cluster has lost gossip connectivity
 // (some node reports cluster_state != ok and cannot see its peers) while every slot is
 // still owned locally by some master. In this state the only safe action is to (re-)MEET

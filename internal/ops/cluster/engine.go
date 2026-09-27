@@ -283,16 +283,12 @@ func (g *RuleEngine) Inspect(ctx context.Context, val types.Instance) *actor.Act
 
 		replicas := int(cr.Spec.Replicas.ReplicasOfShard)
 		for _, shard := range cluster.Shards() {
-			nodeCount := len(shard.Nodes())
-			if len(shard.Nodes()) < replicas+1 || len(shard.Nodes()) > replicas+1 {
-				lastNode := shard.Nodes()[nodeCount-1]
-				// 5.1 shard replica need to scale up
-				if lastNode.Index() != replicas {
-					return actor.NewResult(CommandEnsureResource)
-				}
-				// for statefulset, the missing of the middle pod should not happen
+			// 5.1 shard replica need to scale up
+			if ShardNeedsScaling(shard, replicas) {
+				return actor.NewResult(CommandEnsureResource)
 			}
 
+			nodeCount := len(shard.Nodes())
 			for i := nodeCount - 1; i >= 0; i-- {
 				now := time.Now()
 

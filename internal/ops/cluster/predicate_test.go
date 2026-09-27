@@ -30,6 +30,7 @@ import (
 type fakeNode struct {
 	types.ValkeyNode
 	id           string
+	index        int
 	clusterState string
 	joined       bool
 	terminating  bool
@@ -38,6 +39,7 @@ type fakeNode struct {
 }
 
 func (f *fakeNode) ID() string          { return f.id }
+func (f *fakeNode) Index() int          { return f.index }
 func (f *fakeNode) IsTerminating() bool { return f.terminating }
 func (f *fakeNode) IsJoined() bool      { return f.joined }
 func (f *fakeNode) Role() core.NodeRole { return f.role }
@@ -111,6 +113,41 @@ func TestShardHasMaster(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ShardHasMaster(tt.shard); got != tt.want {
 				t.Errorf("ShardHasMaster = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestShardNeedsScaling pins the pod count of a shard to replicasOfShard, the
+// primary included, which is what the StatefulSet runs. Check 5.1 used to expect
+// one pod more, so it reported every shard and the pod checks after it never ran.
+func TestShardNeedsScaling(t *testing.T) {
+	// pods is a shard whose StatefulSet runs the pods with these indexes.
+	pods := func(indexes ...int) types.ClusterShard {
+		var nodes []types.ValkeyNode
+		for _, index := range indexes {
+			nodes = append(nodes, &fakeNode{index: index})
+		}
+		return &fakeShard{nodes: nodes}
+	}
+	tests := []struct {
+		name            string
+		shard           types.ClusterShard
+		replicasOfShard int
+		want            bool
+	}{
+		{"a primary alone", pods(0), 1, false},
+		{"a primary and a replica", pods(0, 1), 2, false},
+		{"a replica still to come", pods(0), 2, true},
+		{"one pod more than asked for", pods(0, 1, 2), 2, true},
+		{"a pod missing in the middle", pods(0, 2), 3, false},
+		{"no pods", pods(), 1, true},
+		{"nil shard", nil, 1, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShardNeedsScaling(tt.shard, tt.replicasOfShard); got != tt.want {
+				t.Errorf("ShardNeedsScaling = %v, want %v", got, tt.want)
 			}
 		})
 	}
