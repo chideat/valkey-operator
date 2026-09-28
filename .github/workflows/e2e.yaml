@@ -80,7 +80,6 @@ jobs:
       KIND_CLUSTER: valkey-operator
       KIND_VERSION: v0.33.0
       CERT_MANAGER_VERSION: v1.21.2
-      OPERATOR_IMAGE: valkey-operator:e2e
       E2E_IMAGE: valkey-operator-e2e:ci
 
     steps:
@@ -106,9 +105,14 @@ jobs:
     - name: Install Helm
       uses: azure/setup-helm@v5
 
+    # The chart hands the operator its image tag as its version, which picks the
+    # actors that run each instance and must be a semantic version or "latest".
+    # Tagged with the chart's appVersion, the image deploys as the branch ships it.
     - name: Build operator and e2e images
       run: |
-        make docker-build IMG="$OPERATOR_IMAGE"
+        operator_image="valkey-operator:$(yq '.appVersion' charts/valkey-operator/Chart.yaml)"
+        echo "OPERATOR_IMAGE=$operator_image" >> "$GITHUB_ENV"
+        make docker-build IMG="$operator_image"
         docker build -f Dockerfile.e2e -t "$E2E_IMAGE" .
 
     # Every node gets every image the suite deploys, so no spec waits on a
@@ -136,7 +140,6 @@ jobs:
           --create-namespace \
           --set image.registry="" \
           --set image.repository=valkey-operator \
-          --set image.tag=e2e \
           --set image.pullPolicy=Never \
           --set certManager.preflightCheck.enabled=false \
           --wait --timeout 10m
