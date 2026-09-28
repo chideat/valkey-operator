@@ -1,0 +1,17 @@
+# Kind cluster for the e2e suite. It needs three schedulable nodes: e2e
+# instances keep the pods of a shard on different nodes (required
+# anti-affinity) with up to three pods per shard. The control plane is
+# untainted after creation, so it counts as the third.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+- role: worker
+kubeadmConfigPatches:
+# etcd in the node's tmpfs, so a busy disk cannot stall the API server.
+- |
+  kind: ClusterConfiguration
+  etcd:
+    local:
+      dataDir: /tmp/etcd
