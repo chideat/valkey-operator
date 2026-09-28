@@ -71,6 +71,24 @@ func newClusterInstance(version string, accessType corev1.ServiceType) *rdsv1alp
 	}
 }
 
+// waitForAdmission waits until the operator's admission webhooks answer. The webhook
+// Service only takes connections once the operator pod's endpoint reaches kube-proxy,
+// a moment after the pod turns ready; until then the API server fails the call with
+// "failed calling webhook", and the first spec of this ordered suite fails and skips
+// every spec after it. The server-side dry run goes through admission without creating
+// anything, and any answer from the webhooks ends the wait, admitted or denied.
+func waitForAdmission(ctx context.Context) {
+	probe := newClusterInstance("9.1", corev1.ServiceTypeClusterIP)
+	probe.Name = "admission-probe"
+	Eventually(func() error {
+		err := k8sClient.Create(ctx, probe.DeepCopy(), client.DryRunAll)
+		if err != nil && strings.Contains(err.Error(), "failed calling webhook") {
+			return err
+		}
+		return nil
+	}).WithTimeout(time.Minute * 2).WithPolling(time.Second * 2).Should(Succeed())
+}
+
 // checkInstanceConfig runs CONFIG GET <key> on the instance and asserts the value equals want.
 func checkInstanceConfig(ctx context.Context, inst *rdsv1alpha1.Valkey, username, password, key, want string) {
 	c, err := newValkeyClient(ctx, inst, username, password)

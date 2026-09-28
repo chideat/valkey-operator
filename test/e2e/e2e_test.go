@@ -115,6 +115,12 @@ var _ = Describe("controller", Ordered, func() {
 		if len(valkeyList.Items) > 0 {
 			time.Sleep(time.Second * 5)
 		}
+
+		// An operator installed before the suite may have turned ready only now.
+		if skipDeployOperator {
+			By("waiting for the admission webhooks to answer")
+			waitForAdmission(context.Background())
+		}
 	})
 
 	AfterAll(func() {
@@ -196,6 +202,9 @@ var _ = Describe("controller", Ordered, func() {
 				return nil
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the admission webhooks to answer")
+			waitForAdmission(context.Background())
 		})
 	})
 
