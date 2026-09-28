@@ -25,7 +25,7 @@ Valkey Operator is a Kubernetes operator that automates the deployment and manag
 
 ### Prerequisites
 
-- Kubernetes 1.31+
+- Kubernetes 1.33+
 - kubectl configured to access your cluster
 - Cluster administrator permissions
 - cert-manager installed (for webhook TLS certificates)
