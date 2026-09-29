@@ -9,69 +9,129 @@ on:
         default: false
         type: boolean
       skip_failover_tests:
-        description: "Skip failover tests (slow)"
+        description: "Skip failover tests"
         required: false
-        default: true
+        default: false
         type: boolean
       skip_replication_tests:
-        description: "Skip replication tests (slow)"
+        description: "Skip replication tests"
         required: false
-        default: true
+        default: false
         type: boolean
       skip_versions:
         description: "Comma-separated Valkey versions to skip (e.g. 8.0,8.1)"
         required: false
-        default: "8.0,8.1"
+        default: ""
+        type: string
+      label_filter:
+        description: "Ginkgo label filter applied on top of each job's version (e.g. ClusterIP && deploy)"
+        required: false
+        default: ""
+        type: string
+      node_image:
+        description: "kind node image, which sets the Kubernetes version"
+        required: false
+        default: "kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d"
         type: string
 
+permissions:
+  contents: read
+
 jobs:
-  e2e:
-    name: E2E tests (kind)
+  versions:
+    name: Plan Valkey versions
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    outputs:
+      versions: ${{ steps.plan.outputs.versions }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v7
+
+    # The suite's own list, so the jobs follow it when a version is added or
+    # dropped. Each version gets its own job: the whole suite takes longer than
+    # the 6 hours a hosted runner allows.
+    - name: List the versions to test
+      id: plan
+      env:
+        SKIP_VERSIONS: ${{ inputs.skip_versions }}
+      run: |
+        all=$(sed -n 's/^[[:space:]]*supportedVersions[[:space:]]*=[[:space:]]*\[\]string{\(.*\)}.*/\1/p' test/e2e/e2e_test.go | tr -d '" ')
+        if [ -z "$all" ]; then
+          echo "supportedVersions not found in test/e2e/e2e_test.go"
+          exit 1
+        fi
+        versions=$(jq -cn --arg all "$all" --arg skip "$SKIP_VERSIONS" '
+          ($skip | split(",") | map(gsub(" "; "")) | map(select(. != ""))) as $skipped
+          | $all | split(",") | map(select(. as $v | $skipped | index($v) | not))')
+        echo "Valkey versions to test: $versions"
+        echo "versions=$versions" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: E2E tests (Valkey ${{ matrix.version }})
+    needs: versions
+    if: needs.versions.outputs.versions != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.versions.outputs.versions) }}
+    env:
+      KIND_CLUSTER: valkey-operator
+      KIND_VERSION: v0.33.0
+      CERT_MANAGER_VERSION: v1.21.2
+      E2E_IMAGE: valkey-operator-e2e:ci
 
     steps:
     - name: Check out code
       uses: actions/checkout@v7
 
-    - name: Set up Go
-      uses: actions/setup-go@v7
-      with:
-        go-version: '1.26'
-
-    - name: Install dependencies
-      run: go mod download
-
     - name: Install kind
       run: |
-        curl -Lo /usr/local/bin/kind \
-          https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
-        chmod +x /usr/local/bin/kind
+        base="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}"
+        curl -fsSLO "$base/kind-linux-amd64" -O "$base/kind-linux-amd64.sha256sum"
+        sha256sum -c kind-linux-amd64.sha256sum
+        sudo install -m 0755 kind-linux-amd64 /usr/local/bin/kind
 
     - name: Create kind cluster
+      env:
+        NODE_IMAGE: ${{ inputs.node_image }}
       run: |
-        kind create cluster \
-          --name valkey-operator \
-          --config config/kind/kind-config.yaml
+        kind create cluster --name "$KIND_CLUSTER" --image "$NODE_IMAGE" \
+          --config config/kind/kind-e2e-config.yaml --wait 5m
+        kubectl taint nodes "$KIND_CLUSTER-control-plane" node-role.kubernetes.io/control-plane:NoSchedule-
+        kubectl get nodes -o wide
 
     - name: Install Helm
       uses: azure/setup-helm@v5
 
-    - name: Build operator image
-      run: make docker-build IMG=valkey-operator:e2e
+    # The chart hands the operator its image tag as its version, which picks the
+    # actors that run each instance and must be a semantic version or "latest".
+    # Tagged with the chart's appVersion, the image deploys as the branch ships it.
+    - name: Build operator and e2e images
+      run: |
+        operator_image="valkey-operator:$(yq '.appVersion' charts/valkey-operator/Chart.yaml)"
+        echo "OPERATOR_IMAGE=$operator_image" >> "$GITHUB_ENV"
+        make docker-build IMG="$operator_image"
+        docker build -f Dockerfile.e2e -t "$E2E_IMAGE" .
 
-    - name: Load image into kind cluster
-      run: kind load docker-image valkey-operator:e2e --name valkey-operator
+    # Every node gets every image the suite deploys, so no spec waits on a
+    # registry pull: the first instance of a spec has 10 minutes to get ready.
+    - name: Load images into kind cluster
+      env:
+        VERSIONS: ${{ join(fromJSON(needs.versions.outputs.versions), ' ') }}
+      run: |
+        values=$(helm show values charts/valkey-operator)
+        exporter="$(echo "$values" | yq '.operatorConfig.defaultExporterImageName'):$(echo "$values" | yq '.operatorConfig.defaultExporterVersion')"
+        pulled="$exporter"
+        for v in $VERSIONS; do pulled="$pulled valkey/valkey:$v"; done
+        for image in $pulled; do docker pull -q "$image"; done
+        kind load docker-image --name "$KIND_CLUSTER" "$OPERATOR_IMAGE" "$E2E_IMAGE" $pulled
 
     - name: Install cert-manager
       run: |
-        kubectl apply -f \
-          https://github.com/jetstack/cert-manager/releases/download/v1.14.4/cert-manager.yaml
-        kubectl wait deployment.apps/cert-manager-webhook \
-          --for condition=Available \
-          --namespace cert-manager \
-          --timeout 5m
+        kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
+        kubectl -n cert-manager wait deployment --all --for condition=Available --timeout 10m
 
     - name: Deploy operator via Helm
       run: |
@@ -80,33 +140,82 @@ jobs:
           --create-namespace \
           --set image.registry="" \
           --set image.repository=valkey-operator \
-          --set image.tag=e2e \
           --set image.pullPolicy=Never \
-          --set certManager.preflightCheck.enabled=false
-        kubectl wait deployment/valkey-operator \
-          --for condition=Available \
-          --namespace valkey-system \
-          --timeout 5m
+          --set certManager.preflightCheck.enabled=false \
+          --wait --timeout 10m
 
+    # The suite runs as a Job in the cluster: it dials the addresses in each
+    # instance's status, and for ClusterIP instances those are pod IPs, which the
+    # runner cannot reach.
     - name: Run e2e tests
       env:
-        SKIP_DEPLOY_OPERATOR: "1"
-        SKIP_DEPLOY_CERT_MANAGER: "1"
-        SKIP_DEPLOY_PROMETHEUS: "1"
+        VERSION: ${{ matrix.version }}
+        JOB_INDEX: ${{ strategy.job-index }}
+        LABEL_FILTER: ${{ inputs.label_filter }}
+        SKIP_VERSIONS: ${{ inputs.skip_versions }}
         SKIP_CLUSTER_TESTS: ${{ inputs.skip_cluster_tests == true && '1' || '' }}
         SKIP_FAILOVER_TESTS: ${{ inputs.skip_failover_tests == true && '1' || '' }}
         SKIP_REPLICATION_TESTS: ${{ inputs.skip_replication_tests == true && '1' || '' }}
-        SKIP_VERSIONS: ${{ inputs.skip_versions || '8.0,8.1' }}
-        KIND_CLUSTER: valkey-operator
-      run: go test -v -timeout 6h ./test/e2e/ -ginkgo.v
-
-    - name: Collect diagnostics on failure
-      if: failure()
       run: |
-        echo "=== Operator pod logs ==="
-        kubectl logs -l app.kubernetes.io/name=valkey-operator \
-          -n valkey-system --tail=100 || true
-        echo "=== Operator pod events ==="
-        kubectl get events -n valkey-system --sort-by='.lastTimestamp' || true
-        echo "=== All pods ==="
-        kubectl get pods -A || true
+        filter="v$VERSION"
+        # The specs that do not depend on a version run in the first job only.
+        if [ "$JOB_INDEX" = 0 ]; then filter="$filter || webhook || operator"; fi
+        if [ -n "$LABEL_FILTER" ]; then filter="($filter) && ($LABEL_FILTER)"; fi
+        echo "label filter: $filter"
+
+        kubectl create namespace valkey-e2e
+        kubectl -n valkey-e2e create serviceaccount valkey-e2e
+        kubectl create clusterrolebinding valkey-e2e --clusterrole=cluster-admin --serviceaccount=valkey-e2e:valkey-e2e
+        # Ginkgo's timeout comes first, so a slow run still ends with its report;
+        # the job's deadline ends a pod that never gets that far.
+        jq -n --arg image "$E2E_IMAGE" --arg filter "$filter" \
+          --arg skipVersions "$SKIP_VERSIONS" --arg skipCluster "$SKIP_CLUSTER_TESTS" \
+          --arg skipFailover "$SKIP_FAILOVER_TESTS" --arg skipReplication "$SKIP_REPLICATION_TESTS" '
+          {apiVersion: "batch/v1", kind: "Job",
+           metadata: {name: "e2e", namespace: "valkey-e2e"},
+           spec: {backoffLimit: 0, activeDeadlineSeconds: 19200, template: {spec: {
+             serviceAccountName: "valkey-e2e", restartPolicy: "Never",
+             containers: [{name: "e2e", image: $image, imagePullPolicy: "Never",
+               args: ["-test.v", "-test.timeout=5h10m", "-ginkgo.v", "-ginkgo.timeout=5h", ("-ginkgo.label-filter=" + $filter)],
+               env: [
+                 {name: "SKIP_DEPLOY_OPERATOR", value: "1"},
+                 {name: "SKIP_DEPLOY_PROMETHEUS", value: "1"},
+                 {name: "SKIP_DEPLOY_CERT_MANAGER", value: "1"},
+                 {name: "SKIP_VERSIONS", value: $skipVersions},
+                 {name: "SKIP_CLUSTER_TESTS", value: $skipCluster},
+                 {name: "SKIP_FAILOVER_TESTS", value: $skipFailover},
+                 {name: "SKIP_REPLICATION_TESTS", value: $skipReplication}]}]}}}}' \
+          | kubectl apply -f -
+
+        # The log can be followed once the container has started, or already ended.
+        if ! timeout 5m bash -c 'until kubectl -n valkey-e2e get pods -l batch.kubernetes.io/job-name=e2e \
+            -o jsonpath="{.items[*].status.containerStatuses[*].state}" | grep -qE "running|terminated"; do sleep 2; done'; then
+          kubectl -n valkey-e2e describe job,pods
+          exit 1
+        fi
+        kubectl -n valkey-e2e logs -f job/e2e | tee e2e.log
+        # The log stream can end before the job does; the job's own verdict decides.
+        until verdict=$(kubectl -n valkey-e2e get job e2e -o jsonpath='{.status.conditions[?(@.status=="True")].type}') \
+          && echo "$verdict" | grep -qE 'Complete|Failed'; do sleep 30; done
+        # Ginkgo's summary, from the pod's own log, which is whole even when the stream was cut.
+        kubectl -n valkey-e2e logs job/e2e --tail=-1 | sed 's/\x1b\[[0-9;]*m//g' \
+          | awk '/^Summarizing [0-9]+ Failure|^Ran [0-9]+ of [0-9]+ Specs/ { p = 1 } p'
+        echo "e2e job: $verdict"
+        echo "$verdict" | grep -q Complete
+
+    - name: Collect logs
+      if: always()
+      run: |
+        mkdir -p logs
+        # The pod's log is whole; the streamed copy stands in when the pod is gone.
+        kubectl -n valkey-e2e logs job/e2e --tail=-1 > logs/e2e.log 2>/dev/null || cp e2e.log logs/ 2>/dev/null || true
+        kubectl -n valkey-system logs deployment/valkey-operator --tail=-1 > logs/operator.log 2>&1 || true
+        kubectl get events -A --sort-by=.lastTimestamp > logs/events.txt 2>&1 || true
+        kubectl get pods -A -o wide > logs/pods.txt 2>&1 || true
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: e2e-valkey-${{ matrix.version }}
+        path: logs/
