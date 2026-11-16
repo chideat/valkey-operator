@@ -484,8 +484,8 @@ func tlsSpecs(archLabel string) []Spec {
 					Skip("no valkey version available for the TLS tests")
 				}
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-				checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-				checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+				checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+				checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 			},
 		},
 		{

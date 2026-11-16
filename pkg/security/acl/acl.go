@@ -119,3 +119,36 @@ func NewOperatorUser(ctx context.Context, clientset kubernetes.ClientSet, secret
 	}
 	return types.NewOperatorUser(&secret)
 }
+
+// NewDefaultUser returns the default user with the password held in the secret
+// secretName, generating that secret when it does not exist yet. An existing secret
+// keeps its password, so a retry after a partial failure reuses the first one.
+func NewDefaultUser(ctx context.Context, clientset kubernetes.ClientSet, secretName, namespace string, ownerRefs []metav1.OwnerReference) (*user.User, error) {
+	oldSecret, _ := clientset.GetSecret(ctx, namespace, secretName)
+	if oldSecret != nil {
+		if data, ok := oldSecret.Data["password"]; ok && len(data) != 0 {
+			return types.NewDefaultUser(oldSecret)
+		}
+	}
+
+	plainPasswd, err := security.GeneratePassword(security.MaxUserPasswordLen)
+	if err != nil {
+		return nil, fmt.Errorf("generate password for default user failed, error=%s", err)
+	}
+
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            secretName,
+			Namespace:       namespace,
+			OwnerReferences: ownerRefs,
+		},
+		Data: map[string][]byte{
+			"password": []byte(plainPasswd),
+			"username": []byte(user.DefaultUserName),
+		},
+	}
+	if err := clientset.CreateIfNotExistsSecret(ctx, namespace, &secret); err != nil {
+		return nil, fmt.Errorf("generate password for default user failed, error=%s", err)
+	}
+	return types.NewDefaultUser(&secret)
+}

@@ -26,14 +26,19 @@ import (
 	rdsv1alpha1 "github.com/chideat/valkey-operator/api/rds/v1alpha1"
 	"github.com/chideat/valkey-operator/api/v1alpha1"
 	"github.com/chideat/valkey-operator/internal/builder"
+	"github.com/chideat/valkey-operator/internal/builder/aclbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/clusterbuilder"
 	"github.com/chideat/valkey-operator/internal/builder/failoverbuilder"
 	"github.com/chideat/valkey-operator/internal/config"
 	vkHandler "github.com/chideat/valkey-operator/internal/controller/rds/valkey"
+	"github.com/chideat/valkey-operator/internal/util"
+	security "github.com/chideat/valkey-operator/pkg/security/password"
+	"github.com/chideat/valkey-operator/pkg/types/user"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -126,6 +131,11 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 		Name:      inst.Name,
 		Namespace: inst.Namespace,
 	}, failover); errors.IsNotFound(err) {
+		if err := r.ensureSentinelPasswordSecret(ctx, inst); err != nil {
+			logger.Error(err, "fail to generate the sentinel password secret")
+			return err
+		}
+
 		failover, err = vkHandler.GenerateFailover(inst)
 		if err != nil {
 			return err
@@ -190,6 +200,49 @@ func (r *ValkeyReconciler) reconcileFailover(ctx context.Context, inst *rdsv1alp
 	} else {
 		logger.V(3).Info("instance is unhealthy, waiting failover to up", "phase", failover.Status.Phase)
 		inst.Status.Phase = rdsv1alpha1.Initializing
+	}
+	return nil
+}
+
+// ensureSentinelPasswordSecret generates the secret that the admission webhook names in
+// spec.sentinel.access.defaultPasswordSecret when it creates a failover instance, before
+// the failover whose sentinel nodes read it. A secret of any other name is the user's to
+// provide. An existing secret keeps its password, so a retry after the failover failed
+// to create reuses the first one.
+func (r *ValkeyReconciler) ensureSentinelPasswordSecret(ctx context.Context, inst *rdsv1alpha1.Valkey) error {
+	if inst.Spec.Arch != core.ValkeyFailover || inst.Spec.Sentinel == nil || inst.Spec.Sentinel.SentinelReference != nil {
+		return nil
+	}
+	name := inst.Spec.Sentinel.Access.DefaultPasswordSecret
+	if name == "" || name != aclbuilder.GenerateACLDefaultSecretName(core.ValkeySentinel, inst.GetName()) {
+		return nil
+	}
+
+	if err := r.Get(ctx, client.ObjectKey{Namespace: inst.GetNamespace(), Name: name}, &corev1.Secret{}); err == nil {
+		return nil
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
+
+	password, err := security.GeneratePassword(security.MaxUserPasswordLen)
+	if err != nil {
+		return err
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       inst.GetNamespace(),
+			OwnerReferences: util.BuildOwnerReferences(inst),
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"password": []byte(password),
+			"username": []byte(user.DefaultUserName),
+		},
+	}
+	// The cached read above can miss a secret created by the previous attempt.
+	if err := r.Create(ctx, secret); err != nil && !errors.IsAlreadyExists(err) {
+		return err
 	}
 	return nil
 }

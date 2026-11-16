@@ -165,6 +165,8 @@ kubectl apply -f valkey-failover.yaml
 kubectl get valkey my-valkey-failover -w
 ```
 
+Clients connect with the password the operator generates for the `default` user, and for a failover instance also with the one for the sentinel nodes; see [Passwords](#passwords).
+
 ## Architecture Overview
 
 ### Cluster Architecture
@@ -455,6 +457,54 @@ The admission webhook of the Valkey resource rejects a patch that is neither an 
 The operator checks again when it applies the patches, because some reach it unchecked: webhooks can be disabled, a Sentinel resource created on its own has no webhook, and admission accepts what the current settings do not use, such as a patch for the `exporter` container with the exporter disabled, or `loadBalancerSourceRanges` for a `ClusterIP` Service. The operator skips a patch that is neither an object nor text that holds one, uses a patch directive, or gives a field a value of the wrong type. From the other patches it keeps protected fields as generated; drops containers it does not run, a `minAvailable` set together with `maxUnavailable`, and fields the Service type does not take; and applies the rest. It reports each of these in a `Warning` event with reason `Overwrites` on the Cluster, Failover or Sentinel resource.
 
 ## Security
+
+### Passwords
+
+The operator generates a password for the `default` user of every instance it creates and, on the failover architecture, for its sentinel nodes. Instances created by an earlier version of the operator keep what they had: the operator does not add a password to a running instance on its own, because every client that connects without one would be locked out.
+
+#### The default user
+
+A client that connects without a username is the `default` user. For every new instance the operator generates a password for it and creates a `User` resource that holds it:
+
+| Architecture | User | Secret with the password |
+|---|---|---|
+| `cluster` | `cluster-acl-<name>-default` | `cluster-acl-<name>-default-secret` |
+| `failover`, `replica` | `failover-acl-<name>-default` | `failover-acl-<name>-default-secret` |
+
+```bash
+kubectl get secret failover-acl-my-valkey-failover-default-secret \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+The operator applies the `User` once the instance is ready, so the `default` user requires the password from the moment the `User` reaches the `Ready` phase, not from the first start of the instance:
+
+```bash
+kubectl get users.valkey.buf.red failover-acl-my-valkey-failover-default -o jsonpath='{.status.phase}'
+```
+
+The password is managed in that `User` and nowhere else. To change it, write a new `password` into the Secret: the operator applies it to every node. A password is 8 to 32 characters long, made only of letters, digits and the characters `~!@#$%^&*()-_=+?`, with at least one of each. The ACL rules, `+@all -acl ~* &*` by default, are the `User`'s `aclRules`. The `default` user cannot be deleted while the instance exists.
+
+To require a password on an instance created by an earlier version, create the `User` yourself, under the name in the table, once its clients have the password:
+
+```yaml
+apiVersion: valkey.buf.red/v1alpha1
+kind: User
+metadata:
+  name: failover-acl-my-valkey-failover-default
+  namespace: default
+spec:
+  accountType: custom
+  arch: failover
+  instanceName: my-valkey-failover
+  username: default
+  passwordSecrets:
+    - my-valkey-failover-default-password
+  aclRules: "+@all -acl ~* &*"
+```
+
+#### The sentinel nodes
+
+When a failover instance is created with `spec.sentinel.access.defaultPasswordSecret` left empty, it is set to `sentinel-acl-<name>-default-secret`, and the operator generates that Secret before it starts the sentinel nodes. A client that asks the sentinel nodes for the primary needs this password, as well as the default user's for the primary itself. To use a password of your own, name your Secret in `defaultPasswordSecret` when you create the instance. No password is generated when `spec.sentinel.sentinelReference` points to sentinel nodes the operator does not run, or when the admission webhooks are disabled.
 
 ### Network Policies
 

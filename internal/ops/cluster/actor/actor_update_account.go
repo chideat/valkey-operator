@@ -113,8 +113,26 @@ func (a *actorUpdateAccount) Do(ctx context.Context, val types.Instance) *actor.
 	// carried over from a snapshot several API round-trips old.
 	users = users[0:0]
 	if opUser == nil {
-		secretName := aclbuilder.GenerateACLOperatorSecretName(cluster.Arch(), cluster.GetName())
 		ownRefs := util.BuildOwnerReferences(cluster.Definition())
+
+		// No account exists yet, so this is a new instance: give its default user a
+		// generated password. The password lives in a User of its own and is managed
+		// there alone; the User controller applies it to the nodes. It comes before the
+		// operator account because this branch is entered only while that account is
+		// missing, so a failure here, after it, would never be retried.
+		defaultSecretName := aclbuilder.GenerateACLDefaultSecretName(cluster.Arch(), cluster.GetName())
+		defaultUser, err := acl.NewDefaultUser(ctx, a.client, defaultSecretName, cluster.GetNamespace(), ownRefs)
+		if err != nil {
+			logger.Error(err, "create default user failed")
+			return actor.NewResult(cops.CommandRequeue)
+		}
+		if err := a.client.CreateIfNotExistsUser(ctx, aclbuilder.GenerateUser(cluster, defaultUser)); err != nil {
+			logger.Error(err, "create default user failed")
+			return actor.NewResult(cops.CommandRequeue)
+		}
+		cluster.SendEventf(corev1.EventTypeNormal, config.EventCreateUser, "created default user with the password in secret %s", defaultSecretName)
+
+		secretName := aclbuilder.GenerateACLOperatorSecretName(cluster.Arch(), cluster.GetName())
 		if opUser, err = acl.NewOperatorUser(ctx, a.client, secretName, cluster.GetNamespace(), ownRefs); err != nil {
 			logger.Error(err, "create operator user failed")
 			return actor.NewResult(cops.CommandRequeue)
