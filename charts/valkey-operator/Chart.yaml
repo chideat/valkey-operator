@@ -1,18 +1,79 @@
 apiVersion: v2
 name: valkey-operator
-description: A Helm chart for deploying the Valkey Operator on Kubernetes
+description: Kubernetes operator for Valkey that deploys and manages Valkey Cluster, Valkey Sentinel (failover) and replica instances
 type: application
 version: 0.1.0
 appVersion: "latest"
 keywords:
   - valkey
+  - valkey-cluster
+  - valkey-sentinel
   - redis
+  - redis-cluster
+  - redis-sentinel
   - operator
   - kubernetes
-home: https://github.com/chideat/valkey-operator
+  - high-availability
+home: https://chideat.github.io/valkey-operator/
 sources:
   - https://github.com/chideat/valkey-operator
 maintainers:
   - name: chideat
     url: https://github.com/chideat
 icon: https://valkey.io/img/valkey-horizontal-color-logo.svg
+# Read by Artifact Hub, which lists the chart published to
+# oci://ghcr.io/chideat/charts/valkey-operator.
+annotations:
+  artifacthub.io/category: database
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Seamless Upgrades
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://chideat.github.io/valkey-operator/
+    - name: support
+      url: https://github.com/chideat/valkey-operator/issues
+  artifacthub.io/crds: |
+    - kind: Valkey
+      version: v1alpha1
+      name: valkeys.rds.valkey.buf.red
+      displayName: Valkey
+      description: A Valkey instance of any architecture - cluster, failover with Sentinel, or replica. The recommended resource.
+    - kind: Cluster
+      version: v1alpha1
+      name: clusters.valkey.buf.red
+      displayName: Cluster
+      description: A Valkey Cluster, with direct control over its shards.
+    - kind: Failover
+      version: v1alpha1
+      name: failovers.valkey.buf.red
+      displayName: Failover
+      description: A Valkey primary with replicas and Valkey Sentinel, with direct control over Sentinel.
+    - kind: Sentinel
+      version: v1alpha1
+      name: sentinels.valkey.buf.red
+      displayName: Sentinel
+      description: Valkey Sentinel nodes on their own.
+    - kind: User
+      version: v1alpha1
+      name: users.valkey.buf.red
+      displayName: User
+      description: A Valkey ACL user, with its password in a Secret.
+  artifacthub.io/crdsExamples: |
+    - apiVersion: rds.valkey.buf.red/v1alpha1
+      kind: Valkey
+      metadata:
+        name: my-valkey-cluster
+      spec:
+        arch: cluster
+        version: "9.1"
+        replicas:
+          shards: 3
+          replicasOfShard: 2
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

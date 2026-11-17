@@ -83,6 +83,17 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: update Helm chart appVersion to ${RELEASE_VERSION} [skip ci]"
           git push origin ${RELEASE_BRANCH}
 
+  # A job of its own, after the image it deploys is pushed, so a failure here
+  # stops neither the image nor the GitHub release.
+  publish-chart:
+    name: Publish Helm chart
+    needs: build
+    uses: ./.github/workflows/chart-release.yaml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
