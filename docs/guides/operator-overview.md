@@ -139,12 +139,12 @@ kubectl get valkey quickstart -w
 
 1. Read the [User Guide](../guides/user-guide.md) for detailed usage instructions
 2. Explore [API Reference](../api/index.md) for configuration options
-3. Check [Examples](../examples/) for common deployment patterns
+3. Check [Examples](../examples/README.md) for common deployment patterns
 4. Review [Best Practices](../guides/best-practices.md) for production deployments
 
 ## Community and Support
 
 - **GitHub Repository**: [chideat/valkey-operator](https://github.com/chideat/valkey-operator)
 - **Issues and Bug Reports**: [GitHub Issues](https://github.com/chideat/valkey-operator/issues)
-- **Contributing**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
-- **License**: [Apache 2.0](../../LICENSE)
+- **Contributing**: See [CONTRIBUTING.md](https://github.com/chideat/valkey-operator/blob/main/CONTRIBUTING.md)
+- **License**: [Apache 2.0](https://github.com/chideat/valkey-operator/blob/main/LICENSE)

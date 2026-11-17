@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{# The home page's title says what the project is, not only its name. #}
+{% block htmltitle %}
+  {% if page and page.is_homepage and config.extra.home_title %}
+  <title>{{ config.extra.home_title }}</title>
+  {% else %}
+  {{ super() }}
+  {% endif %}
+{% endblock %}
+
+{#
+  Structured data for the home page, so search engines and AI assistants can
+  tell what the project is without parsing the page. Its values come from
+  mkdocs.yml.
+#}
+{% block extrahead %}
+  {{ super() }}
+  {% if page and page.is_homepage %}
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareSourceCode",
+      "name": {{ config.site_name | tojson }},
+      "description": {{ config.site_description | tojson }},
+      "url": {{ config.site_url | tojson }},
+      "codeRepository": {{ config.repo_url | tojson }},
+      "programmingLanguage": "Go",
+      "runtimePlatform": "Kubernetes",
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "keywords": "Valkey, Kubernetes operator, Valkey Cluster, Valkey Sentinel, Helm"
+    }
+  </script>
+  {% endif %}
+{% endblock %}

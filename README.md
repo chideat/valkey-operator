@@ -1,9 +1,19 @@
-# ValkeyOperator
+# Valkey Operator
 
 [![Coverage Status](https://coveralls.io/repos/github/chideat/valkey-operator/badge.svg?branch=main)](https://coveralls.io/github/chideat/valkey-operator?branch=main)
 [![Go Report Card](https://goreportcard.com/badge/github.com/chideat/valkey-operator)](https://goreportcard.com/report/github.com/chideat/valkey-operator)
 
-**ValkeyOperator** is a production-ready kubernetes operator to deploy and manage high available [Valkey Sentinel](https://valkey.io/topics/sentinel/) and [Valkey Cluster](https://valkey.io/topics/cluster-spec/) instances. This repository contains multi [Custom Resource Definition (CRD)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) designed for the lifecycle of Valkey standalone, sentinel or cluster instance.
+**Valkey Operator** is a production-ready Kubernetes operator for [Valkey](https://valkey.io/). It deploys and manages highly available [Valkey Cluster](https://valkey.io/topics/cluster-spec/), [Valkey Sentinel](https://valkey.io/topics/sentinel/) (failover) and replica instances from a single `Valkey` custom resource, and keeps them running: ACL users, TLS, online scaling and graceful version upgrades. This repository contains the [Custom Resource Definitions (CRDs)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) for the whole lifecycle of a Valkey cluster, Sentinel or standalone instance.
+
+Valkey Operator is an independent open source project, separate from the Valkey project's own operator, [valkey-io/valkey-operator](https://github.com/valkey-io/valkey-operator).
+
+**Documentation:** <https://chideat.github.io/valkey-operator/>
+
+| `spec.arch` | What runs |
+|---|---|
+| `cluster` | Valkey Cluster: the 16384 hash slots split over shards, each shard a primary with replicas, rebalanced online when shards are added or removed |
+| `failover` | A primary with replicas, kept available by Valkey Sentinel |
+| `replica` | A primary with optional replicas and no Sentinel |
 
 ## Features
 
@@ -21,10 +31,10 @@
 
 ### Using Helm (Recommended)
 
-If you have a Kubernetes cluster and `kubectl` configured to access it, the easiest way to install ValkeyOperator is via Helm:
+If you have a Kubernetes cluster and `kubectl` configured to access it, the easiest way to install Valkey Operator is via Helm:
 
 ```bash
-# Install the ValkeyOperator (cert-manager integration is enabled by default)
+# Install Valkey Operator (cert-manager integration is enabled by default)
 # Requires cert-manager to be installed: https://cert-manager.io/docs/installation/
 helm install valkey-operator charts/valkey-operator \
   --namespace valkey-system --create-namespace
@@ -41,7 +51,7 @@ kubectl get valkey valkey-cluster -w
 ### Using Kustomize
 
 ```bash
-# Install the ValkeyOperator
+# Install Valkey Operator
 kubectl apply -k https://github.com/chideat/valkey-operator/config/default
 ```
 
@@ -61,10 +71,13 @@ The v2.1.0 release candidate passed the end-to-end suite on Kubernetes v1.33.12 
 
 ## Documentation
 
-ValkeyOperator is covered by comprehensive documentation:
+The documentation is published at <https://chideat.github.io/valkey-operator/>, from the [docs](./docs/) directory:
 
 * **[Operator Overview](./docs/guides/operator-overview.md)** - Architecture and core concepts
 * **[User Guide](./docs/guides/user-guide.md)** - Complete installation and usage guide
+* **[Valkey Sentinel on Kubernetes](./docs/guides/valkey-sentinel-on-kubernetes.md)** - A primary with replicas, kept available by Valkey Sentinel
+* **[Valkey Cluster on Kubernetes](./docs/guides/valkey-cluster-on-kubernetes.md)** - A sharded Valkey Cluster, scaled online
+* **[FAQ](./docs/faq.md)** - Short answers to common questions
 * **[API Reference](./docs/api/index.md)** - Detailed API documentation
 * **[Examples](./docs/examples/)** - Ready-to-use configuration examples
 
@@ -78,7 +91,7 @@ This project follows the typical GitHub pull request model. Before starting any 
 
 ## Releasing
 
-To release a new version of the ValkeyOperator, create a versioned tag (e.g. `v0.1.0`) of the repo, and the release pipeline will generate a new draft release, along side release artefacts.
+To release a new version of Valkey Operator, create a versioned tag (e.g. `v0.1.0`) of the repo, and the release pipeline will generate a new draft release, along side release artefacts.
 
 ## License
 

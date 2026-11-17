@@ -1,0 +1,25 @@
+# Valkey Operator
+
+> Valkey Operator is a Kubernetes operator for Valkey. It deploys and manages Valkey Cluster, Valkey Sentinel (failover) and replica instances from a single `Valkey` custom resource, with ACL users, TLS, online scaling and version upgrades. It is an independent open source project (Go, Apache 2.0) at github.com/chideat/valkey-operator, separate from the Valkey project's own valkey-io/valkey-operator.
+
+It supports Valkey 7.2, 8.0, 8.1, 9.0 and 9.1 on Kubernetes 1.33 to 1.35. The high-level `Valkey` resource is in the `rds.valkey.buf.red/v1alpha1` API group; the `Cluster`, `Failover`, `Sentinel` and `User` resources are in `valkey.buf.red/v1alpha1`.
+
+## Docs
+
+- [Operator overview](https://chideat.github.io/valkey-operator/guides/operator-overview/): what the operator does, its architecture and the supported versions
+- [User guide](https://chideat.github.io/valkey-operator/guides/user-guide/): installation, deployment, monitoring, passwords, customizing generated resources and troubleshooting
+- [Valkey Sentinel on Kubernetes](https://chideat.github.io/valkey-operator/guides/valkey-sentinel-on-kubernetes/): a primary with replicas kept available by Valkey Sentinel
+- [Valkey Cluster on Kubernetes](https://chideat.github.io/valkey-operator/guides/valkey-cluster-on-kubernetes/): a sharded Valkey Cluster, scaled online
+- [FAQ](https://chideat.github.io/valkey-operator/faq/): short answers about architectures, versions, passwords, TLS and scaling
+
+## API reference
+
+- [API overview](https://chideat.github.io/valkey-operator/api/): the custom resources and their API groups
+- [Valkey](https://chideat.github.io/valkey-operator/api/rds-v1alpha1-valkey/): the recommended resource for every architecture
+- [User](https://chideat.github.io/valkey-operator/api/v1alpha1-user/): Valkey ACL users
+
+## Optional
+
+- [Examples](https://chideat.github.io/valkey-operator/examples/): ready-to-use manifests
+- [Best practices](https://chideat.github.io/valkey-operator/guides/best-practices/)
+- [Source code](https://github.com/chideat/valkey-operator)
