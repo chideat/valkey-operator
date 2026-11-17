@@ -1,0 +1,87 @@
+name: chart-release
+
+# Publishes the Helm chart of a release tag to ghcr.io as an OCI artifact, at
+# oci://ghcr.io/<owner>/charts/valkey-operator, where Artifact Hub lists it.
+# release-pipeline calls it for every release tag, once the operator image is
+# pushed. Run it by hand to publish the chart of an earlier tag.
+#
+# The chart has a repository of its own, apart from the operator image at
+# ghcr.io/<owner>/valkey-operator, so a chart version can never take an image
+# tag's place.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag whose chart to publish
+        required: true
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose chart to publish, such as v2.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish the Helm chart
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.tag }}
+      CHART_REPOSITORY: oci://ghcr.io/${{ github.repository_owner }}/charts
+      OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/valkey-operator
+    steps:
+    - name: Check the tag
+      run: |
+        if ! echo "$RELEASE_VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "not a release tag: $RELEASE_VERSION"
+          exit 1
+        fi
+
+    # The chart is taken from the tag, so its templates and CRDs match the
+    # operator image of the same version.
+    - name: Check out the tag
+      uses: actions/checkout@v7
+      with:
+        ref: refs/tags/${{ inputs.tag }}
+
+    # The chart version is the tag without its "v", and the operator image tag
+    # is the tag itself: the chart passes that tag to the operator as its
+    # version, which picks the actors that run each instance.
+    - name: Package the chart
+      run: |
+        helm lint charts/valkey-operator
+        helm package charts/valkey-operator \
+          --version "${RELEASE_VERSION#v}" \
+          --app-version "$RELEASE_VERSION" \
+          --destination chart-dist
+
+    # Rendered without a cluster, so the chart's check that cert-manager is
+    # installed is skipped; the published chart keeps it.
+    - name: Check the packaged chart
+      run: |
+        chart="chart-dist/valkey-operator-${RELEASE_VERSION#v}.tgz"
+        rendered=$(helm template valkey-operator "$chart" --namespace valkey-system \
+          --set certManager.preflightCheck.enabled=false)
+        echo "$rendered" | grep -qF "image: ${OPERATOR_IMAGE}:${RELEASE_VERSION}" || {
+          echo "the chart does not deploy ${OPERATOR_IMAGE}:${RELEASE_VERSION}"
+          exit 1
+        }
+        echo "$rendered" | grep -qF "operatorVersion: \"${RELEASE_VERSION}\"" || {
+          echo "the chart does not pass ${RELEASE_VERSION} to the operator as its version"
+          exit 1
+        }
+
+    - name: Push the chart
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        REGISTRY_USER: ${{ github.repository_owner }}
+      run: |
+        echo "$GH_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
+        helm push "chart-dist/valkey-operator-${RELEASE_VERSION#v}.tgz" "$CHART_REPOSITORY"
