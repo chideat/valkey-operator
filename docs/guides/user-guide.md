@@ -486,7 +486,7 @@ The operator applies the `User` once the instance is ready, so the `default` use
 kubectl get users.valkey.buf.red failover-acl-my-valkey-failover-default -o jsonpath='{.status.phase}'
 ```
 
-The password is managed in that `User` and nowhere else. To change it, write a new `password` into the Secret: the operator applies it to every node. A password is 8 to 32 characters long, made only of letters, digits and the characters `~!@#$%^&*()-_=+?`, with at least one of each. The ACL rules, `+@all -acl ~* &*` by default, are the `User`'s `aclRules`. The `default` user cannot be deleted while the instance exists.
+The password is managed in that `User` and nowhere else. To change it, write a new `password` into the Secret, or replace it with a `password-sha256` as described in [Storing only a hash of the password](#storing-only-a-hash-of-the-password): the operator applies it to every node. A password is 8 to 32 characters long, made only of letters, digits and the characters `~!@#$%^&*()-_=+?`, with at least one of each. The ACL rules, `+@all -acl ~* &*` by default, are the `User`'s `aclRules`. The `default` user cannot be deleted while the instance exists.
 
 To require a password on an instance created by an earlier version, create the `User` yourself, under the name in the table, once its clients have the password:
 
@@ -505,6 +505,32 @@ spec:
     - my-valkey-failover-default-password
   aclRules: "+@all -acl ~* &*"
 ```
+
+#### Storing only a hash of the password
+
+The Secret of a `User` can hold the SHA-256 of the password under the key `password-sha256` instead of the password under `password`, the same way `/etc/shadow` holds only hashes. The operator applies it with the ACL form `#<hash>`, so the password itself is never stored in the cluster, and everything else works as with a plain password: the user is set on every node, it survives restarts and failovers, and you change it by writing a new hash into the Secret.
+
+Compute the hash without the password ever being shown or saved:
+
+```bash
+read -rs P; H=$(printf '%s' "$P" | sha256sum | cut -d' ' -f1); unset P
+kubectl -n NAMESPACE create secret generic NAME --from-literal=password-sha256=$H
+```
+
+Use `printf '%s'`, not `echo`: a trailing newline would become part of the hashed password.
+
+- The value must be the 64 hex characters of the SHA-256 digest; surrounding whitespace and upper-case letters are accepted.
+- A Secret sets either `password` or `password-sha256`, never both. To move an existing Secret, such as the `default` user's, to a hash, remove `password` in the same change rather than recreating the Secret, which would drop the finalizer and owner reference the operator set on it:
+
+  ```bash
+  kubectl -n NAMESPACE patch secret NAME --type=json -p "[
+    {\"op\":\"remove\",\"path\":\"/data/password\"},
+    {\"op\":\"add\",\"path\":\"/data/password-sha256\",\"value\":\"$(printf '%s' "$H" | base64 -w0)\"}]"
+  ```
+
+- It cannot be used where the operator itself has to log in with the password: the operator's own `User` (account type `system`) is rejected, and the sentinel password in `spec.sentinel.access.defaultPasswordSecret` still needs `password`.
+
+> **Warning:** with only the hash, the operator cannot check the password: the length and character rules that apply to `password` are skipped, and a hash of a weak password is accepted. Choosing a strong password is up to whoever creates it. SHA-256 is a fast, unsalted hash, so a short or common password can be recovered from the hash by anyone who can read the Secret: use a long random password, and keep the same access control on the Secret as for a plain password.
 
 #### The sentinel nodes
 
