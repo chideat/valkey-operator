@@ -1,0 +1,10 @@
+# Artifact Hub repository metadata for the chart repository
+# oci://ghcr.io/chideat/charts/valkey-operator. chart-release.yaml pushes it to
+# that repository's "artifacthub.io" tag, where Artifact Hub reads it; Helm
+# ignores the tag, which is not a semantic version.
+#
+# The repository ID is the one Artifact Hub shows on the repository's card in
+# its control panel. With it, the repository is labelled Verified Publisher the
+# next time Artifact Hub processes it, which it does when a new chart version
+# appears.
+repositoryID: 5e609ff5-2f42-460b-a4ef-685c013ba49b

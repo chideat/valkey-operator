@@ -20,7 +20,9 @@ sources:
 maintainers:
   - name: chideat
     url: https://github.com/chideat
-icon: https://valkey.io/img/valkey-horizontal-color-logo.svg
+# Served by the documentation site from docs/assets/icon.png, the icon the OLM
+# ClusterServiceVersion embeds, so a change on another site cannot break it.
+icon: https://chideat.github.io/valkey-operator/assets/icon.png
 # Read by Artifact Hub, which lists the chart published to
 # oci://ghcr.io/chideat/charts/valkey-operator.
 annotations:
