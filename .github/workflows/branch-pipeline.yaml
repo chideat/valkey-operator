@@ -144,5 +144,10 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add charts/valkey-operator/Chart.yaml
-        git diff --cached --quiet || git commit -m "chore: update Helm chart appVersion to ${TAG_NAME} [skip ci]"
-        git push origin HEAD
+        # Push only a new commit. With nothing to commit, pushing the checked-out
+        # commit fails as soon as another merge has moved the branch during the
+        # image build.
+        if ! git diff --cached --quiet; then
+          git commit -m "chore: update Helm chart appVersion to ${TAG_NAME} [skip ci]"
+          git push origin HEAD
+        fi
