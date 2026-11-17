@@ -36,26 +36,30 @@ Valkey Operator is a Kubernetes operator that automates the deployment and manag
 
 [Helm](https://helm.sh/) is the recommended way to install Valkey Operator. It provides easy configuration, upgrades, and rollbacks.
 
+The chart is published to `oci://ghcr.io/chideat/charts/valkey-operator`. Its versions are the operator's release tags without the `v`: chart `2.1.0` runs operator `v2.1.0`. Without `--version`, Helm installs the latest release.
+
 ```bash
 # Install with cert-manager managing webhook TLS certificates (default)
 # Requires cert-manager: https://cert-manager.io/docs/installation/
-helm install valkey-operator charts/valkey-operator \
+helm install valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
   --namespace valkey-system --create-namespace
 ```
+
+From a checkout of the repository, `charts/valkey-operator` installs the chart of that checkout instead.
 
 > **Prerequisites:** [cert-manager](https://cert-manager.io/docs/installation/) must be installed. cert-manager integration is enabled by default (`certManager.enabled=true`).
 
 If you don't have cert-manager, you can disable webhooks:
 
 ```bash
-helm install valkey-operator charts/valkey-operator \
+helm install valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
   --namespace valkey-system --create-namespace \
   --set webhook.enabled=false
 ```
 
 ##### Customizing the Helm installation
 
-All configuration options are documented in `charts/valkey-operator/values.yaml`. Common overrides:
+All configuration options are documented in the chart's values, which `helm show values oci://ghcr.io/chideat/charts/valkey-operator` prints; in the repository they are `charts/valkey-operator/values.yaml`. Common overrides:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -70,7 +74,7 @@ All configuration options are documented in `charts/valkey-operator/values.yaml`
 ##### Upgrading
 
 ```bash
-helm upgrade valkey-operator charts/valkey-operator \
+helm upgrade valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
   --namespace valkey-system
 ```
 

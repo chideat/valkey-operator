@@ -87,7 +87,7 @@ The v2.1.0 release candidate passed the end-to-end suite on Kubernetes v1.33.12 
 ```bash
 # Install the operator (cert-manager integration is enabled by default)
 # Requires cert-manager: https://cert-manager.io/docs/installation/
-helm install valkey-operator charts/valkey-operator \
+helm install valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
   --namespace valkey-system --create-namespace
 
 # Deploy a standalone Valkey instance

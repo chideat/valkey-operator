@@ -36,7 +36,7 @@ If you have a Kubernetes cluster and `kubectl` configured to access it, the easi
 ```bash
 # Install Valkey Operator (cert-manager integration is enabled by default)
 # Requires cert-manager to be installed: https://cert-manager.io/docs/installation/
-helm install valkey-operator charts/valkey-operator \
+helm install valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
   --namespace valkey-system --create-namespace
 
 # Deploy a Valkey cluster

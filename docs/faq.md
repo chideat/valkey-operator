@@ -29,7 +29,13 @@ Valkey 7.2, 8.0, 8.1, 9.0 and 9.1, on Kubernetes 1.33, 1.34 and 1.35. The table,
 
 ## How do I install it?
 
-With Helm or Kustomize; see [Installing the Operator](guides/user-guide.md#installing-the-operator). The admission webhooks need [cert-manager](https://cert-manager.io/) for their certificates, unless you turn the webhooks off.
+With Helm, from the chart at `oci://ghcr.io/chideat/charts/valkey-operator`, or with Kustomize; see [Installing the Operator](guides/user-guide.md#installing-the-operator).
+
+```bash
+helm install valkey-operator oci://ghcr.io/chideat/charts/valkey-operator \
+  --namespace valkey-system --create-namespace
+```
+ The admission webhooks need [cert-manager](https://cert-manager.io/) for their certificates, unless you turn the webhooks off.
 
 ## What does `replicasOfShard` count?
 
