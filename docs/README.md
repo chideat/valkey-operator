@@ -1,12 +1,20 @@
-# ValkeyOperator Documentation
+# Valkey Operator
 
-Welcome to the ValkeyOperator documentation. This guide will help you deploy, configure, and manage Valkey instances in Kubernetes using the ValkeyOperator.
+Valkey Operator is a Kubernetes operator for [Valkey](https://valkey.io/). It deploys and manages Valkey Cluster, Valkey Sentinel (failover) and replica instances from a single `Valkey` custom resource, and keeps them running: ACL users, TLS, online scaling and graceful version upgrades.
+
+It is an independent open source project under the Apache 2.0 license, separate from the Valkey project's own operator, [valkey-io/valkey-operator](https://github.com/valkey-io/valkey-operator).
 
 ## Quick Start
 
-1. **[Operator Overview](./guides/operator-overview.md)** - Understanding ValkeyOperator architecture and capabilities
+1. **[Operator Overview](./guides/operator-overview.md)** - Understanding Valkey Operator architecture and capabilities
 2. **[User Guide](./guides/user-guide.md)** - Complete installation and usage guide
-3. **[Examples](./examples/)** - Ready-to-use configuration examples
+3. **[Examples](./examples/README.md)** - Ready-to-use configuration examples
+4. **[FAQ](./faq.md)** - Short answers to common questions
+
+## How-to Guides
+
+- **[Valkey Sentinel on Kubernetes](./guides/valkey-sentinel-on-kubernetes.md)** - A primary with replicas, kept available by Valkey Sentinel
+- **[Valkey Cluster on Kubernetes](./guides/valkey-cluster-on-kubernetes.md)** - A sharded Valkey Cluster, scaled online
 
 ## API Reference
 
@@ -17,7 +25,7 @@ Welcome to the ValkeyOperator documentation. This guide will help you deploy, co
 
 ## Unified Valkey Resource
 
-ValkeyOperator uses a unified `Valkey` resource to manage all deployment architectures. You can specify the desired architecture using the `arch` field.
+Valkey Operator uses a unified `Valkey` resource to manage all deployment architectures. You can specify the desired architecture using the `arch` field.
 
 - `arch: replica` - Standalone Valkey instance.
 - `arch: cluster` - Valkey cluster with automatic sharding.
@@ -70,7 +78,7 @@ The v2.1.0 release candidate passed the end-to-end suite on Kubernetes v1.33.12 
 | **Cluster** | [Valkey Cluster](./examples/basic/cluster.yaml) | Valkey cluster with sharding |
 | **High Availability** | [Valkey Failover](./examples/basic/failover.yaml) | Sentinel-based failover |
 | **User Management** | [ACL Users](./examples/users/acl-users.yaml) | User and ACL configuration |
-| **Monitoring** | [With Monitoring](./examples/advanced/monitoring.yaml) | Prometheus integration |
+| **Monitoring** | [Production Cluster](./examples/production/cluster.yaml) | Prometheus exporter, storage and anti-affinity |
 
 ## Quick Installation
 
@@ -109,8 +117,8 @@ kubectl get valkey valkey-standalone -w
 - 📖 **Documentation**: You're reading it!
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/chideat/valkey-operator/issues)
 - 💡 **Feature Requests**: [GitHub Issues](https://github.com/chideat/valkey-operator/issues)
-- 🤝 **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)
+- 🤝 **Contributing**: [CONTRIBUTING.md](https://github.com/chideat/valkey-operator/blob/main/CONTRIBUTING.md)
 
 ## License
 
-ValkeyOperator is licensed under the [Apache 2.0 License](../LICENSE).
+Valkey Operator is licensed under the [Apache 2.0 License](https://github.com/chideat/valkey-operator/blob/main/LICENSE).
