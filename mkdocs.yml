@@ -1,0 +1,98 @@
+# Documentation site for Valkey Operator, published to GitHub Pages by
+# .github/workflows/docs.yaml. It renders docs/ as it is, so every page keeps
+# working when browsed on GitHub as well.
+site_name: Valkey Operator
+site_url: https://chideat.github.io/valkey-operator/
+site_description: >-
+  Valkey Operator is a Kubernetes operator that deploys and manages Valkey
+  Cluster, Valkey Sentinel (failover) and replica instances, with ACL users,
+  TLS, online scaling and version upgrades.
+repo_url: https://github.com/chideat/valkey-operator
+repo_name: chideat/valkey-operator
+edit_uri: edit/main/docs/
+copyright: Valkey Operator is licensed under the Apache License 2.0.
+
+docs_dir: docs
+
+# With --strict these fail the build: a link to a heading that does not exist,
+# or to a page outside docs/.
+validation:
+  anchors: warn
+  absolute_links: warn
+  unrecognized_links: warn
+
+# config.json configures the API reference generator, not the site.
+exclude_docs: |
+  config.json
+  .gitkeep
+
+# The go doc dumps are plain text, reachable from the API overview but kept out
+# of the navigation.
+not_in_nav: |
+  api/core-reference.md
+  api/rds-v1alpha1-reference.md
+  api/v1alpha1-reference.md
+
+theme:
+  name: material
+  custom_dir: hack/docs/overrides
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+
+nav:
+  - Home: README.md
+  - Getting started:
+      - Operator overview: guides/operator-overview.md
+      - User guide: guides/user-guide.md
+      - FAQ: faq.md
+  - How-to guides:
+      - Valkey Sentinel on Kubernetes: guides/valkey-sentinel-on-kubernetes.md
+      - Valkey Cluster on Kubernetes: guides/valkey-cluster-on-kubernetes.md
+      - Best practices: guides/best-practices.md
+  - Examples: examples/README.md
+  - API reference:
+      - Overview: api/index.md
+      - Valkey: api/rds-v1alpha1-valkey.md
+      - Sentinel: api/v1alpha1-sentinel.md
+      - User: api/v1alpha1-user.md
+      - Core types: api/core-types.md
+
+extra:
+  # The home page's <title>; see hack/docs/overrides/main.html.
+  home_title: "Valkey Operator: Kubernetes operator for Valkey Cluster and Valkey Sentinel"
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/chideat/valkey-operator

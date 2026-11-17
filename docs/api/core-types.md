@@ -2,7 +2,7 @@
 
 ## Overview
 
-Core types are shared structures used across all ValkeyOperator Custom Resources.
+Core types are shared structures used across all Valkey Operator Custom Resources.
 
 ## Architecture Types
 

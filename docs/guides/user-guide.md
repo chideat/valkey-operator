@@ -34,7 +34,7 @@ Valkey Operator is a Kubernetes operator that automates the deployment and manag
 
 #### Method 1: Using Helm (Recommended)
 
-[Helm](https://helm.sh/) is the recommended way to install ValkeyOperator. It provides easy configuration, upgrades, and rollbacks.
+[Helm](https://helm.sh/) is the recommended way to install Valkey Operator. It provides easy configuration, upgrades, and rollbacks.
 
 ```bash
 # Install with cert-manager managing webhook TLS certificates (default)
