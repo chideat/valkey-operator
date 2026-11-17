@@ -2,6 +2,7 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/chideat/valkey-operator/badge.svg?branch=main)](https://coveralls.io/github/chideat/valkey-operator?branch=main)
 [![Go Report Card](https://goreportcard.com/badge/github.com/chideat/valkey-operator)](https://goreportcard.com/report/github.com/chideat/valkey-operator)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/chideat)](https://artifacthub.io/packages/search?repo=chideat)
 
 **Valkey Operator** is a production-ready Kubernetes operator for [Valkey](https://valkey.io/). It deploys and manages highly available [Valkey Cluster](https://valkey.io/topics/cluster-spec/), [Valkey Sentinel](https://valkey.io/topics/sentinel/) (failover) and replica instances from a single `Valkey` custom resource, and keeps them running: ACL users, TLS, online scaling and graceful version upgrades. This repository contains the [Custom Resource Definitions (CRDs)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) for the whole lifecycle of a Valkey cluster, Sentinel or standalone instance.
 
