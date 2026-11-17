@@ -36,7 +36,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
-	security "github.com/chideat/valkey-operator/pkg/security/password"
 	"github.com/chideat/valkey-operator/pkg/types/user"
 )
 
@@ -198,7 +197,7 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 			Name:      passwordSecret,
 		}, secret); err != nil {
 			return nil, err
-		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
+		} else if err := user.ValidatePasswordSecret(secret); err != nil {
 			return nil, err
 		}
 	}

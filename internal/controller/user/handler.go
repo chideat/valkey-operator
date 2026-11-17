@@ -156,6 +156,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		inst.Annotations = map[string]string{}
 	}
 
+	// passwords holds ACL password rules: ">plaintext" or "#sha256" (password-sha256 secrets)
 	passwords := []string{}
 	userPassword := &user.Password{}
 	for _, secretName := range inst.Spec.PasswordSecrets {
@@ -163,7 +164,17 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		if err != nil {
 			return err
 		}
-		passwords = append(passwords, string(secret.Data["password"]))
+		passwd, err := user.NewPassword(secret)
+		if err != nil {
+			return err
+		}
+		// Never fall back to "nopass": a secret without a usable password fails the User
+		// instead of leaving the account open, even if the validation before was skipped.
+		rule := passwd.ACLRule()
+		if rule == "" {
+			return fmt.Errorf("secret %s has no password", secretName)
+		}
+		passwords = append(passwords, rule)
 		userPassword = &user.Password{
 			SecretName: secretName,
 		}

@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/chideat/valkey-operator/pkg/types/user"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func Test_formatACLSetCommand(t *testing.T) {
@@ -99,6 +100,36 @@ func Test_formatACLSetCommand(t *testing.T) {
 			wantArgs: []string{"user", "custom3", "-cluster|setslot", "-cluster|nodes", "~*", "nopass", "on"},
 		},
 	}
+
+	const hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" // sha256("test")
+	plainPwd, err := user.NewPassword(&corev1.Secret{Data: map[string][]byte{user.PasswordSecretKey: []byte("Str0ng!Passw0rd")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashedPwd, err := user.NewPassword(&corev1.Secret{Data: map[string][]byte{user.PasswordSHA256SecretKey: []byte(hash)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests = append(tests,
+		struct {
+			name     string
+			args     args
+			wantArgs []string
+		}{
+			name:     "plaintext password",
+			args:     args{user: &user.User{Name: "app", Role: user.RoleDeveloper, Password: plainPwd, Rules: []*user.Rule{{KeyPatterns: []string{"*"}}}}},
+			wantArgs: []string{"user", "app", "~*", ">Str0ng!Passw0rd", "on"},
+		},
+		struct {
+			name     string
+			args     args
+			wantArgs []string
+		}{
+			name:     "sha256 password",
+			args:     args{user: &user.User{Name: "app", Role: user.RoleDeveloper, Password: hashedPwd, Rules: []*user.Rule{{KeyPatterns: []string{"*"}}}}},
+			wantArgs: []string{"user", "app", "~*", "#" + hash, "on"},
+		},
+	)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

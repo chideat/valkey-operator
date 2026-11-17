@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 
+	security "github.com/chideat/valkey-operator/pkg/security/password"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -32,7 +33,41 @@ const (
 
 	// password secret key name
 	PasswordSecretKey = "password"
+	// PasswordSHA256SecretKey is the secret key holding the hex SHA-256 of the
+	// password instead of the password itself. The operator applies it with the
+	// ACL "#<hash>" form, so the plaintext is never stored in the cluster.
+	PasswordSHA256SecretKey = "password-sha256"
 )
+
+var passwordHashReg = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// NormalizePasswordHash trims and lowercases a hex SHA-256 digest and checks
+// that it is exactly 64 hex characters, as Valkey requires for "#<hash>".
+func NormalizePasswordHash(val string) (string, error) {
+	hash := strings.ToLower(strings.TrimSpace(val))
+	if !passwordHashReg.MatchString(hash) {
+		return "", fmt.Errorf("%s must be a hex encoded SHA-256 digest (64 hex characters)", PasswordSHA256SecretKey)
+	}
+	return hash, nil
+}
+
+// ValidatePasswordSecret checks a user password secret. A secret holding
+// password-sha256 is checked for a well-formed digest only: the password
+// strength cannot be verified without the plaintext, so it is up to whoever
+// generates the password.
+func ValidatePasswordSecret(secret *v1.Secret) error {
+	if secret == nil {
+		return fmt.Errorf("nil password secret")
+	}
+	if hash, ok := secret.Data[PasswordSHA256SecretKey]; ok {
+		if len(secret.Data[PasswordSecretKey]) > 0 {
+			return fmt.Errorf("secret %s must set only one of %s and %s", secret.Name, PasswordSecretKey, PasswordSHA256SecretKey)
+		}
+		_, err := NormalizePasswordHash(string(hash))
+		return err
+	}
+	return security.PasswordValidate(string(secret.Data[PasswordSecretKey]), 8, 32)
+}
 
 // UserRole
 type UserRole string
@@ -138,6 +173,7 @@ type Password struct {
 	SecretName string `json:"secretName,omitempty"`
 	secret     *v1.Secret
 	data       string
+	hash       string
 }
 
 // NewPassword
@@ -165,14 +201,49 @@ func (p *Password) SetSecret(secret *v1.Secret) error {
 		return nil
 	}
 
-	if val, ok := secret.Data[PasswordSecretKey]; !ok {
-		return fmt.Errorf("missing %s field for secret %s", PasswordSecretKey, secret.Name)
-	} else {
+	plain, hasPlain := secret.Data[PasswordSecretKey]
+	if hashVal, ok := secret.Data[PasswordSHA256SecretKey]; ok {
+		if len(plain) > 0 {
+			return fmt.Errorf("secret %s must set only one of %s and %s", secret.Name, PasswordSecretKey, PasswordSHA256SecretKey)
+		}
+		hash, err := NormalizePasswordHash(string(hashVal))
+		if err != nil {
+			return fmt.Errorf("secret %s: %w", secret.Name, err)
+		}
 		p.SecretName = secret.GetName()
 		p.secret = secret
-		p.data = string(val)
+		p.data = ""
+		p.hash = hash
+		return nil
 	}
+	if !hasPlain {
+		return fmt.Errorf("missing %s or %s field for secret %s", PasswordSecretKey, PasswordSHA256SecretKey, secret.Name)
+	}
+	p.SecretName = secret.GetName()
+	p.secret = secret
+	p.data = string(plain)
+	p.hash = ""
 	return nil
+}
+
+// IsHashed reports whether the password is only known by its SHA-256 digest.
+func (p *Password) IsHashed() bool {
+	return p != nil && p.hash != ""
+}
+
+// ACLRule returns the ACL SETUSER/ACL file argument that sets this password:
+// "#<sha256>" for a hashed password, ">plaintext" otherwise, and "" when there
+// is no password.
+func (p *Password) ACLRule() string {
+	switch {
+	case p == nil:
+		return ""
+	case p.hash != "":
+		return "#" + p.hash
+	case p.data != "":
+		return ">" + p.data
+	}
+	return ""
 }
 
 func (p *Password) Secret() *v1.Secret {
@@ -182,7 +253,8 @@ func (p *Password) Secret() *v1.Secret {
 	return p.secret
 }
 
-// String return password in plaintext
+// String return password in plaintext. It is empty for a hashed password, which
+// therefore cannot be used to authenticate against Valkey.
 func (p *Password) String() string {
 	if p == nil {
 		return ""

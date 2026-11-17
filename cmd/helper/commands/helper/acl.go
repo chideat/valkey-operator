@@ -94,8 +94,13 @@ func LoadACLUsersFromConfigmap(ctx context.Context, clientset *kubernetes.Client
 			} else {
 				u.Password, _ = user.NewPassword(secret)
 				if name != "operator" {
-					if err := security.PasswordValidate(u.Password.String(), 8, 32); err != nil {
+					// a hashed password was checked for format when the secret was loaded
+					if u.Password == nil {
 						continue
+					} else if !u.Password.IsHashed() {
+						if err := security.PasswordValidate(u.Password.String(), 8, 32); err != nil {
+							continue
+						}
 					}
 				}
 			}
@@ -161,11 +166,11 @@ func formatACLSetCommand(user *user.User) []string {
 	for _, rule := range user.Rules {
 		args = append(args, strings.Fields(rule.Encode())...)
 	}
-	passwd := user.Password.String()
-	if passwd == "" {
+	// ">plaintext", or "#sha256" for a password-sha256 secret
+	if rule := user.Password.ACLRule(); rule == "" {
 		args = append(args, "nopass")
 	} else {
-		args = append(args, fmt.Sprintf(">%s", passwd))
+		args = append(args, rule)
 	}
 	// NOTE: on must after reset
 	return append(args, "on")

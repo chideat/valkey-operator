@@ -165,7 +165,7 @@ func (us Users) IsChanged(n Users) bool {
 
 	for i, oldUser := range us {
 		newUser := n[i]
-		if newUser.String() != oldUser.String() || newUser.Password.String() != oldUser.Password.String() {
+		if newUser.String() != oldUser.String() || newUser.Password.ACLRule() != oldUser.Password.ACLRule() {
 			return true
 		}
 	}
