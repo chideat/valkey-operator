@@ -178,7 +178,7 @@ func patchInstanceVersion(ctx context.Context, inst *rdsv1alpha1.Valkey, newVers
 
 // getSentinelMasterPodName returns the pod name of the sentinel master via INFO replication.
 func getSentinelMasterPodName(ctx context.Context, inst *rdsv1alpha1.Valkey) string {
-	c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+	c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 	Expect(err).To(Succeed())
 	defer c.Close()
 

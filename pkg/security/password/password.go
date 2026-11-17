@@ -51,6 +51,13 @@ const (
 	all           = lowerCharDict + upperCharDict + digitDict + specialDict
 
 	MaxPasswordLen = 128
+
+	// MaxUserPasswordLen is the longest password accepted for any account but the
+	// operator's own: the User webhook and controller, the sentinel password check and
+	// the helper that renders the ACL file all reject a longer one, and the helper does
+	// so by leaving the account out of the file without a word. A password generated
+	// for such an account must not exceed it.
+	MaxUserPasswordLen = 32
 )
 
 // GeneratePassword return a password with at least one digit char and special char

@@ -82,6 +82,17 @@ func commonAdditionalSpecs(archLabel string) []Spec {
 			},
 		},
 		{
+			// The operator gives the default user of every instance it creates a
+			// password, so a client without one is turned away (issue #104).
+			Name:   "a client without the default user's password is rejected",
+			Labels: []string{archLabel, "auth"},
+			Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+				_, err := newValkeyClient(ctx, inst, "", "")
+				Expect(err).To(HaveOccurred())
+			},
+		},
+		{
 			Name:   "custom config change propagates to pods",
 			Labels: []string{archLabel, "config"},
 			Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
@@ -96,7 +107,7 @@ func commonAdditionalSpecs(archLabel string) []Spec {
 				waitInstanceStatusReady(ctx, inst, time.Minute*5)
 
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-				checkInstanceConfig(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword, "slowlog-log-slower-than", "9999")
+				checkInstanceConfig(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst), "slowlog-log-slower-than", "9999")
 			},
 		},
 		{
@@ -104,7 +115,7 @@ func commonAdditionalSpecs(archLabel string) []Spec {
 			Labels: []string{archLabel, "datatypes"},
 			Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-				c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+				c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				Expect(err).To(Succeed())
 				defer c.Close()
 
@@ -151,7 +162,7 @@ func commonAdditionalSpecs(archLabel string) []Spec {
 			Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
 				skipIfVersionLessThan(inst, "9.0")
-				checkInstanceConfig(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword, "latency-tracking", "yes")
+				checkInstanceConfig(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst), "latency-tracking", "yes")
 			},
 		},
 	}
@@ -302,9 +313,9 @@ func init() {
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 					time.Sleep(time.Second * 30)
 					waitInstanceStatusReady(ctx, inst, time.Minute*5)
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					waitDefaultUserReady(ctx, inst)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 		},
@@ -325,8 +336,8 @@ func init() {
 						time.Sleep(time.Second * 30)
 						waitInstanceStatusReady(ctx, inst, time.Minute*10)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+						checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -400,7 +411,7 @@ func init() {
 						Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 						time.Sleep(time.Second * 30)
 						waitInstanceStatusReady(ctx, inst, time.Minute*5)
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, "")
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -413,9 +424,9 @@ func init() {
 						}
 						patchInstanceVersion(ctx, inst, "9.0", 45*time.Minute)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, "", "latency-tracking", "yes")
-						checkInstanceRead(ctx, inst, valkeyDefaultUsername, "")
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, "")
+						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst), "latency-tracking", "yes")
+						checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -484,7 +495,7 @@ func init() {
 						Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 						time.Sleep(time.Second * 30)
 						waitInstanceStatusReady(ctx, inst, time.Minute*5)
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, "")
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -497,9 +508,9 @@ func init() {
 						}
 						patchInstanceVersion(ctx, inst, "9.1", 45*time.Minute)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, "", "latency-tracking", "yes")
-						checkInstanceRead(ctx, inst, valkeyDefaultUsername, "")
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, "")
+						checkInstanceConfig(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst), "latency-tracking", "yes")
+						checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -526,15 +537,36 @@ func init() {
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 					time.Sleep(time.Second * 30)
 					waitInstanceStatusReady(ctx, inst, time.Minute*5)
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					waitDefaultUserReady(ctx, inst)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 		},
 		append(
 			commonAdditionalSpecs("failover"),
 			[]Spec{
+				{
+					// The operator gives the sentinel nodes of every failover instance
+					// it creates a password; without it a client could, among other
+					// things, run SENTINEL FAILOVER.
+					Name:   "sentinel rejects a client without its password",
+					Labels: []string{"failover", "auth"},
+					Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
+						Expect(inst.Spec.Sentinel.Access.DefaultPasswordSecret).NotTo(BeEmpty())
+
+						_, err := newSentinelNodeClient(ctx, inst, "")
+						Expect(err).To(HaveOccurred())
+
+						password, err := sentinelPassword(ctx, inst)
+						Expect(err).To(Succeed())
+						c, err := newSentinelNodeClient(ctx, inst, password)
+						Expect(err).To(Succeed())
+						defer c.Close()
+						Expect(c.Do(ctx, c.B().Ping().Build()).Error()).To(Succeed())
+					},
+				},
 				{
 					Name:    "sentinel promotes replica when master is killed",
 					Labels:  []string{"failover", "resilience"},
@@ -549,8 +581,8 @@ func init() {
 						time.Sleep(time.Second * 30)
 						waitInstanceStatusReady(ctx, inst, time.Minute*10)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-						checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+						checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{
@@ -582,9 +614,9 @@ func init() {
 					Expect(k8sClient.Create(ctx, inst)).To(Succeed())
 					time.Sleep(time.Second * 30)
 					waitInstanceStatusReady(ctx, inst, time.Minute*5)
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					waitDefaultUserReady(ctx, inst)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 		},
@@ -601,8 +633,8 @@ func init() {
 						time.Sleep(time.Minute)
 						waitInstanceStatusReady(ctx, inst, time.Minute*5)
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-						checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+						checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+						checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 					},
 				},
 				{

@@ -35,7 +35,6 @@ var (
 	testNamespace               = utils.GetEnv("NAMESPACE", "valkey-test")
 	defaltStorageClass          = utils.GetEnv("STORAGE_CLASS")
 	valkeyDefaultUsername       = "default"
-	valkeyDefaultPassword, _    = security.GeneratePassword(12)
 	valkeyDefaultSenPassword, _ = security.GeneratePassword(12)
 )
 
@@ -102,6 +101,106 @@ func createInstanceUser(ctx context.Context, inst *rdsv1alpha1.Valkey, username,
 		}
 		return false
 	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 10).Should(BeTrue())
+}
+
+// defaultUserPassword returns the password of the instance's default user. The operator
+// generates one for every instance it creates, in the secret the default User reads.
+func defaultUserPassword(ctx context.Context, inst *rdsv1alpha1.Valkey) string {
+	var user v1alpha1.User
+	Expect(k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: inst.GetNamespace(),
+		Name:      generateValkeyUserInstanceName(inst, valkeyDefaultUsername),
+	}, &user)).To(Succeed())
+	Expect(user.Spec.PasswordSecrets).NotTo(BeEmpty())
+
+	var secret corev1.Secret
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: inst.GetNamespace(), Name: user.Spec.PasswordSecrets[0]}, &secret)).To(Succeed())
+	return string(secret.Data["password"])
+}
+
+// waitDefaultUserReady waits until the User controller has applied the default user's
+// password to the nodes. Until then the default user has none and takes any password,
+// so a check that a client is turned away has to wait for this.
+func waitDefaultUserReady(ctx context.Context, inst *rdsv1alpha1.Valkey) *v1alpha1.User {
+	var user v1alpha1.User
+	userKey := client.ObjectKey{Namespace: inst.GetNamespace(), Name: generateValkeyUserInstanceName(inst, valkeyDefaultUsername)}
+	By("waiting for the default user to be ready")
+	Eventually(func() bool {
+		if err := k8sClient.Get(ctx, userKey, &user); err != nil {
+			GinkgoWriter.Printf("failed to get the default user: %v", err)
+			return false
+		}
+		return user.Status.Phase == v1alpha1.UserReady
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 10).Should(BeTrue())
+	return &user
+}
+
+// rotateDefaultUserPassword changes the default user's password the way a user does, in
+// the secret its User reads; the User controller applies it to the nodes. It returns
+// the new password.
+func rotateDefaultUserPassword(ctx context.Context, inst *rdsv1alpha1.Valkey) string {
+	user := waitDefaultUserReady(ctx, inst)
+	Expect(user.Spec.PasswordSecrets).NotTo(BeEmpty())
+
+	password, err := security.GeneratePassword(security.MaxUserPasswordLen)
+	Expect(err).To(Succeed())
+	By("writing a new password into the default user's secret")
+	Eventually(func() error {
+		var secret corev1.Secret
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: inst.GetNamespace(), Name: user.Spec.PasswordSecrets[0]}, &secret); err != nil {
+			return err
+		}
+		secret.Data["password"] = []byte(password)
+		return k8sClient.Update(ctx, &secret)
+	}).WithTimeout(time.Minute).WithPolling(time.Second * 5).Should(Succeed())
+	return password
+}
+
+// sentinelPassword returns the password the sentinel nodes of a failover instance
+// require, or "" when they require none. The operator generates one for every failover
+// instance it creates.
+func sentinelPassword(ctx context.Context, inst *rdsv1alpha1.Valkey) (string, error) {
+	if inst.Spec.Sentinel == nil || inst.Spec.Sentinel.Access.DefaultPasswordSecret == "" {
+		return "", nil
+	}
+	var secret corev1.Secret
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: inst.GetNamespace(),
+		Name:      inst.Spec.Sentinel.Access.DefaultPasswordSecret,
+	}, &secret); err != nil {
+		return "", err
+	}
+	return string(secret.Data["password"]), nil
+}
+
+// newSentinelNodeClient connects to a single sentinel node of a failover instance with
+// the given password.
+func newSentinelNodeClient(ctx context.Context, inst *rdsv1alpha1.Valkey, password string) (valkey.Client, error) {
+	var senInst v1alpha1.Sentinel
+	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), &senInst); err != nil {
+		return nil, err
+	}
+	if len(senInst.Status.Nodes) == 0 {
+		return nil, fmt.Errorf("sentinel %s reports no nodes", senInst.GetName())
+	}
+	node := senInst.Status.Nodes[0]
+	options := valkey.ClientOption{
+		InitAddress:       []string{net.JoinHostPort(node.IP, node.Port)},
+		Password:          password,
+		ClientName:        "e2e-tests",
+		DisableCache:      true,
+		ForceSingleClient: true,
+	}
+	if inst.Spec.Access.EnableTLS {
+		tlsSecret, err := getInstanceTLSSecret(ctx, inst)
+		if err != nil {
+			return nil, err
+		}
+		if options.TLSConfig, err = util.LoadCertConfigFromSecret(tlsSecret); err != nil {
+			return nil, fmt.Errorf("load tls config for %s failed: %w", inst.GetName(), err)
+		}
+	}
+	return valkey.NewClient(options)
 }
 
 func deleteInstance(ctx context.Context, inst *rdsv1alpha1.Valkey) {
@@ -221,9 +320,14 @@ func newValkeyClient(ctx context.Context, inst *rdsv1alpha1.Valkey, username, pa
 		options.Sentinel.TLSConfig = tlsConf
 	}
 	if inst.Spec.Arch == core.ValkeyFailover {
-		// Assign the field rather than the struct: replacing it would discard
+		// Assign the fields rather than the struct: replacing it would discard
 		// the sentinel TLS config set above.
 		options.Sentinel.MasterSet = "mymaster"
+		sentinelPass, err := sentinelPassword(ctx, inst)
+		if err != nil {
+			return nil, fmt.Errorf("load sentinel password for %s failed: %w", inst.GetName(), err)
+		}
+		options.Sentinel.Password = sentinelPass
 	} else if inst.Spec.Arch == core.ValkeyCluster {
 		options.ShuffleInit = true
 	}
@@ -410,20 +514,28 @@ var clusterTestCases = []TestData{
 				Labels: []string{"cluster", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
-				Name:   "create default user with password",
+				Name:   "rotate the default user's password",
 				Labels: []string{"cluster", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("create default user")
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					oldPassword := defaultUserPassword(ctx, inst)
+					newPassword := rotateDefaultUserPassword(ctx, inst)
 
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, newPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, newPassword)
+					// The User controller sets the new password one node at a time.
+					Eventually(func() error {
+						c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, oldPassword)
+						if err == nil {
+							c.Close()
+						}
+						return err
+					}).WithTimeout(time.Minute*5).WithPolling(time.Second*5).Should(HaveOccurred(), "the old password still works after the rotation")
 				},
 			},
 			{
@@ -476,8 +588,8 @@ var clusterTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*30)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -493,8 +605,8 @@ var clusterTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*30)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -512,8 +624,8 @@ var clusterTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -538,8 +650,8 @@ var clusterTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -623,20 +735,28 @@ var failoverTestCases = []TestData{
 				Labels: []string{"failover", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
-				Name:   "create default user with password",
+				Name:   "rotate the default user's password",
 				Labels: []string{"failover", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("create default user")
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					oldPassword := defaultUserPassword(ctx, inst)
+					newPassword := rotateDefaultUserPassword(ctx, inst)
 
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, newPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, newPassword)
+					// The User controller sets the new password one node at a time.
+					Eventually(func() error {
+						c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, oldPassword)
+						if err == nil {
+							c.Close()
+						}
+						return err
+					}).WithTimeout(time.Minute*5).WithPolling(time.Second*5).Should(HaveOccurred(), "the old password still works after the rotation")
 				},
 			},
 			{
@@ -689,8 +809,8 @@ var failoverTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -706,8 +826,8 @@ var failoverTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -724,8 +844,8 @@ var failoverTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -750,8 +870,8 @@ var failoverTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -830,20 +950,28 @@ var replicationTestCases = []TestData{
 				Labels: []string{"replica", "readwrite"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
-				Name:   "create default user with password",
+				Name:   "rotate the default user's password",
 				Labels: []string{"replica", "user", "default"},
 				Func: func(ctx context.Context, inst *rdsv1alpha1.Valkey) {
-					By("create default user")
-					createInstanceUser(ctx, inst, "default", valkeyDefaultPassword, "+@all ~* &* -acl")
+					oldPassword := defaultUserPassword(ctx, inst)
+					newPassword := rotateDefaultUserPassword(ctx, inst)
 
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, newPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, newPassword)
+					// The User controller sets the new password one node at a time.
+					Eventually(func() error {
+						c, err := newValkeyClient(ctx, inst, valkeyDefaultUsername, oldPassword)
+						if err == nil {
+							c.Close()
+						}
+						return err
+					}).WithTimeout(time.Minute*5).WithPolling(time.Second*5).Should(HaveOccurred(), "the old password still works after the rotation")
 				},
 			},
 			{
@@ -898,8 +1026,8 @@ var replicationTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{
@@ -924,8 +1052,8 @@ var replicationTestCases = []TestData{
 
 					waitInstanceStatusReady(ctx, inst, time.Minute*10)
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(inst), inst)).To(Succeed())
-					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
-					checkInstanceRead(ctx, inst, valkeyDefaultUsername, valkeyDefaultPassword)
+					checkInstanceWrite(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
+					checkInstanceRead(ctx, inst, valkeyDefaultUsername, defaultUserPassword(ctx, inst))
 				},
 			},
 			{

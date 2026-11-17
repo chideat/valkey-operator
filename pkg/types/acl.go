@@ -198,6 +198,34 @@ func NewOperatorUser(secret *v1.Secret) (*user.User, error) {
 	return &u, nil
 }
 
+// NewDefaultUser returns the default user the operator sets up for a new instance. It
+// keeps every command a client of an instance without a password could run, except
+// acl, which no custom account may have, so the password is the only thing it adds.
+func NewDefaultUser(secret *v1.Secret) (*user.User, error) {
+	rule := user.Rule{
+		Categories:         []string{"all"},
+		DisallowedCommands: []string{"acl"},
+		KeyPatterns:        []string{"*"},
+		Channels:           []string{"*"},
+	}
+
+	u := user.User{
+		Name: user.DefaultUserName,
+		Role: user.RoleDeveloper,
+		Rules: []*user.Rule{
+			&rule,
+		},
+	}
+	if secret != nil {
+		if passwd, err := user.NewPassword(secret); err != nil {
+			return nil, err
+		} else {
+			u.Password = passwd
+		}
+	}
+	return &u, nil
+}
+
 // Patch Valkey cluster client required rules
 func PatchClusterClientRequiredRules(rule *user.Rule) *user.Rule {
 	clusterRules := []string{

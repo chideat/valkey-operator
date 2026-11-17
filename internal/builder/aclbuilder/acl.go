@@ -39,6 +39,13 @@ func GenerateACLOperatorSecretName(arch core.Arch, name string) string {
 	return fmt.Sprintf("%s-acl-%s-%s-secret", arch, name, user.DefaultOperatorUserName)
 }
 
+// GenerateACLDefaultSecretName names the secret holding the password the operator
+// generates for an instance's default user. With the sentinel arch it names the one
+// generated for the sentinel nodes of a failover instance.
+func GenerateACLDefaultSecretName(arch core.Arch, name string) string {
+	return fmt.Sprintf("%s-acl-%s-%s-secret", arch, name, user.DefaultUserName)
+}
+
 func GenerateUserResourceName(arch core.Arch, instName, name string) string {
 	return fmt.Sprintf("%s-acl-%s-%s", arch, instName, name)
 }
