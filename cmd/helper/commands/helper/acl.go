@@ -89,21 +89,17 @@ func LoadACLUsersFromConfigmap(ctx context.Context, clientset *kubernetes.Client
 		}
 		u.Name = name
 		if u.Password != nil && u.Password.SecretName != "" {
-			if secret, err := GetSecret(ctx, clientset, cm.Namespace, u.Password.SecretName); err != nil {
+			secret, err := GetSecret(ctx, clientset, cm.Namespace, u.Password.SecretName)
+			if err != nil {
 				return nil, err
-			} else {
-				u.Password, _ = user.NewPassword(secret)
-				if name != "operator" {
-					// a hashed password was checked for format when the secret was loaded
-					if u.Password == nil {
-						continue
-					} else if !u.Password.IsHashed() {
-						if err := security.PasswordValidate(u.Password.String(), 8, 32); err != nil {
-							continue
-						}
-					}
-				}
 			}
+			passwd, skip, err := loadUserPassword(name, secret)
+			if err != nil {
+				return nil, err
+			} else if skip {
+				continue
+			}
+			u.Password = passwd
 		}
 
 		if err := u.Validate(); err != nil {
@@ -112,6 +108,35 @@ func LoadACLUsersFromConfigmap(ctx context.Context, clientset *kubernetes.Client
 		users = append(users, &u)
 	}
 	return users, nil
+}
+
+// loadUserPassword reads the password of user name from its secret.
+//
+// The operator user must end up with a usable plaintext password: any problem with
+// its secret (missing or empty password, both keys set, password-sha256) is an
+// error, never a "nopass" operator user. Any other user whose secret is unusable or
+// whose plaintext password is too weak is skipped (skip=true), so it can not log in.
+func loadUserPassword(name string, secret *corev1.Secret) (passwd *user.Password, skip bool, err error) {
+	passwd, err = user.NewPassword(secret)
+	if name == user.DefaultOperatorUserName {
+		if err != nil {
+			return nil, false, fmt.Errorf("load operator user password failed, %w", err)
+		}
+		if err := user.ValidateOperatorPassword(passwd); err != nil {
+			return nil, false, err
+		}
+		return passwd, false, nil
+	}
+	if err != nil {
+		return nil, true, nil
+	}
+	// a hashed password was checked for format when the secret was loaded
+	if !passwd.IsHashed() {
+		if err := security.PasswordValidate(passwd.String(), 8, 32); err != nil {
+			return nil, true, nil
+		}
+	}
+	return passwd, false, nil
 }
 
 func GetSecret(ctx context.Context, client *kubernetes.Clientset, namespace, name string) (*corev1.Secret, error) {

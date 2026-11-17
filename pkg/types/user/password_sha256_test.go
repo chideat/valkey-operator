@@ -103,6 +103,21 @@ func TestPassword_SHA256(t *testing.T) {
 	})
 }
 
+func TestValidateOperatorPassword(t *testing.T) {
+	plain, _ := NewPassword(newSecret(map[string]string{PasswordSecretKey: "anything"}))
+	empty, _ := NewPassword(newSecret(map[string]string{PasswordSecretKey: ""}))
+	hashed, _ := NewPassword(newSecret(map[string]string{PasswordSHA256SecretKey: sha256Hex("anything")}))
+
+	if err := ValidateOperatorPassword(plain); err != nil {
+		t.Errorf("plaintext: unexpected error %v", err)
+	}
+	for name, p := range map[string]*Password{"nil": nil, "empty": empty, "hashed": hashed} {
+		if err := ValidateOperatorPassword(p); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}
+
 func TestValidatePasswordSecret(t *testing.T) {
 	hash := sha256Hex("anything")
 	cases := []struct {

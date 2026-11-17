@@ -69,6 +69,22 @@ func ValidatePasswordSecret(secret *v1.Secret) error {
 	return security.PasswordValidate(string(secret.Data[PasswordSecretKey]), 8, 32)
 }
 
+// ValidateOperatorPassword checks the password of the operator user. The operator
+// authenticates against Valkey with it, so it must be a non-empty plaintext: a
+// password-sha256 secret or an empty password would lock the operator out, or worse
+// leave the operator user without a password ("nopass").
+func ValidateOperatorPassword(p *Password) error {
+	switch {
+	case p == nil:
+		return fmt.Errorf("operator user has no password")
+	case p.IsHashed():
+		return fmt.Errorf("operator user secret %s can not use %s", p.SecretName, PasswordSHA256SecretKey)
+	case p.String() == "":
+		return fmt.Errorf("operator user secret %s has an empty %s", p.SecretName, PasswordSecretKey)
+	}
+	return nil
+}
+
 // UserRole
 type UserRole string
 
