@@ -50,7 +50,18 @@ func LoadACLUsers(ctx context.Context, clientset kubernetes.ClientSet, cm *corev
 			if secret, err := clientset.GetSecret(ctx, cm.Namespace, u.Password.SecretName); err != nil {
 				return nil, err
 			} else {
-				u.Password, _ = user.NewPassword(secret)
+				passwd, err := user.NewPassword(secret)
+				if name == user.DefaultOperatorUserName {
+					// never carry on with an operator user without a usable password:
+					// writing it back would drop its secret and the pods would apply "nopass"
+					if err != nil {
+						return nil, fmt.Errorf("load operator user password failed, %w", err)
+					}
+					if err := user.ValidateOperatorPassword(passwd); err != nil {
+						return nil, err
+					}
+				}
+				u.Password = passwd
 			}
 		}
 		u.Name = name

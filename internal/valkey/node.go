@@ -623,8 +623,9 @@ func (n *ValkeyNode) SetACLUser(ctx context.Context, username string, passwords 
 	}
 
 	cmds := [][]any{{"ACL", "SETUSER", username, "reset"}}
+	// passwords are ACL password rules, ">plaintext" or "#sha256", see user.Password.ACLRule
 	for _, password := range passwords {
-		cmds = append(cmds, []any{"ACL", "SETUSER", username, ">" + password})
+		cmds = append(cmds, []any{"ACL", "SETUSER", username, password})
 	}
 	if len(passwords) == 0 {
 		cmds = append(cmds, []any{"ACL", "SETUSER", username, "nopass"})

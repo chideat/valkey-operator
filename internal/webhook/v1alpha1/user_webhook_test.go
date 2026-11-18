@@ -428,6 +428,76 @@ var _ = Describe("User Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("password should consists of letters, number and special characters"))
 		})
 
+		Context("with a password-sha256 secret", func() {
+			// any well-formed digest: the webhook only checks the format
+			const hash = "5f1e7b5b2f9d3c4ac1e1e4a1f5f84d1f2b2a8d2d8b1c0f7a9e3c6b5d4a3f2e1d"
+
+			createHashedSecret := func(name string, data map[string]string) {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+					Data:       map[string][]byte{},
+				}
+				for k, v := range data {
+					secret.Data[k] = []byte(v)
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+				DeferCleanup(func() {
+					Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+				})
+			}
+
+			It("Should accept a custom account without checking the plaintext", func() {
+				createHashedSecret("test-password-secret-sha256", map[string]string{user.PasswordSHA256SecretKey: hash})
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("Should reject a malformed hash", func() {
+				createHashedSecret("test-password-secret-sha256-bad", map[string]string{user.PasswordSHA256SecretKey: "abc"})
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256-bad"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("64 hex characters"))
+			})
+
+			It("Should reject a secret with both password and password-sha256", func() {
+				createHashedSecret("test-password-secret-sha256-both", map[string]string{
+					user.PasswordSHA256SecretKey: hash,
+					user.PasswordSecretKey:       "Password12345@",
+				})
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256-both"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must set only one of"))
+			})
+
+			It("Should reject it for a system account", func() {
+				createHashedSecret("test-password-secret-sha256-sys", map[string]string{user.PasswordSHA256SecretKey: hash})
+				obj.Spec.AccountType = v1alpha1.SystemAccount
+				obj.Spec.Username = user.DefaultOperatorUserName
+				obj.Spec.AclRules = "allkeys +@all +acl"
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256-sys"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("system account secret test-password-secret-sha256-sys can not use password-sha256"))
+			})
+
+			It("Should still accept a system account whose secret does not exist yet", func() {
+				obj.Spec.AccountType = v1alpha1.SystemAccount
+				obj.Spec.Username = user.DefaultOperatorUserName
+				obj.Spec.AclRules = "allkeys +@all +acl"
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-not-created"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
 		It("Should validate acl rule is invalid", func() {
 			{
 				obj.Spec.AclRules = "afefwef @fwefae"

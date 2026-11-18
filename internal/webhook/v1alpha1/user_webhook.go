@@ -36,7 +36,6 @@ import (
 	"github.com/chideat/valkey-operator/internal/builder"
 	"github.com/chideat/valkey-operator/internal/config"
 	"github.com/chideat/valkey-operator/internal/util"
-	security "github.com/chideat/valkey-operator/pkg/security/password"
 	"github.com/chideat/valkey-operator/pkg/types/user"
 )
 
@@ -178,6 +177,27 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 		if rule.IsACLCommandsDisabled() {
 			return nil, fmt.Errorf("system account must enable acl command")
 		}
+		// The operator authenticates with the system account, so it needs the plaintext:
+		// reject a password-sha256 secret here instead of failing later in the controller.
+		// A secret that does not exist yet is left to the controller, as before.
+		for _, passwordSecret := range inst.Spec.PasswordSecrets {
+			if passwordSecret == "" {
+				continue
+			}
+			secret := &v1.Secret{}
+			if err := v.apiReader.Get(ctx, types.NamespacedName{
+				Namespace: inst.Namespace,
+				Name:      passwordSecret,
+			}, secret); err != nil {
+				if errors.IsNotFound(err) {
+					continue
+				}
+				return nil, err
+			}
+			if _, hashed := secret.Data[user.PasswordSHA256SecretKey]; hashed {
+				return nil, fmt.Errorf("system account secret %s can not use %s", passwordSecret, user.PasswordSHA256SecretKey)
+			}
+		}
 		return nil, nil
 	}
 
@@ -198,7 +218,7 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 			Name:      passwordSecret,
 		}, secret); err != nil {
 			return nil, err
-		} else if err := security.PasswordValidate(string(secret.Data["password"]), 8, 32); err != nil {
+		} else if err := user.ValidatePasswordSecret(secret); err != nil {
 			return nil, err
 		}
 	}
