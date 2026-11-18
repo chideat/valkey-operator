@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/cert-manager/cert-manager v1.21.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.4
