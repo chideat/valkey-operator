@@ -3,7 +3,7 @@ name: valkey-operator
 description: Kubernetes operator for Valkey that deploys and manages Valkey Cluster, Valkey Sentinel (failover) and replica instances
 type: application
 version: 0.1.0
-appVersion: "latest"
+appVersion: "v0.1.0"
 keywords:
   - valkey
   - valkey-cluster
