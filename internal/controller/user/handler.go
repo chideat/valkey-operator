@@ -156,28 +156,16 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		inst.Annotations = map[string]string{}
 	}
 
-	// passwords holds ACL password rules: ">plaintext" or "#sha256" (password-sha256 secrets)
-	passwords := []string{}
-	userPassword := &user.Password{}
-	for _, secretName := range inst.Spec.PasswordSecrets {
-		secret, err := r.k8sClient.GetSecret(ctx, inst.Namespace, secretName)
-		if err != nil {
-			return err
-		}
-		passwd, err := user.NewPassword(secret)
-		if err != nil {
-			return err
-		}
-		// Never fall back to "nopass": a secret without a usable password fails the User
-		// instead of leaving the account open, even if the validation before was skipped.
-		rule := passwd.ACLRule()
-		if rule == "" {
-			return fmt.Errorf("secret %s has no password", secretName)
-		}
-		passwords = append(passwords, rule)
-		userPassword = &user.Password{
-			SecretName: secretName,
-		}
+	// The operator username belongs to the system account: an ordinary User with that
+	// name would replace the operator's own ACL entry. The webhook and the reconciler
+	// reject it first; this guards the live update and the configmap write.
+	if err := ValidateReservedUsername(&inst); err != nil {
+		return err
+	}
+
+	passwords, userPassword, additionalPasswords, err := r.loadPasswords(ctx, inst)
+	if err != nil {
+		return err
 	}
 
 	logger.V(3).Info("reconcile user", "user name", inst.Name, "type", inst.Spec.Arch)
@@ -213,6 +201,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		if err != nil {
 			return err
 		}
+		userObj.AdditionalPasswords = additionalPasswords
 		info, err := json.Marshal(userObj)
 		if err != nil {
 			return err
@@ -253,6 +242,7 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		if err != nil {
 			return err
 		}
+		userObj.AdditionalPasswords = additionalPasswords
 		info, err := json.Marshal(userObj)
 		if err != nil {
 			return err
@@ -276,4 +266,51 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		}
 	}
 	return nil
+}
+
+// ValidateReservedUsername rejects a User that takes the operator username without
+// being the system account. The operator authenticates with that account, and the
+// live ACL update and the ACL configmap select an account by username, so another
+// User with that name would replace the operator's credentials.
+func ValidateReservedUsername(inst *v1alpha1.User) error {
+	if inst == nil {
+		return nil
+	}
+	if inst.Spec.Username == user.DefaultOperatorUserName && inst.Spec.AccountType != v1alpha1.SystemAccount {
+		return fmt.Errorf("username %s is reserved for the system account", user.DefaultOperatorUserName)
+	}
+	return nil
+}
+
+// loadPasswords reads every secret of inst.Spec.PasswordSecrets. It returns the ACL
+// password rules (">plaintext" or "#sha256" for password-sha256 secrets) to apply to
+// the running nodes, and a reference to each secret for the ACL configmap: the first
+// one as the user's password and the others as its additional passwords, so that all
+// of them are still applied when the pods restart, not only the last one.
+func (r *UserHandler) loadPasswords(ctx context.Context, inst v1alpha1.User) (rules []string, first *user.Password, others []*user.Password, err error) {
+	first = &user.Password{}
+	for i, secretName := range inst.Spec.PasswordSecrets {
+		secret, err := r.k8sClient.GetSecret(ctx, inst.Namespace, secretName)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		passwd, err := user.NewPassword(secret)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// Never fall back to "nopass": a secret without a usable password fails the User
+		// instead of leaving the account open, even if the validation before was skipped.
+		rule := passwd.ACLRule()
+		if rule == "" {
+			return nil, nil, nil, fmt.Errorf("secret %s has no password", secretName)
+		}
+		rules = append(rules, rule)
+		ref := &user.Password{SecretName: secretName}
+		if i == 0 {
+			first = ref
+		} else {
+			others = append(others, ref)
+		}
+	}
+	return rules, first, others, nil
 }

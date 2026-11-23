@@ -170,6 +170,13 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 		return nil, err
 	}
 
+	// The operator username belongs to the system account. The live ACL update and the
+	// ACL configmap select an account by username, so an ordinary User named operator
+	// would replace the operator's credentials, past the system account checks below.
+	if inst.Spec.Username == user.DefaultOperatorUserName && inst.Spec.AccountType != v1alpha1.SystemAccount {
+		return nil, fmt.Errorf("username %s is reserved for the system account", user.DefaultOperatorUserName)
+	}
+
 	if inst.Spec.AccountType == v1alpha1.SystemAccount {
 		if inst.Spec.Username != user.DefaultOperatorUserName {
 			return nil, fmt.Errorf("system account username must be operator")

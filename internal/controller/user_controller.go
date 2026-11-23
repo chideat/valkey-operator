@@ -178,6 +178,18 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 	}
 
+	// the operator username is reserved for the system account; admission rejects it
+	// too, but a User created while the webhook was off must not reach the handler
+	if err := user.ValidateReservedUsername(&instance); err != nil {
+		logger.Error(err, "invalid username", "username", instance.Spec.Username)
+		instance.Status.Message = err.Error()
+		instance.Status.SetPhase(v1alpha1.UserFail)
+		if e := r.Client.Status().Update(ctx, &instance); e != nil {
+			logger.Error(e, "update User status to Fail failed")
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// verify user password
 	for _, name := range instance.Spec.PasswordSecrets {
 		if name == "" {

@@ -46,22 +46,42 @@ func LoadACLUsers(ctx context.Context, clientset kubernetes.ClientSet, cm *corev
 		if err := json.Unmarshal([]byte(userData), &u); err != nil {
 			return nil, fmt.Errorf("parse user %s failed, error=%s", name, err)
 		}
-		if u.Password != nil && u.Password.SecretName != "" {
-			if secret, err := clientset.GetSecret(ctx, cm.Namespace, u.Password.SecretName); err != nil {
+		passwords := []*user.Password{}
+		for _, ref := range u.AllPasswords() {
+			if ref.SecretName == "" {
+				continue
+			}
+			secret, err := clientset.GetSecret(ctx, cm.Namespace, ref.SecretName)
+			if err != nil {
 				return nil, err
-			} else {
-				passwd, err := user.NewPassword(secret)
-				if name == user.DefaultOperatorUserName {
-					// never carry on with an operator user without a usable password:
-					// writing it back would drop its secret and the pods would apply "nopass"
-					if err != nil {
-						return nil, fmt.Errorf("load operator user password failed, %w", err)
-					}
-					if err := user.ValidateOperatorPassword(passwd); err != nil {
-						return nil, err
-					}
+			}
+			passwd, err := user.NewPassword(secret)
+			switch {
+			case err != nil && (name == user.DefaultOperatorUserName || name == user.DefaultUserName):
+				// never carry on with an operator or default user without a usable
+				// password: writing it back would drop its secret and the pods would
+				// apply "nopass"
+				return nil, fmt.Errorf("load %s user password failed, %w", name, err)
+			case err != nil:
+				// keep the reference, so the entry is written back unchanged; the
+				// pods leave a user with an unusable secret out of the ACL file
+				passwd = &user.Password{SecretName: ref.SecretName}
+			case name == user.DefaultUserName:
+				if err := user.RequirePassword("default user", passwd); err != nil {
+					return nil, err
 				}
-				u.Password = passwd
+			}
+			passwords = append(passwords, passwd)
+		}
+		u.Password, u.AdditionalPasswords = nil, nil
+		if len(passwords) > 0 {
+			u.Password, u.AdditionalPasswords = passwords[0], passwords[1:]
+		}
+		if name == user.DefaultOperatorUserName {
+			// also catches an older entry that lost its secret reference, which the
+			// pods would otherwise apply as "nopass"
+			if err := user.ValidateOperatorPassword(u.Password); err != nil {
+				return nil, err
 			}
 		}
 		u.Name = name

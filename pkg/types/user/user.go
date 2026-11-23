@@ -59,14 +59,29 @@ func ValidatePasswordSecret(secret *v1.Secret) error {
 	if secret == nil {
 		return fmt.Errorf("nil password secret")
 	}
+	if err := checkOnePasswordKey(secret); err != nil {
+		return err
+	}
 	if hash, ok := secret.Data[PasswordSHA256SecretKey]; ok {
-		if len(secret.Data[PasswordSecretKey]) > 0 {
-			return fmt.Errorf("secret %s must set only one of %s and %s", secret.Name, PasswordSecretKey, PasswordSHA256SecretKey)
-		}
 		_, err := NormalizePasswordHash(string(hash))
 		return err
 	}
 	return security.PasswordValidate(string(secret.Data[PasswordSecretKey]), 8, 32)
+}
+
+// checkOnePasswordKey checks that the secret sets exactly one of password and
+// password-sha256. It checks key presence, not value: a secret with a hash and an
+// empty password key is still ambiguous and rejected.
+func checkOnePasswordKey(secret *v1.Secret) error {
+	_, hasPlain := secret.Data[PasswordSecretKey]
+	_, hasHash := secret.Data[PasswordSHA256SecretKey]
+	switch {
+	case hasPlain && hasHash:
+		return fmt.Errorf("secret %s must set only one of %s and %s", secret.Name, PasswordSecretKey, PasswordSHA256SecretKey)
+	case !hasPlain && !hasHash:
+		return fmt.Errorf("missing %s or %s field for secret %s", PasswordSecretKey, PasswordSHA256SecretKey, secret.Name)
+	}
+	return nil
 }
 
 // ValidateOperatorPassword checks the password of the operator user. The operator
@@ -74,13 +89,32 @@ func ValidatePasswordSecret(secret *v1.Secret) error {
 // password-sha256 secret or an empty password would lock the operator out, or worse
 // leave the operator user without a password ("nopass").
 func ValidateOperatorPassword(p *Password) error {
+	return RequirePlaintextPassword("operator user", p)
+}
+
+// RequirePlaintextPassword checks that p is a non-empty plaintext password. It is
+// for the accounts the operator or Sentinel authenticate with, which can not use a
+// password-sha256 secret. who names the account in the error.
+func RequirePlaintextPassword(who string, p *Password) error {
 	switch {
-	case p == nil:
-		return fmt.Errorf("operator user has no password")
+	case p == nil || (p.SecretName == "" && p.String() == "" && !p.IsHashed()):
+		return fmt.Errorf("%s has no password secret", who)
 	case p.IsHashed():
-		return fmt.Errorf("operator user secret %s can not use %s", p.SecretName, PasswordSHA256SecretKey)
+		return fmt.Errorf("%s secret %s can not use %s", who, p.SecretName, PasswordSHA256SecretKey)
 	case p.String() == "":
-		return fmt.Errorf("operator user secret %s has an empty %s", p.SecretName, PasswordSecretKey)
+		return fmt.Errorf("%s secret %s has an empty %s", who, p.SecretName, PasswordSecretKey)
+	}
+	return nil
+}
+
+// RequirePassword checks that p sets a password, plaintext or hashed. A user that
+// must not end up as "nopass", such as the default user, is checked with it.
+func RequirePassword(who string, p *Password) error {
+	switch {
+	case p == nil || (p.SecretName == "" && p.ACLRule() == ""):
+		return fmt.Errorf("%s has no password secret", who)
+	case p.ACLRule() == "":
+		return fmt.Errorf("%s secret %s has an empty %s", who, p.SecretName, PasswordSecretKey)
 	}
 	return nil
 }
@@ -134,7 +168,37 @@ type User struct {
 	Name     string    `json:"name"`
 	Role     UserRole  `json:"role"`
 	Password *Password `json:"password,omitempty"`
-	Rules    []*Rule   `json:"rules,omitempty"`
+	// AdditionalPasswords holds the passwords from the second and later secrets of
+	// spec.passwordSecrets, so every one of them is still valid after a restart, as
+	// needed to rotate a password without downtime.
+	AdditionalPasswords []*Password `json:"additionalPasswords,omitempty"`
+	Rules               []*Rule     `json:"rules,omitempty"`
+}
+
+// AllPasswords returns Password followed by AdditionalPasswords, without nils.
+func (u *User) AllPasswords() []*Password {
+	if u == nil {
+		return nil
+	}
+	var ret []*Password
+	for _, p := range append([]*Password{u.Password}, u.AdditionalPasswords...) {
+		if p != nil {
+			ret = append(ret, p)
+		}
+	}
+	return ret
+}
+
+// PasswordRules returns the ACL password rules (">plaintext" or "#sha256") of every
+// password of the user, in order. It is empty for a user without any password.
+func (u *User) PasswordRules() []string {
+	var ret []string
+	for _, p := range u.AllPasswords() {
+		if rule := p.ACLRule(); rule != "" {
+			ret = append(ret, rule)
+		}
+	}
+	return ret
 }
 
 var (
@@ -217,11 +281,10 @@ func (p *Password) SetSecret(secret *v1.Secret) error {
 		return nil
 	}
 
-	plain, hasPlain := secret.Data[PasswordSecretKey]
+	if err := checkOnePasswordKey(secret); err != nil {
+		return err
+	}
 	if hashVal, ok := secret.Data[PasswordSHA256SecretKey]; ok {
-		if len(plain) > 0 {
-			return fmt.Errorf("secret %s must set only one of %s and %s", secret.Name, PasswordSecretKey, PasswordSHA256SecretKey)
-		}
 		hash, err := NormalizePasswordHash(string(hashVal))
 		if err != nil {
 			return fmt.Errorf("secret %s: %w", secret.Name, err)
@@ -232,12 +295,9 @@ func (p *Password) SetSecret(secret *v1.Secret) error {
 		p.hash = hash
 		return nil
 	}
-	if !hasPlain {
-		return fmt.Errorf("missing %s or %s field for secret %s", PasswordSecretKey, PasswordSHA256SecretKey, secret.Name)
-	}
 	p.SecretName = secret.GetName()
 	p.secret = secret
-	p.data = string(plain)
+	p.data = string(secret.Data[PasswordSecretKey])
 	p.hash = ""
 	return nil
 }

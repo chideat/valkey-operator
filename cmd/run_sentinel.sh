@@ -3,15 +3,27 @@
 VALKEY_SENTINEL_DEFAULT_CONFIG_FILE="/etc/valkey/sentinel.conf"
 VALKEY_SENTINEL_CONFIG_FILE="/data/sentinel.conf"
 ANNOUNCE_CONFIG_FILE="/data/announce.conf"
-OPERATOR_PASSWORD_FILE="/account/password"
+OPERATOR_PASSWORD_DIR="/account"
+OPERATOR_PASSWORD_FILE="${OPERATOR_PASSWORD_DIR}/password"
+OPERATOR_PASSWORD_SHA256_FILE="${OPERATOR_PASSWORD_DIR}/password-sha256"
 TLS_DIR="/tls"
 
 cat ${VALKEY_SENTINEL_DEFAULT_CONFIG_FILE} > ${VALKEY_SENTINEL_CONFIG_FILE}
 
-# Append password to sentinel configuration if it exists
+# Append password to sentinel configuration if it exists.
+# A mounted secret must hold a plaintext password: requirepass has no hashed
+# form, so a password-sha256 secret or an empty password would start sentinel
+# without any password. Refuse to start instead.
+if [ -e "${OPERATOR_PASSWORD_SHA256_FILE}" ]; then
+    echo "sentinel password secret can not use password-sha256, set password instead" >&2
+    exit 1
+fi
 password=$(cat ${OPERATOR_PASSWORD_FILE} 2>/dev/null)
 if [ -n "${password}" ]; then
      echo "requirepass \"${password}\"" >> ${VALKEY_SENTINEL_CONFIG_FILE}
+elif [ -d "${OPERATOR_PASSWORD_DIR}" ]; then
+    echo "sentinel password secret is mounted but has no password" >&2
+    exit 1
 fi
 
 # Append announce configuration to sentinel configuration if it exists

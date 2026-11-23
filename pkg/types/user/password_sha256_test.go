@@ -82,11 +82,12 @@ func TestPassword_SHA256(t *testing.T) {
 	})
 
 	for name, data := range map[string]map[string]string{
-		"both keys":     {PasswordSecretKey: "Str0ng!Passw0rd", PasswordSHA256SecretKey: hash},
-		"short hash":    {PasswordSHA256SecretKey: hash[:63]},
-		"not hex":       {PasswordSHA256SecretKey: strings.Repeat("z", 64)},
-		"empty hash":    {PasswordSHA256SecretKey: ""},
-		"no known keys": {"username": "foo"},
+		"both keys":                   {PasswordSecretKey: "Str0ng!Passw0rd", PasswordSHA256SecretKey: hash},
+		"hash and empty password key": {PasswordSecretKey: "", PasswordSHA256SecretKey: hash},
+		"short hash":                  {PasswordSHA256SecretKey: hash[:63]},
+		"not hex":                     {PasswordSHA256SecretKey: strings.Repeat("z", 64)},
+		"empty hash":                  {PasswordSHA256SecretKey: ""},
+		"no known keys":               {"username": "foo"},
 	} {
 		t.Run("rejects "+name, func(t *testing.T) {
 			if _, err := NewPassword(newSecret(data)); err == nil {
@@ -111,7 +112,9 @@ func TestValidateOperatorPassword(t *testing.T) {
 	if err := ValidateOperatorPassword(plain); err != nil {
 		t.Errorf("plaintext: unexpected error %v", err)
 	}
-	for name, p := range map[string]*Password{"nil": nil, "empty": empty, "hashed": hashed} {
+	// an entry decoded from an ACL configmap that lost its secret reference
+	noRef := &Password{}
+	for name, p := range map[string]*Password{"nil": nil, "empty": empty, "hashed": hashed, "no secret reference": noRef} {
 		if err := ValidateOperatorPassword(p); err == nil {
 			t.Errorf("%s: expected error", name)
 		}
@@ -126,7 +129,9 @@ func TestValidatePasswordSecret(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid hash", map[string]string{PasswordSHA256SecretKey: hash}, false},
-		{"hash with empty password key", map[string]string{PasswordSHA256SecretKey: hash, PasswordSecretKey: ""}, false},
+		// exactly one key: presence counts, an empty password key is still a second key
+		{"hash with empty password key", map[string]string{PasswordSHA256SecretKey: hash, PasswordSecretKey: ""}, true},
+		{"empty hash key with password", map[string]string{PasswordSHA256SecretKey: "", PasswordSecretKey: "Str0ng!Passw0rd"}, true},
 		{"invalid hash", map[string]string{PasswordSHA256SecretKey: "abc"}, true},
 		{"both keys", map[string]string{PasswordSHA256SecretKey: hash, PasswordSecretKey: "Str0ng!Passw0rd"}, true},
 		{"strong plaintext", map[string]string{PasswordSecretKey: "Str0ng!Passw0rd"}, false},
@@ -140,5 +145,37 @@ func TestValidatePasswordSecret(t *testing.T) {
 				t.Errorf("ValidatePasswordSecret() error = %v, wantErr %v", err, c.wantErr)
 			}
 		})
+	}
+}
+
+func TestRequirePassword(t *testing.T) {
+	plain, _ := NewPassword(newSecret(map[string]string{PasswordSecretKey: "anything"}))
+	hashed, _ := NewPassword(newSecret(map[string]string{PasswordSHA256SecretKey: sha256Hex("anything")}))
+	empty, _ := NewPassword(newSecret(map[string]string{PasswordSecretKey: ""}))
+
+	for name, p := range map[string]*Password{"plaintext": plain, "hashed": hashed} {
+		if err := RequirePassword("default user", p); err != nil {
+			t.Errorf("%s: unexpected error %v", name, err)
+		}
+	}
+	for name, p := range map[string]*Password{"nil": nil, "empty": empty, "no secret reference": {}} {
+		if err := RequirePassword("default user", p); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}
+
+func TestUserPasswordRules(t *testing.T) {
+	hash := sha256Hex("second")
+	first, _ := NewPassword(newSecret(map[string]string{PasswordSHA256SecretKey: sha256Hex("first")}))
+	second, _ := NewPassword(newSecret(map[string]string{PasswordSHA256SecretKey: hash}))
+
+	u := &User{Name: "app", Role: RoleDeveloper, Password: first, AdditionalPasswords: []*Password{second}}
+	got := u.PasswordRules()
+	if len(got) != 2 || got[0] != "#"+sha256Hex("first") || got[1] != "#"+hash {
+		t.Errorf("PasswordRules() = %v, want both hashes in order", got)
+	}
+	if rules := (&User{Name: "app"}).PasswordRules(); len(rules) != 0 {
+		t.Errorf("PasswordRules() of a user without password = %v, want none", rules)
 	}
 }

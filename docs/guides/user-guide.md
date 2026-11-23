@@ -520,7 +520,7 @@ kubectl -n NAMESPACE create secret generic NAME --from-literal=password-sha256=$
 Use `printf '%s'`, not `echo`: a trailing newline would become part of the hashed password.
 
 - The value must be the 64 hex characters of the SHA-256 digest; surrounding whitespace and upper-case letters are accepted.
-- A Secret sets either `password` or `password-sha256`, never both. To move an existing Secret, such as the `default` user's, to a hash, remove `password` in the same change rather than recreating the Secret, which would drop the finalizer and owner reference the operator set on it:
+- A Secret sets either `password` or `password-sha256`, never both: a Secret that has both keys is rejected even when one of them is empty. To move an existing Secret, such as the `default` user's, to a hash, remove `password` in the same change rather than recreating the Secret, which would drop the finalizer and owner reference the operator set on it:
 
   ```bash
   kubectl -n NAMESPACE patch secret NAME --type=json -p "[
@@ -529,6 +529,8 @@ Use `printf '%s'`, not `echo`: a trailing newline would become part of the hashe
   ```
 
 - It cannot be used where the operator itself has to log in with the password: the operator's own `User` (account type `system`) is rejected, and the sentinel password in `spec.sentinel.access.defaultPasswordSecret` still needs `password`.
+- To rotate a password without downtime, list a second Secret in `spec.passwordSecrets`: every Secret listed is a valid password, also after the pods restart. Remove the old Secret from the list once the clients use the new password.
+- The username `operator` is reserved for the operator's own `User`: a `User` of account type `custom` with that name is rejected.
 
 > **Warning:** with only the hash, the operator cannot check the password: the length and character rules that apply to `password` are skipped, and a hash of a weak password is accepted. Choosing a strong password is up to whoever creates it. SHA-256 is a fast, unsalted hash, so a short or common password can be recovered from the hash by anyone who can read the Secret: use a long random password, and keep the same access control on the Secret as for a plain password.
 

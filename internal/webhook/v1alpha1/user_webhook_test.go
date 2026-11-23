@@ -487,6 +487,30 @@ var _ = Describe("User Webhook", func() {
 				Expect(err.Error()).To(ContainSubstring("system account secret test-password-secret-sha256-sys can not use password-sha256"))
 			})
 
+			It("Should reject a hash with an empty password key", func() {
+				// exactly one key: an empty password key still counts as present
+				createHashedSecret("test-password-secret-sha256-empty-plain", map[string]string{
+					user.PasswordSHA256SecretKey: hash,
+					user.PasswordSecretKey:       "",
+				})
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256-empty-plain"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must set only one of"))
+			})
+
+			It("Should reject the operator username for a custom account", func() {
+				createHashedSecret("test-password-secret-sha256-fake-op", map[string]string{user.PasswordSHA256SecretKey: hash})
+				obj.Spec.AccountType = v1alpha1.CustomAccount
+				obj.Spec.Username = user.DefaultOperatorUserName
+				obj.Spec.PasswordSecrets = []string{"test-password-secret-sha256-fake-op"}
+
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("reserved for the system account"))
+			})
+
 			It("Should still accept a system account whose secret does not exist yet", func() {
 				obj.Spec.AccountType = v1alpha1.SystemAccount
 				obj.Spec.Username = user.DefaultOperatorUserName

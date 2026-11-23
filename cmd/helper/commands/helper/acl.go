@@ -78,28 +78,63 @@ func GenerateACL(ctx context.Context, client *kubernetes.Clientset, namespace, n
 
 // LoadACLUsersFromConfigmap load acls from configmap
 func LoadACLUsersFromConfigmap(ctx context.Context, clientset *kubernetes.Clientset, cm *v1.ConfigMap) ([]*user.User, error) {
-	var users []*user.User
 	if cm == nil {
-		return users, nil
+		return nil, nil
 	}
+	return loadACLUsers(cm, func(name string) (*corev1.Secret, error) {
+		return GetSecret(ctx, clientset, cm.Namespace, name)
+	})
+}
+
+// loadACLUsers parses the users of the ACL configmap cm and loads their passwords
+// with getSecret.
+//
+// The operator user must end up with a usable plaintext password, whether or not its
+// entry still references a secret: an entry that lost its secret reference fails here
+// instead of being written as "nopass". A configured default user with an unusable
+// secret fails too, since leaving it out of the ACL file makes Valkey recreate its
+// built-in default user without a password. Any other user with an unusable secret is
+// left out, so it can not log in.
+func loadACLUsers(cm *v1.ConfigMap, getSecret func(name string) (*corev1.Secret, error)) ([]*user.User, error) {
+	var users []*user.User
 	for name, userData := range cm.Data {
 		var u user.User
 		if err := json.Unmarshal([]byte(userData), &u); err != nil {
 			return nil, fmt.Errorf("parse user %s failed, error=%s", name, err)
 		}
 		u.Name = name
-		if u.Password != nil && u.Password.SecretName != "" {
-			secret, err := GetSecret(ctx, clientset, cm.Namespace, u.Password.SecretName)
-			if err != nil {
-				return nil, err
-			}
-			passwd, skip, err := loadUserPassword(name, secret)
-			if err != nil {
-				return nil, err
-			} else if skip {
+
+		skip := false
+		passwords := []*user.Password{}
+		for _, ref := range u.AllPasswords() {
+			if ref.SecretName == "" {
 				continue
 			}
-			u.Password = passwd
+			secret, err := getSecret(ref.SecretName)
+			if err != nil {
+				return nil, err
+			}
+			passwd, skipUser, err := loadUserPassword(name, secret)
+			if err != nil {
+				return nil, err
+			} else if skipUser {
+				skip = true
+				break
+			}
+			passwords = append(passwords, passwd)
+		}
+		if skip {
+			continue
+		}
+		u.Password, u.AdditionalPasswords = nil, nil
+		if len(passwords) > 0 {
+			u.Password, u.AdditionalPasswords = passwords[0], passwords[1:]
+		}
+		if name == user.DefaultOperatorUserName {
+			// also catches an entry without any secret reference, which would be "nopass"
+			if err := user.ValidateOperatorPassword(u.Password); err != nil {
+				return nil, err
+			}
 		}
 
 		if err := u.Validate(); err != nil {
@@ -110,19 +145,34 @@ func LoadACLUsersFromConfigmap(ctx context.Context, clientset *kubernetes.Client
 	return users, nil
 }
 
-// loadUserPassword reads the password of user name from its secret.
+// loadUserPassword reads the password of user name from one of its secrets.
 //
 // The operator user must end up with a usable plaintext password: any problem with
 // its secret (missing or empty password, both keys set, password-sha256) is an
-// error, never a "nopass" operator user. Any other user whose secret is unusable or
-// whose plaintext password is too weak is skipped (skip=true), so it can not log in.
+// error, never a "nopass" operator user. The default user must end up with a password,
+// plaintext or hashed: a problem with its secret is an error too, because Valkey
+// recreates the default user without a password when the ACL file leaves it out. Any
+// other user whose secret is unusable or whose plaintext password is too weak is
+// skipped (skip=true), so it can not log in.
 func loadUserPassword(name string, secret *corev1.Secret) (passwd *user.Password, skip bool, err error) {
 	passwd, err = user.NewPassword(secret)
-	if name == user.DefaultOperatorUserName {
+	switch name {
+	case user.DefaultOperatorUserName:
 		if err != nil {
 			return nil, false, fmt.Errorf("load operator user password failed, %w", err)
 		}
 		if err := user.ValidateOperatorPassword(passwd); err != nil {
+			return nil, false, err
+		}
+		return passwd, false, nil
+	case user.DefaultUserName:
+		if err != nil {
+			return nil, false, fmt.Errorf("load default user password failed, %w", err)
+		}
+		// The strength of a configured default password is checked on admission. A
+		// weak one is still applied here: dropping it would leave the default user
+		// without any password.
+		if err := user.RequirePassword("default user", passwd); err != nil {
 			return nil, false, err
 		}
 		return passwd, false, nil
@@ -191,11 +241,11 @@ func formatACLSetCommand(user *user.User) []string {
 	for _, rule := range user.Rules {
 		args = append(args, strings.Fields(rule.Encode())...)
 	}
-	// ">plaintext", or "#sha256" for a password-sha256 secret
-	if rule := user.Password.ACLRule(); rule == "" {
+	// ">plaintext", or "#sha256" for a password-sha256 secret, one per secret
+	if rules := user.PasswordRules(); len(rules) == 0 {
 		args = append(args, "nopass")
 	} else {
-		args = append(args, rule)
+		args = append(args, rules...)
 	}
 	// NOTE: on must after reset
 	return append(args, "on")
