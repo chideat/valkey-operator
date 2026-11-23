@@ -49,7 +49,10 @@ func NewUserFromValkeyUser(username, ruleStr string, pwd *user.Password) (*user.
 	return &user, nil
 }
 
-// NewSentinelUser
+// NewSentinelUser returns the user Sentinel and its clients authenticate with. A
+// configured secret must hold a non-empty plaintext password: Sentinel sets it with
+// requirepass, which has no hashed form, and the operator logs in with it. A
+// password-sha256 secret would otherwise leave Sentinel without a password.
 func NewSentinelUser(name string, role user.UserRole, secret *v1.Secret) (*user.User, error) {
 	var (
 		err    error
@@ -57,6 +60,9 @@ func NewSentinelUser(name string, role user.UserRole, secret *v1.Secret) (*user.
 	)
 	if secret != nil {
 		if passwd, err = user.NewPassword(secret); err != nil {
+			return nil, err
+		}
+		if err := user.RequirePlaintextPassword("sentinel", passwd); err != nil {
 			return nil, err
 		}
 	}
@@ -165,7 +171,7 @@ func (us Users) IsChanged(n Users) bool {
 
 	for i, oldUser := range us {
 		newUser := n[i]
-		if newUser.String() != oldUser.String() || newUser.Password.String() != oldUser.Password.String() {
+		if newUser.String() != oldUser.String() || !slices.Equal(newUser.PasswordRules(), oldUser.PasswordRules()) {
 			return true
 		}
 	}

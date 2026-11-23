@@ -404,6 +404,36 @@ func TestNewSentinelUser(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			// requirepass has no hashed form: a hash-only secret would leave Sentinel
+			// without any password
+			name: "hash-only secret",
+			args: args{
+				name: "",
+				role: user.RoleDeveloper,
+				secret: &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "sen-pw"},
+					Data: map[string][]byte{
+						user.PasswordSHA256SecretKey: []byte("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"),
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "empty password",
+			args: args{
+				name: "",
+				role: user.RoleDeveloper,
+				secret: &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "sen-pw"},
+					Data:       map[string][]byte{user.PasswordSecretKey: {}},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

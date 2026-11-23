@@ -25,7 +25,7 @@ status:
 | `accountType` | AccountType | User account type (system or custom) |
 | `arch` | core.Arch | Architecture type (failover, cluster, replica) |
 | `username` | string | Username (required) |
-| `passwordSecrets` | []string | List of password secret names |
+| `passwordSecrets` | []string | List of password secret names. Each Secret holds either `password` (the password) or `password-sha256` (the hex SHA-256 of the password, applied as `#<hash>`; not allowed for `system` accounts). See [Storing only a hash of the password](../guides/user-guide.md#storing-only-a-hash-of-the-password). |
 | `aclRules` | string | ACL rules string |
 | `instanceName` | string | Instance name (required, 1-63 characters) |
 
@@ -83,6 +83,13 @@ metadata:
 type: Opaque
 data:
   password: bXlzZWNyZXRwYXNzd29yZA== # mysecretpassword (base64 encoded)
+```
+
+To keep only a hash of the password in the cluster, the Secret holds `password-sha256` instead of `password`. Password strength is not checked in that case, so use a long random password:
+
+```bash
+read -rs P; H=$(printf '%s' "$P" | sha256sum | cut -d' ' -f1); unset P
+kubectl -n valkey-system create secret generic app-user-password --from-literal=password-sha256=$H
 ```
 
 ## Common ACL Patterns
