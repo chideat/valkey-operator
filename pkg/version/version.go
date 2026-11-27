@@ -33,6 +33,9 @@ var (
 	MinVectorSetsVersion        = ValkeyVersion("8.0")
 	MinLatencyTrackingVersion   = ValkeyVersion("9.0")
 	MinLazyfreeUserFlushVersion = ValkeyVersion("9.0")
+	// MinACLDatabaseVersion is the first version with the ACL database rules
+	// db=, alldbs and resetdbs
+	MinACLDatabaseVersion = ValkeyVersion("9.1")
 )
 
 type ValkeyVersion string
@@ -133,6 +136,11 @@ func ParseValkeyVersion(v string) (ValkeyVersion, error) {
 
 // ParseValkeyVersionFromImage
 func ParseValkeyVersionFromImage(u string) (ValkeyVersion, error) {
+	// the digest of an image tells nothing of its version, so only the tag is read:
+	// valkey/valkey:9.1@sha256:... is 9.1, valkey/valkey@sha256:... is unknown
+	if index := strings.Index(u, "@"); index >= 0 {
+		u = u[:index]
+	}
 	if index := strings.LastIndex(u, ":"); index > 0 {
 		version := u[index+1:]
 		if version == "latest" {

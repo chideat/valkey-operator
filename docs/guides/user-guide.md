@@ -510,6 +510,17 @@ spec:
 
 When a failover instance is created with `spec.sentinel.access.defaultPasswordSecret` left empty, it is set to `sentinel-acl-<name>-default-secret`, and the operator generates that Secret before it starts the sentinel nodes. A client that asks the sentinel nodes for the primary needs this password, as well as the default user's for the primary itself. To use a password of your own, name your Secret in `defaultPasswordSecret` when you create the instance. No password is generated when `spec.sentinel.sentinelReference` points to sentinel nodes the operator does not run, or when the admission webhooks are disabled.
 
+### Limiting a User to Some Databases
+
+With Valkey 9.1 or later, `aclRules` can limit a user to some databases with `db=<id>[,<id>...]`, or to none with `resetdbs`. This user can select, read, write and flush databases 2 and 3 only:
+
+```yaml
+spec:
+  aclRules: "+@all -@dangerous +flushdb ~app:* &* db=2,3"
+```
+
+The operator refuses database rules for an instance older than 9.1: the admission webhook rejects the `User`, and the operator does not apply it to an instance whose image or running nodes are older, or whose version it cannot tell. See [Database Rules](../api/v1alpha1-user.md#database-rules).
+
 ### Network Policies
 
 ```yaml

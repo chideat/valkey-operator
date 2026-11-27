@@ -38,6 +38,7 @@ import (
 	"github.com/chideat/valkey-operator/internal/util"
 	security "github.com/chideat/valkey-operator/pkg/security/password"
 	"github.com/chideat/valkey-operator/pkg/types/user"
+	"github.com/chideat/valkey-operator/pkg/version"
 )
 
 // nolint:unused
@@ -170,6 +171,13 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 	if err != nil {
 		return nil, err
 	}
+	if rule.HasDatabaseRules() {
+		if warn, err := v.checkDatabaseRulesVersion(ctx, inst, rule); err != nil {
+			return nil, err
+		} else if warn != "" {
+			warns = append(warns, warn)
+		}
+	}
 
 	if inst.Spec.AccountType == v1alpha1.SystemAccount {
 		if inst.Spec.Username != user.DefaultOperatorUserName {
@@ -178,7 +186,7 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 		if rule.IsACLCommandsDisabled() {
 			return nil, fmt.Errorf("system account must enable acl command")
 		}
-		return nil, nil
+		return warns, nil
 	}
 
 	// check custom instance
@@ -224,6 +232,41 @@ func (v *UserCustomValidator) validate(ctx context.Context, oldInst, inst *valke
 		}
 	}
 	return
+}
+
+// checkDatabaseRulesVersion rejects database rules (db=, resetdbs) for an instance whose
+// image is a Valkey older than 9.1, which would refuse them. When the version cannot be
+// told from the image (a digest, a custom tag), the user is admitted with a warning and
+// the User controller checks the version of the running nodes before it applies the rule.
+func (v *UserCustomValidator) checkDatabaseRulesVersion(ctx context.Context, inst *valkeybufredv1alpha1.User, rule *user.Rule) (string, error) {
+	key := types.NamespacedName{Namespace: inst.Namespace, Name: inst.Spec.InstanceName}
+	var image string
+	switch inst.Spec.Arch {
+	case core.ValkeyFailover, core.ValkeyReplica:
+		vf := &v1alpha1.Failover{}
+		if err := v.mgrClient.Get(ctx, key, vf); err != nil {
+			return "", client.IgnoreNotFound(err)
+		}
+		image = vf.Spec.Image
+	case core.ValkeyCluster:
+		cluster := &v1alpha1.Cluster{}
+		if err := v.mgrClient.Get(ctx, key, cluster); err != nil {
+			return "", client.IgnoreNotFound(err)
+		}
+		image = cluster.Spec.Image
+	default:
+		return "", nil
+	}
+
+	ver, err := version.ParseValkeyVersionFromImage(image)
+	if err != nil || ver == version.ValkeyVersionUnknown {
+		return fmt.Sprintf("the Valkey version of image %q is unknown; database rules need Valkey %s or later and are checked against the running nodes before they are applied",
+			image, version.MinACLDatabaseVersion), nil
+	}
+	if err := rule.CheckVersion(ver); err != nil {
+		return "", fmt.Errorf("instance %s: %w", inst.Spec.InstanceName, err)
+	}
+	return "", nil
 }
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type User.

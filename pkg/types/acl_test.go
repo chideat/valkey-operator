@@ -122,6 +122,24 @@ func TestUsers_IsChanged(t *testing.T) {
 		}
 	})
 
+	t.Run("different database rules", func(t *testing.T) {
+		users1 := Users{
+			&core.User{Name: "user1", Role: core.RoleDeveloper, Rules: []*core.Rule{{Categories: []string{"all"}, KeyPatterns: []string{"*"}, Databases: []int{1}}}},
+		}
+		users2 := Users{
+			&core.User{Name: "user1", Role: core.RoleDeveloper, Rules: []*core.Rule{{Categories: []string{"all"}, KeyPatterns: []string{"*"}, Databases: []int{1, 2}}}},
+		}
+		if got := users1.IsChanged(users2); got != true {
+			t.Errorf("Users.IsChanged() = %v, want %v", got, true)
+		}
+		users3 := Users{
+			&core.User{Name: "user1", Role: core.RoleDeveloper, Rules: []*core.Rule{{Categories: []string{"all"}, KeyPatterns: []string{"*"}, NoDatabases: true}}},
+		}
+		if got := users1.IsChanged(users3); got != true {
+			t.Errorf("Users.IsChanged() = %v, want %v", got, true)
+		}
+	})
+
 	t.Run("different Users slices", func(t *testing.T) {
 		users1 := Users{
 			&core.User{Name: "user1", Role: core.RoleDeveloper},

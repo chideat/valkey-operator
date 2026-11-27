@@ -531,6 +531,112 @@ var _ = Describe("User Webhook", func() {
 		})
 	})
 
+	Context("When the ACL rules limit the databases", func() {
+		const dbRules = "+@all -@dangerous +flushdb ~app:* &* db=2,3"
+
+		createInstanceWithImage := func(obj client.Object) {
+			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
+			})
+		}
+
+		It("Should keep the database rules when applying defaults", func() {
+			obj.Spec.AclRules = "db=3,2 +@all -@dangerous +flushdb ~app:* &*"
+
+			Expect(defaulter.Default(ctx, obj)).To(Succeed())
+			Expect(obj.Spec.AclRules).To(Equal(dbRules))
+		})
+
+		It("Should keep resetdbs when applying defaults", func() {
+			obj.Spec.AclRules = "+@read ~* resetdbs"
+
+			Expect(defaulter.Default(ctx, obj)).To(Succeed())
+			Expect(obj.Spec.AclRules).To(Equal("+@read ~* resetdbs"))
+		})
+
+		It("Should reject a malformed database rule", func() {
+			for _, rules := range []string{"+@all ~* db=", "+@all ~* db=a", "+@all ~* db=1,,2", "+@all ~* db=-1"} {
+				obj.Spec.AclRules = rules
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred(), rules)
+				Expect(err.Error()).To(ContainSubstring("invalid rule db="), rules)
+			}
+		})
+
+		It("Should reject database rules for a Failover older than 9.1", func() {
+			obj.Spec.AclRules = dbRules
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("need Valkey 9.1 or later, the instance runs 8.0"))
+
+			obj.Spec.AclRules = "+@all ~* resetdbs"
+			_, err = validator.ValidateUpdate(ctx, obj.DeepCopy(), obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("need Valkey 9.1 or later"))
+		})
+
+		It("Should reject database rules for a Cluster older than 9.1", func() {
+			obj.Spec.Arch = core.ValkeyCluster
+			obj.Spec.InstanceName = "test-cluster"
+			obj.Spec.AclRules = dbRules
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("need Valkey 9.1 or later, the instance runs 8.0"))
+		})
+
+		It("Should accept database rules for a Failover on 9.1", func() {
+			failover := createFailover("test-failover-91", true)
+			failover.Spec.Image = "valkey/valkey:9.1.4"
+			createInstanceWithImage(failover)
+
+			obj.Spec.InstanceName = "test-failover-91"
+			obj.Spec.AclRules = dbRules
+
+			warns, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warns).To(BeEmpty())
+		})
+
+		It("Should accept database rules for a Cluster on 9.1", func() {
+			cluster := createCluster("test-cluster-91", true)
+			cluster.Spec.Image = "valkey/valkey:9.1-alpine"
+			createInstanceWithImage(cluster)
+
+			obj.Spec.Arch = core.ValkeyCluster
+			obj.Spec.InstanceName = "test-cluster-91"
+			obj.Spec.AclRules = dbRules
+
+			warns, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warns).To(BeEmpty())
+		})
+
+		It("Should warn when the version cannot be told from the image", func() {
+			failover := createFailover("test-failover-digest", true)
+			failover.Spec.Image = "valkey/valkey@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+			createInstanceWithImage(failover)
+
+			obj.Spec.InstanceName = "test-failover-digest"
+			obj.Spec.AclRules = dbRules
+
+			warns, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warns).To(HaveLen(1))
+			Expect(warns[0]).To(ContainSubstring("database rules need Valkey 9.1 or later"))
+		})
+
+		It("Should not check the version without database rules", func() {
+			obj.Spec.AclRules = "+@all -acl ~* &* alldbs"
+
+			warns, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warns).To(BeEmpty())
+		})
+	})
+
 	Context("When validating User updates", func() {
 		It("Should validate updates with the same rules as creation", func() {
 			obj.Spec.Arch = core.ValkeyCluster

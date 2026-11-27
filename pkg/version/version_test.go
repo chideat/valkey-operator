@@ -87,6 +87,18 @@ func TestParseValkeyVersionFromImage(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "tag and digest",
+			args:    args{u: "valkey/valkey:9.1.4@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+			want:    ValkeyVersion("9.1"),
+			wantErr: false,
+		},
+		{
+			name:    "digest only",
+			args:    args{u: "valkey/valkey@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+			want:    "",
+			wantErr: true,
+		},
+		{
 			name:    "invalid image",
 			args:    args{u: "valkey-7.4-alpine.000b26a0c3b6"},
 			want:    "",

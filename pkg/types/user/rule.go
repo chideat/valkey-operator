@@ -18,8 +18,12 @@ package user
 
 import (
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/chideat/valkey-operator/pkg/version"
 )
 
 var (
@@ -48,6 +52,12 @@ type Rule struct {
 	KeyWritePatterns []string `json:"keyWritePatterns,omitempty"`
 	// Channels >= 7.0 support channel patterns
 	Channels []string `json:"channels,omitempty"`
+	// Databases >= 9.1 limits the user to these database ids (db=<id>[,<id>...]),
+	// sorted and without duplicates. Empty means every database (alldbs), unless
+	// NoDatabases is set.
+	Databases []int `json:"databases,omitempty"`
+	// NoDatabases >= 9.1 removes the access to every database (resetdbs).
+	NoDatabases bool `json:"noDatabases,omitempty"`
 }
 
 // NewRule
@@ -114,6 +124,19 @@ func NewRule(val string) (*Rule, error) {
 			if !slices.Contains(r.Channels, v) {
 				r.Channels = append(r.Channels, v)
 			}
+		} else if strings.ToLower(v) == "alldbs" {
+			// alldbs is the default of every user, so it is kept as the absence of a
+			// database rule, as Valkey itself omits it from ACL LIST and ACL SAVE.
+			r.Databases, r.NoDatabases = nil, false
+		} else if strings.ToLower(v) == "resetdbs" {
+			r.Databases, r.NoDatabases = nil, true
+		} else if len(v) >= 3 && strings.ToLower(v[:3]) == "db=" {
+			dbs, err := parseDatabases(v[3:])
+			if err != nil {
+				return nil, fmt.Errorf("invalid rule %s: %w", v, err)
+			}
+			// like Valkey, a db= rule replaces the databases allowed before it
+			r.Databases, r.NoDatabases = dbs, false
 		} else {
 			return nil, fmt.Errorf("unsupported rule %s", v)
 		}
@@ -178,7 +201,65 @@ func (rule *Rule) Encode() string {
 	for _, pattern := range rule.Channels {
 		args = append(args, fmt.Sprintf("&%s", pattern))
 	}
+	if rule.NoDatabases {
+		args = append(args, "resetdbs")
+	} else if len(rule.Databases) > 0 {
+		ids := make([]string, 0, len(rule.Databases))
+		for _, db := range rule.Databases {
+			ids = append(ids, strconv.Itoa(db))
+		}
+		args = append(args, "db="+strings.Join(ids, ","))
+	}
 	return strings.Join(args, " ")
+}
+
+// parseDatabases parses the value of a db= rule, a comma separated list of database
+// ids, and returns the ids sorted and without duplicates. It accepts what Valkey
+// accepts: decimal ids from 0 to 2147483647, no empty item.
+func parseDatabases(val string) ([]int, error) {
+	if val == "" {
+		return nil, fmt.Errorf("no database id")
+	}
+	var dbs []int
+	for item := range strings.SplitSeq(val, ",") {
+		if item == "" {
+			return nil, fmt.Errorf("empty database id")
+		}
+		if strings.TrimLeft(item, "0123456789") != "" {
+			return nil, fmt.Errorf("database id %q is not a non-negative integer", item)
+		}
+		db, err := strconv.ParseInt(item, 10, 64)
+		if err != nil || db > math.MaxInt32 {
+			return nil, fmt.Errorf("database id %q is out of range", item)
+		}
+		if !slices.Contains(dbs, int(db)) {
+			dbs = append(dbs, int(db))
+		}
+	}
+	slices.Sort(dbs)
+	return dbs, nil
+}
+
+// HasDatabaseRules reports whether the rule limits the databases the user can access,
+// which only Valkey 9.1 and later understand.
+func (r *Rule) HasDatabaseRules() bool {
+	return r != nil && (r.NoDatabases || len(r.Databases) > 0)
+}
+
+// CheckVersion returns an error if the rule needs a newer Valkey than ver. An unknown
+// version fails a rule that needs one: a database rule is a security boundary and is
+// never applied, or dropped, on a guess.
+func (r *Rule) CheckVersion(ver version.ValkeyVersion) error {
+	if !r.HasDatabaseRules() {
+		return nil
+	}
+	if ver == version.ValkeyVersionUnknown {
+		return fmt.Errorf("database rules (db=, resetdbs) need Valkey %s or later, and the Valkey version is unknown", version.MinACLDatabaseVersion)
+	}
+	if !ver.IsAtLeast(version.MinACLDatabaseVersion) {
+		return fmt.Errorf("database rules (db=, resetdbs) need Valkey %s or later, the instance runs %s", version.MinACLDatabaseVersion, ver)
+	}
+	return nil
 }
 
 func (r *Rule) IsCommandEnabled(cmd string, cates []string) bool {
