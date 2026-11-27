@@ -98,6 +98,43 @@ func Test_formatACLSetCommand(t *testing.T) {
 			},
 			wantArgs: []string{"user", "custom3", "-cluster|setslot", "-cluster|nodes", "~*", "nopass", "on"},
 		},
+		{
+			name: "databases",
+			args: args{
+				user: &user.User{
+					Name: "custom4",
+					Role: user.RoleDeveloper,
+					Rules: []*user.Rule{
+						{
+							Categories:           []string{"all"},
+							DisallowedCategories: []string{"dangerous"},
+							AllowedCommands:      []string{"flushdb"},
+							KeyPatterns:          []string{"app:*"},
+							Channels:             []string{"*"},
+							Databases:            []int{2, 3},
+						},
+					},
+				},
+			},
+			wantArgs: []string{"user", "custom4", "+@all", "-@dangerous", "+flushdb", "~app:*", "&*", "db=2,3", "nopass", "on"},
+		},
+		{
+			name: "no databases",
+			args: args{
+				user: &user.User{
+					Name: "custom5",
+					Role: user.RoleDeveloper,
+					Rules: []*user.Rule{
+						{
+							Categories:  []string{"read"},
+							KeyPatterns: []string{"*"},
+							NoDatabases: true,
+						},
+					},
+				},
+			},
+			wantArgs: []string{"user", "custom5", "+@read", "~*", "resetdbs", "nopass", "on"},
+		},
 	}
 
 	for _, tt := range tests {

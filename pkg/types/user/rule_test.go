@@ -17,7 +17,12 @@ limitations under the License.
 package user
 
 import (
+	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/chideat/valkey-operator/pkg/version"
 )
 
 func TestNewRule(t *testing.T) {
@@ -270,6 +275,12 @@ func TestRule_Validate(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name:       "databases",
+			raw:        "+@all -@dangerous +flushdb ~app:* &* db=2,3",
+			disableAcl: true,
+			wantErr:    false,
+		},
+		{
 			name:       "default user for 7.0",
 			raw:        "+@all -acl -flushall -flushdb -keys ~* &*",
 			disableAcl: true,
@@ -297,6 +308,216 @@ func TestRule_Validate(t *testing.T) {
 			}
 			if err := r.Validate(tt.disableAcl); (err != nil) != tt.wantErr {
 				t.Errorf("Rule.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewRule_Databases(t *testing.T) {
+	tests := []struct {
+		name            string
+		raw             string
+		want            string
+		wantDatabases   []int
+		wantNoDatabases bool
+	}{
+		{
+			name:          "single database",
+			raw:           "db=0",
+			want:          "db=0",
+			wantDatabases: []int{0},
+		},
+		{
+			name:          "several databases",
+			raw:           "db=2,3",
+			want:          "db=2,3",
+			wantDatabases: []int{2, 3},
+		},
+		{
+			name:          "sorted and deduplicated",
+			raw:           "db=3,1,3,2",
+			want:          "db=1,2,3",
+			wantDatabases: []int{1, 2, 3},
+		},
+		{
+			name:          "largest id",
+			raw:           "db=2147483647",
+			want:          "db=2147483647",
+			wantDatabases: []int{2147483647},
+		},
+		{
+			name:          "leading zeros",
+			raw:           "db=007",
+			want:          "db=7",
+			wantDatabases: []int{7},
+		},
+		{
+			name:          "case insensitive",
+			raw:           "DB=4",
+			want:          "db=4",
+			wantDatabases: []int{4},
+		},
+		{
+			name:          "later db= replaces the earlier one",
+			raw:           "db=1,2 db=3",
+			want:          "db=3",
+			wantDatabases: []int{3},
+		},
+		{
+			name: "alldbs is the default",
+			raw:  "alldbs",
+			want: "",
+		},
+		{
+			name: "alldbs after db=",
+			raw:  "db=1 ALLDBS",
+			want: "",
+		},
+		{
+			name:            "resetdbs",
+			raw:             "resetdbs",
+			want:            "resetdbs",
+			wantNoDatabases: true,
+		},
+		{
+			name:            "resetdbs after db=",
+			raw:             "db=1 ResetDBs",
+			want:            "resetdbs",
+			wantNoDatabases: true,
+		},
+		{
+			name:          "db= after resetdbs",
+			raw:           "resetdbs db=5",
+			want:          "db=5",
+			wantDatabases: []int{5},
+		},
+		{
+			name:          "with other rules",
+			raw:           "+@all -@dangerous +flushdb ~dashboard:* &* db=2,3",
+			want:          "+@all -@dangerous +flushdb ~dashboard:* &* db=2,3",
+			wantDatabases: []int{2, 3},
+		},
+		{
+			name:          "db= first",
+			raw:           "db=2,3 +@all -@dangerous +flushdb ~dashboard:* &*",
+			want:          "+@all -@dangerous +flushdb ~dashboard:* &* db=2,3",
+			wantDatabases: []int{2, 3},
+		},
+		{
+			name:          "db= between rules",
+			raw:           "allkeys db=1 -@all +@read -keys %R~cache:* &*",
+			want:          "-@all +@read -keys ~* %R~cache:* &* db=1",
+			wantDatabases: []int{1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rule, err := NewRule(tt.raw)
+			if err != nil {
+				t.Fatalf("NewRule() error = %v", err)
+			}
+			if !reflect.DeepEqual(rule.Databases, tt.wantDatabases) {
+				t.Errorf("NewRule().Databases = %v, want %v", rule.Databases, tt.wantDatabases)
+			}
+			if rule.NoDatabases != tt.wantNoDatabases {
+				t.Errorf("NewRule().NoDatabases = %v, want %v", rule.NoDatabases, tt.wantNoDatabases)
+			}
+			if rule.HasDatabaseRules() != (tt.wantNoDatabases || len(tt.wantDatabases) > 0) {
+				t.Errorf("Rule.HasDatabaseRules() = %v", rule.HasDatabaseRules())
+			}
+			got := rule.Encode()
+			if got != tt.want {
+				t.Errorf("Rule.Encode() = %q, want %q", got, tt.want)
+			}
+
+			// round trip: what is encoded parses back to the same rule, and encodes the same
+			again, err := NewRule(got)
+			if err != nil {
+				t.Fatalf("NewRule(%q) error = %v", got, err)
+			}
+			if !reflect.DeepEqual(again, rule) {
+				t.Errorf("NewRule(Encode()) = %+v, want %+v", again, rule)
+			}
+			if again.Encode() != got {
+				t.Errorf("Encode() is not stable: %q, then %q", got, again.Encode())
+			}
+
+			// the rule is stored as JSON in the ACL ConfigMap
+			data, err := json.Marshal(rule)
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
+			}
+			var decoded Rule
+			if err := json.Unmarshal(data, &decoded); err != nil {
+				t.Fatalf("json.Unmarshal() error = %v", err)
+			}
+			if decoded.Encode() != got {
+				t.Errorf("Encode() after JSON round trip = %q, want %q", decoded.Encode(), got)
+			}
+		})
+	}
+}
+
+func TestNewRule_InvalidDatabases(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr string
+	}{
+		{name: "no id", raw: "db=", wantErr: "invalid rule db=: no database id"},
+		{name: "not a number", raw: "db=a", wantErr: `database id "a" is not a non-negative integer`},
+		{name: "empty item", raw: "db=1,,2", wantErr: "empty database id"},
+		{name: "leading comma", raw: "db=,1", wantErr: "empty database id"},
+		{name: "trailing comma", raw: "db=1,", wantErr: "empty database id"},
+		{name: "negative", raw: "db=-1", wantErr: `database id "-1" is not a non-negative integer`},
+		{name: "plus sign", raw: "db=+1", wantErr: `database id "+1" is not a non-negative integer`},
+		{name: "fraction", raw: "db=1.5", wantErr: `database id "1.5" is not a non-negative integer`},
+		{name: "out of range", raw: "db=2147483648", wantErr: `database id "2147483648" is out of range`},
+		{name: "overflow", raw: "db=99999999999999999999", wantErr: `database id "99999999999999999999" is out of range`},
+		{name: "among other rules", raw: "+@all ~* db=1,x", wantErr: `invalid rule db=1,x: database id "x" is not a non-negative integer`},
+		{name: "db without =", raw: "db", wantErr: "unsupported rule db"},
+		{name: "colon instead of =", raw: "db:1", wantErr: "unsupported rule db:1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rule, err := NewRule(tt.raw)
+			if err == nil {
+				t.Fatalf("NewRule(%q) = %+v, want error", tt.raw, rule)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("NewRule(%q) error = %q, want it to contain %q", tt.raw, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRule_CheckVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		version version.ValkeyVersion
+		wantErr bool
+	}{
+		{name: "no database rule, unknown version", raw: "+@all ~*", version: version.ValkeyVersionUnknown},
+		{name: "no database rule, 8.0", raw: "+@all ~*", version: "8.0"},
+		{name: "alldbs, 8.0", raw: "+@all ~* alldbs", version: "8.0"},
+		{name: "db=, unknown version", raw: "+@all ~* db=1", version: version.ValkeyVersionUnknown, wantErr: true},
+		{name: "db=, 8.1", raw: "+@all ~* db=1", version: "8.1", wantErr: true},
+		{name: "db=, 9.0", raw: "+@all ~* db=1", version: "9.0", wantErr: true},
+		{name: "db=, 9.1", raw: "+@all ~* db=1", version: "9.1"},
+		{name: "db=, 9.2", raw: "+@all ~* db=1", version: "9.2"},
+		{name: "db=, 10.0", raw: "+@all ~* db=1", version: "10.0"},
+		{name: "resetdbs, 9.0", raw: "+@all ~* resetdbs", version: "9.0", wantErr: true},
+		{name: "resetdbs, 9.1", raw: "+@all ~* resetdbs", version: "9.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rule, err := NewRule(tt.raw)
+			if err != nil {
+				t.Fatalf("NewRule() error = %v", err)
+			}
+			if err := rule.CheckVersion(tt.version); (err != nil) != tt.wantErr {
+				t.Errorf("Rule.CheckVersion(%q) error = %v, wantErr %v", tt.version, err, tt.wantErr)
 			}
 		})
 	}

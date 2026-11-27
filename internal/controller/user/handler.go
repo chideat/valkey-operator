@@ -195,6 +195,9 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 			logger.V(3).Info("rule parse failed", "rule", inst.Spec.AclRules)
 			return err
 		}
+		if err := rule.CheckVersion(rcm.SafeVersion()); err != nil {
+			return err
+		}
 		rule = types.PatchClusterClientRequiredRules(rule)
 		aclRules := rule.Encode()
 
@@ -237,6 +240,14 @@ func (r *UserHandler) Do(ctx context.Context, inst v1alpha1.User, logger logr.Lo
 		if !rfm.IsReady() {
 			logger.V(3).Info("instance is not ready", "instance", vkName)
 			return fmt.Errorf("instance is not ready")
+		}
+		rule, err := user.NewRule(inst.Spec.AclRules)
+		if err != nil {
+			logger.V(3).Info("rule parse failed", "rule", inst.Spec.AclRules)
+			return err
+		}
+		if err := rule.CheckVersion(rfm.SafeVersion()); err != nil {
+			return err
 		}
 		userObj, err := types.NewUserFromValkeyUser(inst.Spec.Username, inst.Spec.AclRules, userPassword)
 		if err != nil {
